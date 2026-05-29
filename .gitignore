@@ -1,0 +1,31 @@
+# Environment Variables
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.envrc
+
+# YOLO Training
+runs/
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Local Violation Images
+violations/
+
+# Temporary Files
+temp/

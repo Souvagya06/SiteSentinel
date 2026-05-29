@@ -2,11 +2,14 @@ from ultralytics import YOLO
 import cv2
 import requests
 import time
+from dotenv import load_dotenv
+import os
 
 # -----------------------------
 # Configuration
 # -----------------------------
-ESP32_IP = "10.36.176.180"
+load_dotenv()
+ESP32_IP = os.getenv("ESP32_IP")
 
 ALARM_ON_URL = f"http://{ESP32_IP}/on"
 ALARM_OFF_URL = f"http://{ESP32_IP}/off"
