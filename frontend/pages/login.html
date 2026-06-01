@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SiteSentinel | Authentication</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                            "tertiary": "#4edea3",
+                            "on-tertiary": "#003824",
+                            "on-primary-container": "#572000",
+                            "outline-variant": "#5a4136",
+                            "primary": "#ffb693",
+                            "on-tertiary-fixed": "#002113",
+                            "surface-container": "#201f20",
+                            "on-secondary": "#213145",
+                            "surface-container-lowest": "#0e0e0f",
+                            "on-secondary-fixed": "#0b1c30",
+                            "error-container": "#93000a",
+                            "on-background": "#e5e2e3",
+                            "on-surface": "#e5e2e3",
+                            "on-secondary-fixed-variant": "#38485d",
+                            "secondary-container": "#3a4a5f",
+                            "primary-fixed": "#ffdbcc",
+                            "inverse-surface": "#e5e2e3",
+                            "background": "#131314",
+                            "on-primary": "#561f00",
+                            "on-tertiary-fixed-variant": "#005236",
+                            "on-tertiary-container": "#003925",
+                            "surface-tint": "#ffb693",
+                            "secondary": "#b7c8e1",
+                            "on-secondary-container": "#a9bad3",
+                            "surface-bright": "#3a393a",
+                            "on-primary-fixed": "#351000",
+                            "primary-fixed-dim": "#ffb693",
+                            "surface": "#131314",
+                            "secondary-fixed-dim": "#b7c8e1",
+                            "outline": "#a98a7d",
+                            "inverse-on-surface": "#313031",
+                            "tertiary-container": "#00ae78",
+                            "secondary-fixed": "#d3e4fe",
+                            "on-error": "#690005",
+                            "on-error-container": "#ffdad6",
+                            "surface-container-low": "#1c1b1c",
+                            "inverse-primary": "#a04100",
+                            "surface-container-high": "#2a2a2b",
+                            "surface-dim": "#131314",
+                            "error": "#ffb4ab",
+                            "surface-variant": "#353436",
+                            "on-primary-fixed-variant": "#7a3000",
+                            "surface-container-highest": "#353436",
+                            "on-surface-variant": "#e2bfb0",
+                            "tertiary-fixed-dim": "#4edea3",
+                            "primary-container": "#ff6b00",
+                            "tertiary-fixed": "#6ffbbe"
+                    },
+                    "borderRadius": {
+                            "DEFAULT": "0.25rem",
+                            "lg": "0.5rem",
+                            "xl": "0.75rem",
+                            "full": "9999px"
+                    },
+                    "spacing": {
+                            "md": "24px",
+                            "xs": "4px",
+                            "xl": "64px",
+                            "lg": "40px",
+                            "gutter": "24px",
+                            "margin-mobile": "16px",
+                            "sm": "12px",
+                            "base": "8px",
+                            "margin-desktop": "48px"
+                    },
+                    "fontFamily": {
+                            "headline-lg-mobile": ["Geist"],
+                            "mono-data": ["Geist"],
+                            "headline-lg": ["Geist"],
+                            "headline-md": ["Geist"],
+                            "display-lg": ["Geist"],
+                            "body-md": ["Inter"],
+                            "body-lg": ["Inter"],
+                            "label-md": ["Geist"]
+                    },
+                    "fontSize": {
+                            "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                            "mono-data": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                            "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                            "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}],
+                            "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                            "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                            "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                            "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(28, 27, 28, 0.4);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(169, 138, 125, 0.1);
+        }
+        
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover, 
+        input:-webkit-autofill:focus, 
+        input:-webkit-autofill:active{
+            -webkit-box-shadow: 0 0 0 30px #201f20 inset !important;
+            -webkit-text-fill-color: #e5e2e3 !important;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen overflow-hidden font-body-md selection:bg-primary-container/30 selection:text-primary">
+<main class="flex w-full h-screen">
+<!-- Left Panel: Brand Illustration -->
+<section class="hidden lg:flex w-1/2 relative flex-col justify-between p-margin-desktop overflow-hidden border-r border-outline-variant/10">
+<!-- Background Image -->
+<div class="absolute inset-0 z-0 bg-cover bg-center" data-alt="A cinematic, high-contrast photograph of a massive industrial construction site at twilight. Advanced AI camera sensors are visible on scaffolds, glowing with subtle digital overlays in safety orange and deep greens. The scene is dramatic, heavy with steel structures, yet highly technological, conveying a mood of vigilant machine oversight over heavy industry. Dark, deep shadows contrast with sharp, precise lighting." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAHRDkpXm9dun_G1gBev-U7VzRcgFwMUVDMSeZH8zTR41-OEArfTO2ff-MJYGrLqfhAlDK6QvZ_7NJYe8VyDy5fuZkJIyxTki670mU3JtqIYGnSi1UZkV8Hdmq6r8xmW_nFnI2XNUDSbUH7rd7guAbCiCPTXu7e8D9wriE0DzAdfHIZDT6LnlqwWZK-BbvhOILvJNgIewvCqkX3g2O5KRB4uASNFa3htNxcuFR4UuOKncXAcgRzQXEF1LJ0SIRaz9a3mUuTvb2zG9o');">
+<!-- Tonal Overlay -->
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/30 mix-blend-multiply"></div>
+<div class="absolute inset-0 bg-background/40 backdrop-blur-[2px]"></div>
+</div>
+<!-- Brand Header -->
+<div class="relative z-10 flex items-center gap-base">
+<span class="material-symbols-outlined text-[32px] text-primary" style="font-variation-settings: 'FILL' 1;">precision_manufacturing</span>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">SiteSentinel <span class="text-primary">AI</span></h1>
+</div>
+<!-- Value Prop Glass Card -->
+<div class="relative z-10 glass-panel p-lg rounded-xl max-w-lg mb-xl">
+<div class="flex items-center gap-sm mb-md">
+<div class="h-2 w-2 rounded-full bg-tertiary-fixed shadow-[0_0_10px_rgba(111,251,190,0.5)]"></div>
+<span class="font-label-md text-label-md text-tertiary uppercase tracking-wider">System Active</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-sm">Industrial Safety Redefined.</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">
+                    Deploy AI-driven computer vision to monitor heavy machinery, detect safety hazards in real-time, and automate compliance logging across all your active sites.
+                </p>
+<div class="mt-lg flex gap-md">
+<div class="flex flex-col">
+<span class="font-mono-data text-mono-data text-primary mb-xs">Uptime</span>
+<span class="font-headline-md text-headline-md text-on-surface">99.99%</span>
+</div>
+<div class="w-px bg-outline-variant/20"></div>
+<div class="flex flex-col">
+<span class="font-mono-data text-mono-data text-primary mb-xs">Hazards Prevented</span>
+<span class="font-headline-md text-headline-md text-on-surface">12.4k+</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Panel: Auth Forms -->
+<section class="relative w-full lg:w-1/2 flex flex-col items-center justify-center p-margin-mobile md:p-margin-desktop bg-background overflow-y-auto">
+<div class="absolute top-4 right-4">
+    <a href="/" class="flex items-center gap-1 text-on-surface-variant hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-colors group">
+        <span class="material-symbols-outlined text-[16px] group-hover:-translate-x-0.5 transition-transform">arrow_back</span>
+        Home
+    </a>
+</div>
+    <div class="w-full max-w-[420px]">
+<!-- Mobile Logo -->
+<div class="flex lg:hidden items-center justify-center gap-base mb-xl">
+<span class="material-symbols-outlined text-[28px] text-primary" style="font-variation-settings: 'FILL' 1;">precision_manufacturing</span>
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">SiteSentinel <span class="text-primary">AI</span></h1>
+</div>
+<!-- Form Tabs -->
+<div class="flex border-b border-outline-variant/20 mb-lg">
+<button class="w-1/2 pb-sm text-center font-label-md text-label-md uppercase tracking-wider text-primary border-b-2 border-primary transition-colors" id="tab-login" onclick="switchTab('login')">
+                        Login
+                    </button>
+<button class="w-1/2 pb-sm text-center font-label-md text-label-md uppercase tracking-wider text-on-surface-variant hover:text-on-surface transition-colors" id="tab-signup" onclick="switchTab('signup')">
+                        Sign Up
+                    </button>
+</div>
+<!-- Login Form -->
+<form class="flex flex-col gap-md" id="form-login" onsubmit="event.preventDefault();">
+<div class="flex flex-col gap-xs">
+<label class="font-label-md text-label-md text-on-surface-variant" for="login-email">Email Address</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">mail</span>
+<input class="w-full bg-surface-container border border-outline-variant/20 rounded-lg py-sm pl-[36px] pr-sm font-body-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder:text-surface-variant" id="login-email" placeholder="operator@site.com" type="email"/>
+</div>
+</div>
+<div class="flex flex-col gap-xs">
+<div class="flex justify-between items-center">
+<label class="font-label-md text-label-md text-on-surface-variant" for="login-password">Password</label>
+<a class="font-label-md text-label-md text-primary hover:text-primary-fixed transition-colors" href="#">Forgot?</a>
+</div>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">lock</span>
+<input class="w-full bg-surface-container border border-outline-variant/20 rounded-lg py-sm pl-[36px] pr-[36px] font-body-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder:text-surface-variant" id="login-password" placeholder="••••••••" type="password"/>
+<button class="absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none" onclick="togglePassword('login-password', 'login-eye-icon')" type="button">
+<span class="material-symbols-outlined text-[18px]" id="login-eye-icon">visibility_off</span>
+</button>
+</div>
+</div>
+<button class="w-full mt-sm bg-primary-container text-on-primary-container rounded-lg py-sm font-label-md text-label-md uppercase tracking-wider hover:bg-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background flex items-center justify-center gap-xs" type="submit">
+                        Authenticate Sequence
+                        <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+<div class="relative flex items-center py-sm">
+<div class="flex-grow border-t border-outline-variant/20"></div>
+<span class="flex-shrink-0 mx-sm text-on-surface-variant font-label-md text-label-md uppercase">or</span>
+<div class="flex-grow border-t border-outline-variant/20"></div>
+</div>
+<button class="w-full bg-transparent border border-outline-variant/20 text-on-surface rounded-lg py-sm font-label-md text-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors focus:outline-none flex items-center justify-center gap-sm" type="button">
+<!-- Custom minimal Google Icon placeholder for style consistency -->
+<span class="material-symbols-outlined text-[18px]">account_circle</span>
+                        Continue with Google
+                    </button>
+</form>
+<!-- Sign Up Form (Initially Hidden) -->
+<form class="hidden flex-col gap-md" id="form-signup" onsubmit="event.preventDefault();">
+<div class="grid grid-cols-2 gap-md">
+<div class="flex flex-col gap-xs">
+<label class="font-label-md text-label-md text-on-surface-variant" for="signup-name">Full Name</label>
+<input class="w-full bg-surface-container border border-outline-variant/20 rounded-lg p-sm font-body-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder:text-surface-variant" id="signup-name" placeholder="John Doe" type="text"/>
+</div>
+<div class="flex flex-col gap-xs">
+<label class="font-label-md text-label-md text-on-surface-variant" for="signup-company">Company</label>
+<input class="w-full bg-surface-container border border-outline-variant/20 rounded-lg p-sm font-body-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder:text-surface-variant" id="signup-company" placeholder="Acme Corp" type="text"/>
+</div>
+</div>
+<div class="flex flex-col gap-xs">
+<label class="font-label-md text-label-md text-on-surface-variant" for="signup-email">Work Email</label>
+<input class="w-full bg-surface-container border border-outline-variant/20 rounded-lg p-sm font-body-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder:text-surface-variant" id="signup-email" placeholder="name@company.com" type="email"/>
+</div>
+<div class="flex flex-col gap-xs">
+<label class="font-label-md text-label-md text-on-surface-variant" for="signup-password">Password</label>
+<div class="relative">
+<input class="w-full bg-surface-container border border-outline-variant/20 rounded-lg py-sm pl-sm pr-[36px] font-body-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder:text-surface-variant" id="signup-password" placeholder="••••••••" type="password"/>
+<button class="absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none" onclick="togglePassword('signup-password', 'signup-eye-icon')" type="button">
+<span class="material-symbols-outlined text-[18px]" id="signup-eye-icon">visibility_off</span>
+</button>
+</div>
+<p class="font-mono-data text-[11px] text-on-surface-variant mt-1">Must be at least 12 characters, including numbers and symbols.</p>
+</div>
+<button class="w-full mt-sm bg-primary-container text-on-primary-container rounded-lg py-sm font-label-md text-label-md uppercase tracking-wider hover:bg-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background" type="submit">
+                        Initialize Account
+                    </button>
+<p class="font-body-md text-[13px] text-on-surface-variant text-center mt-sm">
+                        By creating an account, you agree to our <a class="text-primary hover:underline" href="#">Terms of Service</a> and <a class="text-primary hover:underline" href="#">Privacy Policy</a>.
+                    </p>
+</form>
+</div>
+</section>
+</main>
+<script>
+    function togglePassword(inputId, iconId) {
+        const input = document.getElementById(inputId);
+        const icon = document.getElementById(iconId);
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.textContent = 'visibility';
+            icon.classList.add('text-primary');
+        } else {
+            input.type = 'password';
+            icon.textContent = 'visibility_off';
+            icon.classList.remove('text-primary');
+        }
+    }
+
+    function switchTab(tab) {
+        const loginForm = document.getElementById('form-login');
+        const signupForm = document.getElementById('form-signup');
+        const loginTabBtn = document.getElementById('tab-login');
+        const signupTabBtn = document.getElementById('tab-signup');
+        const activeTabClasses = ['text-primary', 'border-b-2', 'border-primary'];
+        const inactiveTabClasses = ['text-on-surface-variant', 'border-transparent', 'hover:text-on-surface'];
+
+        if (tab === 'login') {
+            loginForm.classList.remove('hidden'); loginForm.classList.add('flex');
+            signupForm.classList.add('hidden'); signupForm.classList.remove('flex');
+            loginTabBtn.classList.remove(...inactiveTabClasses); loginTabBtn.classList.add(...activeTabClasses);
+            signupTabBtn.classList.remove(...activeTabClasses); signupTabBtn.classList.add(...inactiveTabClasses);
+        } else {
+            signupForm.classList.remove('hidden'); signupForm.classList.add('flex');
+            loginForm.classList.add('hidden'); loginForm.classList.remove('flex');
+            signupTabBtn.classList.remove(...inactiveTabClasses); signupTabBtn.classList.add(...activeTabClasses);
+            loginTabBtn.classList.remove(...activeTabClasses); loginTabBtn.classList.add(...inactiveTabClasses);
+        }
+    }
+
+    // --- LOGIN ---
+    document.getElementById('form-login').addEventListener('submit', async function() {
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const btn = this.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.innerHTML = 'Authenticating...';
+
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            window.location.href = '/dashboard.html';
+        } else {
+            alert(data.error || 'Login failed.');
+            btn.disabled = false;
+            btn.innerHTML = 'Authenticate Sequence <span class="material-symbols-outlined text-[18px]">arrow_forward</span>';
+        }
+    });
+
+    // --- SIGNUP ---
+    document.getElementById('form-signup').addEventListener('submit', async function() {
+        const name = document.getElementById('signup-name').value;
+        const company = document.getElementById('signup-company').value;
+        const email = document.getElementById('signup-email').value;
+        const password = document.getElementById('signup-password').value;
+        const btn = this.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.textContent = 'Initializing...';
+
+        const res = await fetch('/api/signup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, company, email, password })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            alert('Account created! Please log in.');
+            switchTab('login');
+        } else {
+            alert(data.error || 'Signup failed.');
+        }
+        btn.disabled = false;
+        btn.textContent = 'Initialize Account';
+    });
+</script>
+</body></html>

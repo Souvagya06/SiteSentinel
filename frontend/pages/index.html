@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SiteSentinel | AI-Powered Construction Site Safety Monitoring</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#4edea3",
+                        "on-tertiary": "#003824",
+                        "on-primary-container": "#572000",
+                        "outline-variant": "#5a4136",
+                        "primary": "#ffb693",
+                        "on-tertiary-fixed": "#002113",
+                        "surface-container": "#201f20",
+                        "on-secondary": "#213145",
+                        "surface-container-lowest": "#0e0e0f",
+                        "on-secondary-fixed": "#0b1c30",
+                        "error-container": "#93000a",
+                        "on-background": "#e5e2e3",
+                        "on-surface": "#e5e2e3",
+                        "on-secondary-fixed-variant": "#38485d",
+                        "secondary-container": "#3a4a5f",
+                        "primary-fixed": "#ffdbcc",
+                        "inverse-surface": "#e5e2e3",
+                        "background": "#131314",
+                        "on-primary": "#561f00",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-tertiary-container": "#003925",
+                        "surface-tint": "#ffb693",
+                        "secondary": "#b7c8e1",
+                        "on-secondary-container": "#a9bad3",
+                        "surface-bright": "#3a393a",
+                        "on-primary-fixed": "#351000",
+                        "primary-fixed-dim": "#ffb693",
+                        "surface": "#131314",
+                        "secondary-fixed-dim": "#b7c8e1",
+                        "outline": "#a98a7d",
+                        "inverse-on-surface": "#313031",
+                        "tertiary-container": "#00ae78",
+                        "secondary-fixed": "#d3e4fe",
+                        "on-error": "#690005",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-low": "#1c1b1c",
+                        "inverse-primary": "#a04100",
+                        "surface-container-high": "#2a2a2b",
+                        "surface-dim": "#131314",
+                        "error": "#ffb4ab",
+                        "surface-variant": "#353436",
+                        "on-primary-fixed-variant": "#7a3000",
+                        "surface-container-highest": "#353436",
+                        "on-surface-variant": "#e2bfb0",
+                        "tertiary-fixed-dim": "#4edea3",
+                        "primary-container": "#ff6b00",
+                        "tertiary-fixed": "#6ffbbe"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "md": "24px",
+                        "xs": "4px",
+                        "xl": "64px",
+                        "lg": "40px",
+                        "gutter": "24px",
+                        "margin-mobile": "16px",
+                        "sm": "12px",
+                        "base": "8px",
+                        "margin-desktop": "48px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Geist"],
+                        "mono-data": ["Geist"],
+                        "headline-lg": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "display-lg": ["Geist"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-md": ["Geist"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "mono-data": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background antialiased min-h-screen flex flex-col font-body-md overflow-x-hidden">
+<!-- TopNavBar -->
+<header class="bg-background/80 backdrop-blur-xl border-b border-surface-variant/10 fixed top-0 w-full z-50">
+<div class="flex justify-between items-center px-margin-mobile md:px-margin-desktop py-4 max-w-[1600px] mx-auto w-full">
+<div class="font-headline-md text-headline-md font-bold text-primary tracking-tight">
+                SiteSentinel
+            </div>
+<nav class="hidden md:flex items-center gap-md">
+<a class="font-body-lg text-body-lg text-primary font-bold border-b-2 border-primary pb-1 transition-all duration-200 ease-in-out" href="#">Platform</a>
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/20 px-3 py-2 rounded-lg transition-all duration-200 ease-in-out" href="#">Solutions</a>
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/20 px-3 py-2 rounded-lg transition-all duration-200 ease-in-out" href="#">Enterprise</a>
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/20 px-3 py-2 rounded-lg transition-all duration-200 ease-in-out" href="#">Pricing</a>
+</nav>
+<div class="flex items-center gap-sm">
+<a class="hidden md:inline-flex font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface transition-colors duration-200" href="./login.html">Login</a>
+<button class="bg-primary-container text-background font-label-md text-label-md uppercase px-4 py-2 rounded-lg hover:opacity-90 transition-opacity">Request Demo</button>
+</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="flex-grow pt-[80px]">
+<!-- Hero Section -->
+<section class="relative px-margin-mobile md:px-margin-desktop py-xl lg:py-[120px] max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-xl items-center">
+<!-- Hero Text -->
+<div class="z-10 flex flex-col gap-lg">
+<div class="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-full w-fit">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span class="font-label-md text-label-md text-primary uppercase">v2.4 Deployed Globally</span>
+</div>
+<h1 class="font-display-lg text-display-lg md:text-[64px] md:leading-[72px] text-on-surface">
+                    AI-Powered Construction Site <br class="hidden lg:block"/> <span class="text-primary">Safety Monitoring</span>
+</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
+                    Monitor PPE compliance, worker attendance, safety violations, and site risks in real-time using advanced Computer Vision and IoT integration. Achieve zero-incident sites with predictive analytics.
+                </p>
+<div class="flex flex-col sm:flex-row gap-sm pt-sm">
+<button class="bg-primary-container text-background font-label-md text-label-md uppercase px-6 py-3 rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                        Get Started
+                        <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+<button class="border border-outline-variant bg-surface-container-low hover:bg-surface-variant/30 text-on-surface font-label-md text-label-md uppercase px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">play_circle</span>
+                        Watch Demo
+                    </button>
+</div>
+<div class="flex items-center gap-md pt-lg border-t border-surface-variant/20 mt-sm">
+<div class="flex -space-x-3">
+<img alt="User avatar" class="w-10 h-10 rounded-full border-2 border-background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDonJfIEE0zBhTJW9lsZtqRdtYSA3t_ftyjc1_DJXS7t8zQavArxoy0ZzL3nZlQge-5eiPkMOwlPhBOh4dh93VX7arq3-k4uFiQQUHpr5Q1PoYHIFyOFnBlCSuii_E9IF9_jbL_PykKJDr613tQ_SNfcA5UaUApzyScQsQar1CiBUVV8kVd-kivtP-E67H9MUIjSugHrtP1D7sy-MjuTzZgS7I8VVkU58DvGdIFkgcrC9IJAb9d8Z3UMQ-ZmaE1ZY5bAwVKwKGGgeo"/>
+<img alt="User avatar" class="w-10 h-10 rounded-full border-2 border-background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2b5JCcwdxDyMakZ6E2YstQ_RMZjnadWilhnbVv4SsIyOBZjLyspA6LO6XqsNrKkFK70XmWNMnvXQBdAbYEI1-7Og3b2bS7IoUwE_d5743HzMPESRtaIasKmt1SI1xuxPfIYoXuNDQWvxwGMOzFahWzsLtrp5lAticC2BMIkqlP7x2zxy1tZbXJf6zQe5K1eNwDcxYNf5GEEfYi-9JyDt3SehvMkzs1FIPSp4_1I8D3Q78cyAe5X8FYU72FwUzOMDkcu1c9ugTW4w"/>
+<img alt="User avatar" class="w-10 h-10 rounded-full border-2 border-background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDB-iuDnZHx-ufR4eraywl9ySAAiFKh3a2D_NCn_Fq12SNSin42dgSXFlt3jZdBNNPHYapybKrU1aPkF-onQ62Noz-VohYk2yM3npMQG-r3I79gMPJRu8_-e-0Ayzmjzc2MDdRUruNwuenxKuVMAv4o_LHLXQTP0G9uDBGGNBUwngf4clu9A53e5cjUlqMHfz8ck3Kmrr_BvH1PsrWZigc84sG80tx71o_JB-XLSAbJISBIDYnE8246fIx-z_5Bozf1kiqxONtCTkI"/>
+</div>
+<div class="font-body-md text-body-md text-on-surface-variant">
+                        Trusted by 500+ site managers globally.
+                    </div>
+</div>
+</div>
+<!-- Hero Illustration (Glassmorphism Concept) -->
+<div class="relative w-full h-[400px] md:h-[600px] rounded-xl border border-surface-variant/30 bg-surface-container-low overflow-hidden group">
+<img class="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity group-hover:scale-105 transition-transform duration-700" data-alt="A highly detailed industrial construction site with massive steel girders and cranes silhouetted against a moody sky. Several workers in high-visibility safety orange vests and hard hats are visible. Overlaying the scene are glowing neon orange AI bounding boxes tracking the workers, with sleek, dark-mode glassmorphic data panels floating in the foreground displaying real-time metrics. The aesthetic is high-tech, cinematic, and authoritative, matching a dark-themed modern UI." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQYO27I8unP3DKZLIOlvhDU2nI9sWC1MJr_m-DqmmyoszZ-RH0i4-M5SBCtaq4QmjWqUl1i4Mis2vqFIJVHGD84LX9TXMOiFXyNKwZQ6H3gBb-6J3qBqNrZDbHHFnUt039Q87cJrbAYN-pWTMiUXDUPOBZRKtRsKkqoG_9PpsovVg4DCOqA7PtByeAXMruTSrIpxcPHysa7yeqEAmmMwmEY3UZd5FHM5XybIW25szN6uAymkGWZ60f9r36N5HHXIZIwu1hnKZFUcA"/>
+<!-- Bounding Box Overlay 1 -->
+<div class="absolute top-[30%] left-[20%] w-[120px] h-[200px] border-2 border-primary border-dashed rounded-lg flex items-start justify-end p-1">
+<span class="bg-primary text-background font-mono-data text-mono-data px-1 rounded-sm text-[10px]">PPE: OK (98%)</span>
+</div>
+<!-- Bounding Box Overlay 2 (Alert) -->
+<div class="absolute top-[50%] right-[30%] w-[90px] h-[150px] border-2 border-error border-dashed rounded-lg flex items-start justify-end p-1">
+<span class="bg-error text-background font-mono-data text-mono-data px-1 rounded-sm text-[10px]">NO HELMET</span>
+</div>
+<!-- Dashboard Glass Overlay -->
+<div class="absolute bottom-md right-md left-md bg-background/70 backdrop-blur-xl border border-surface-variant/50 rounded-lg p-md flex flex-col gap-sm shadow-2xl">
+<div class="flex justify-between items-center border-b border-surface-variant/30 pb-2">
+<span class="font-label-md text-label-md text-on-surface uppercase">Live Feed Alpha</span>
+<span class="flex items-center gap-1 text-tertiary font-mono-data text-[11px]"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span> LIVE</span>
+</div>
+<div class="grid grid-cols-3 gap-sm">
+<div>
+<div class="text-on-surface-variant font-label-md text-[10px] uppercase">Active Workers</div>
+<div class="text-primary font-headline-md text-headline-md">142</div>
+</div>
+<div>
+<div class="text-on-surface-variant font-label-md text-[10px] uppercase">Safety Score</div>
+<div class="text-tertiary font-headline-md text-headline-md">94%</div>
+</div>
+<div>
+<div class="text-on-surface-variant font-label-md text-[10px] uppercase">Alerts (1H)</div>
+<div class="text-error font-headline-md text-headline-md">3</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Background subtle glow -->
+<div class="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-primary/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-lowest w-full py-xl border-t border-outline-variant/10 mt-xl">
+<div class="flex flex-col md:flex-row justify-between items-center px-margin-mobile md:px-margin-desktop max-w-[1600px] mx-auto gap-lg">
+<div class="flex flex-col gap-sm items-center md:items-start">
+<div class="font-headline-md text-headline-md text-primary">
+                    SiteSentinel AI
+                </div>
+<div class="font-label-md text-label-md text-on-surface-variant">
+                    © 2024 SiteSentinel AI. Industrial Safety Redefined.
+                </div>
+</div>
+<nav class="flex flex-wrap justify-center gap-md font-label-md text-label-md">
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Privacy Policy</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Terms of Service</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Compliance</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Security</a>
+</nav>
+</div>
+</footer>
+</body></html>
