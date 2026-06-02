@@ -496,16 +496,31 @@
     loadWorkers();
 
     // --- Image preview ---
-    let selectedFiles = [];
-    document.getElementById('w-images').addEventListener('change', function() {
-        selectedFiles = Array.from(this.files);
-        const preview = document.getElementById('image-preview');
-        preview.innerHTML = selectedFiles.map((f, i) => `
-            <div class="relative">
-                <img src="${URL.createObjectURL(f)}" class="w-16 h-16 object-cover rounded-lg border border-surface-variant"/>
-                <span class="absolute -top-1 -right-1 bg-surface-container text-on-surface text-[10px] rounded-full w-4 h-4 flex items-center justify-center border border-surface-variant">${i+1}</span>
-            </div>`).join('');
+let selectedFiles = [];
+document.getElementById('w-images').addEventListener('change', function() {
+    // Accumulate files instead of replacing
+    const newFiles = Array.from(this.files);
+    newFiles.forEach(newFile => {
+        const isDuplicate = selectedFiles.some(f => f.name === newFile.name && f.size === newFile.size);
+        if (!isDuplicate) selectedFiles.push(newFile);
     });
+    renderPreviews();
+});
+
+function renderPreviews() {
+    const preview = document.getElementById('image-preview');
+    preview.innerHTML = selectedFiles.map((f, i) => `
+        <div class="relative group">
+            <img src="${URL.createObjectURL(f)}" class="w-16 h-16 object-cover rounded-lg border border-surface-variant"/>
+            <button type="button" onclick="removeFile(${i})" class="absolute -top-1 -right-1 bg-error text-white rounded-full w-4 h-4 items-center justify-center text-[10px] hidden group-hover:flex">✕</button>
+            <span class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center rounded-b-lg">${i + 1}</span>
+        </div>`).join('');
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    renderPreviews();
+}
 
     // --- Drag and drop ---
     const dropZone = document.getElementById('drop-zone');

@@ -204,6 +204,16 @@ def add_worker():
         ]
     )
 
+    # Save all image URLs to worker_images table
+    for url in image_urls:
+        execute(
+            "INSERT INTO worker_images (worker_db_id, image_url) VALUES (?, ?)",
+            [
+                {"type": "text", "value": worker_id},
+                {"type": "text", "value": url},
+            ]
+        )
+
     return jsonify({"message": "Worker registered successfully.", "image_url": image_url}), 201
 
 
@@ -212,16 +222,44 @@ def delete_worker(worker_db_id):
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
     try:
+        # Get worker_id text value first
+        worker = query_one(
+            "SELECT worker_id FROM workers WHERE id = ? AND user_id = ?",
+            [{"type": "text", "value": str(worker_db_id)},
+             {"type": "text", "value": str(session["user_id"])}]
+        )
+        if not worker:
+            return jsonify({"error": "Worker not found."}), 404
+
+        # Delete from worker_images
+        execute(
+            "DELETE FROM worker_images WHERE worker_db_id = ?",
+            [{"type": "text", "value": worker["worker_id"]}]
+        )
+        # Delete worker
         execute(
             "DELETE FROM workers WHERE id = ? AND user_id = ?",
-            [
-                {"type": "text", "value": str(worker_db_id)},
-                {"type": "text", "value": str(session["user_id"])},
-            ]
+            [{"type": "text", "value": str(worker_db_id)},
+             {"type": "text", "value": str(session["user_id"])}]
         )
         return jsonify({"message": "Worker deleted."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route("/api/workers/<worker_id>/images", methods=["GET"])
+def get_worker_images(worker_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    result = execute(
+        "SELECT image_url FROM worker_images WHERE worker_db_id = ?",
+        [{"type": "text", "value": worker_id}]
+    )
+    try:
+        rows = result["results"][0]["response"]["result"]["rows"]
+        urls = [row[0]["value"] for row in rows]
+    except (KeyError, IndexError):
+        urls = []
+    return jsonify({"images": urls})
 
 if __name__ == "__main__":
 
