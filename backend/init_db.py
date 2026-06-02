@@ -26,3 +26,13 @@ CREATE TABLE IF NOT EXISTS workers (
 )
 """)
 print("Workers table created successfully")
+
+execute("""
+CREATE TABLE IF NOT EXISTS worker_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_db_id TEXT NOT NULL,
+    image_url TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+""")
+print("Worker images table created successfully")
