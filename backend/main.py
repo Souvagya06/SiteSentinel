@@ -5,9 +5,18 @@ import os
 import bcrypt
 from database import execute, query_one
 import secrets
+import cloudinary
+import cloudinary.uploader
+import base64
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+)
 
 # -----------------------------
 # Frontend Path
@@ -130,6 +139,78 @@ def login_api():
 def logout():
     session.clear()
     return redirect("/login.html")
+
+@app.route("/api/workers", methods=["GET"])
+def get_workers():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    result = execute(
+        "SELECT * FROM workers WHERE user_id = ? ORDER BY created_at DESC",
+        [{"type": "integer", "value": session["user_id"]}]
+    )
+    try:
+        cols = [c["name"] for c in result["results"][0]["response"]["result"]["cols"]]
+        rows = result["results"][0]["response"]["result"]["rows"]
+        workers = [dict(zip(cols, [v["value"] for v in row])) for row in rows]
+    except (KeyError, IndexError):
+        workers = []
+    return jsonify({"workers": workers})
+
+
+@app.route("/api/workers", methods=["POST"])
+def add_worker():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    data = request.get_json()
+    first_name = data.get("first_name", "").strip()
+    last_name  = data.get("last_name", "").strip()
+    worker_id  = data.get("worker_id", "").strip()
+    images     = data.get("images", [])
+
+    if not first_name or not last_name or not worker_id:
+        return jsonify({"error": "First name, last name and worker ID are required."}), 400
+
+    image_urls = []
+    for i, img_b64 in enumerate(images):
+        try:
+            upload_result = cloudinary.uploader.upload(
+                img_b64,
+                folder=f"sitesentinel/{session['user_id']}",
+                public_id=f"{worker_id}_{i}",
+                overwrite=True
+            )
+            image_urls.append(upload_result["secure_url"])
+        except Exception as e:
+            return jsonify({"error": f"Image upload failed: {str(e)}"}), 500
+
+    image_url = image_urls[0] if image_urls else ""
+
+    execute(
+        "INSERT INTO workers (user_id, worker_id, first_name, last_name, image_url) VALUES (?, ?, ?, ?, ?)",
+        [
+            {"type": "integer", "value": session["user_id"]},
+            {"type": "text",    "value": worker_id},
+            {"type": "text",    "value": first_name},
+            {"type": "text",    "value": last_name},
+            {"type": "text",    "value": image_url},
+        ]
+    )
+    return jsonify({"message": "Worker registered successfully.", "image_url": image_url}), 201
+
+
+@app.route("/api/workers/<int:worker_db_id>", methods=["DELETE"])
+def delete_worker(worker_db_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    execute(
+        "DELETE FROM workers WHERE id = ? AND user_id = ?",
+        [
+            {"type": "integer", "value": worker_db_id},
+            {"type": "integer", "value": session["user_id"]},
+        ]
+    )
+    return jsonify({"message": "Worker deleted."})
 
 if __name__ == "__main__":
 
