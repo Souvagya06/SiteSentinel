@@ -61,7 +61,7 @@ def dashboard():
 def me():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
-    user = query_one("SELECT name, email FROM users WHERE id = ?", [{"type": "integer", "value": session["user_id"]}])
+    user = query_one("SELECT name, email FROM users WHERE id = ?", [{"type": "text", "value": str(session["user_id"])}])
     if not user:
         return jsonify({"error": "User not found"}), 404
     return jsonify({"name": user["name"], "email": user["email"]})
@@ -146,7 +146,7 @@ def get_workers():
         return jsonify({"error": "Not logged in"}), 401
     result = execute(
         "SELECT * FROM workers WHERE user_id = ? ORDER BY created_at DESC",
-        [{"type": "integer", "value": session["user_id"]}]
+        [{"type": "text", "value": str(session["user_id"])}]
     )
     try:
         cols = [c["name"] for c in result["results"][0]["response"]["result"]["cols"]]
@@ -171,6 +171,13 @@ def add_worker():
     if not first_name or not last_name or not worker_id:
         return jsonify({"error": "First name, last name and worker ID are required."}), 400
 
+    existing = query_one(
+        "SELECT id FROM workers WHERE worker_id = ? AND user_id = ?",
+        [{"type": "text", "value": worker_id}, {"type": "text", "value": str(session["user_id"])}]
+    )
+    if existing:
+        return jsonify({"error": "A worker with this ID already exists."}), 409
+
     image_urls = []
     for i, img_b64 in enumerate(images):
         try:
@@ -189,13 +196,14 @@ def add_worker():
     execute(
         "INSERT INTO workers (user_id, worker_id, first_name, last_name, image_url) VALUES (?, ?, ?, ?, ?)",
         [
-            {"type": "integer", "value": session["user_id"]},
-            {"type": "text",    "value": worker_id},
-            {"type": "text",    "value": first_name},
-            {"type": "text",    "value": last_name},
-            {"type": "text",    "value": image_url},
+            {"type": "text", "value": str(session["user_id"])},
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": first_name},
+            {"type": "text", "value": last_name},
+            {"type": "text", "value": image_url},
         ]
     )
+
     return jsonify({"message": "Worker registered successfully.", "image_url": image_url}), 201
 
 
@@ -203,14 +211,17 @@ def add_worker():
 def delete_worker(worker_db_id):
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
-    execute(
-        "DELETE FROM workers WHERE id = ? AND user_id = ?",
-        [
-            {"type": "integer", "value": worker_db_id},
-            {"type": "integer", "value": session["user_id"]},
-        ]
-    )
-    return jsonify({"message": "Worker deleted."})
+    try:
+        execute(
+            "DELETE FROM workers WHERE id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": str(worker_db_id)},
+                {"type": "text", "value": str(session["user_id"])},
+            ]
+        )
+        return jsonify({"message": "Worker deleted."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
 
