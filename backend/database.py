@@ -18,6 +18,8 @@ def execute(sql, args=[]):
             {"type": "close"}
         ]}
     )
+    if not response.ok:
+        print("Turso error:", response.text)
     response.raise_for_status()
     return response.json()
 

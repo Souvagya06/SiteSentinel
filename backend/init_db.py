@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS workers (
     last_name TEXT NOT NULL,
     image_url TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, worker_id)
 )
 """)
 print("Workers table created successfully")
