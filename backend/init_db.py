@@ -32,7 +32,24 @@ CREATE TABLE IF NOT EXISTS worker_images (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     worker_db_id TEXT NOT NULL,
     image_url TEXT NOT NULL,
+    face_embedding TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 """)
 print("Worker images table created successfully")
+
+# Run these once to add new columns (safe to run multiple times)
+try:
+    execute("ALTER TABLE workers ADD COLUMN checkin_time TEXT DEFAULT '--:--'")
+    print("Added checkin_time column")
+except: pass
+
+try:
+    execute("ALTER TABLE workers ADD COLUMN ppe_score INTEGER DEFAULT 0")
+    print("Added ppe_score column")
+except: pass
+
+try:
+    execute("ALTER TABLE workers ADD COLUMN status TEXT DEFAULT 'Off-Site'")
+    print("Added status column")
+except: pass
