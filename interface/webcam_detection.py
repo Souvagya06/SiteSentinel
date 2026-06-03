@@ -5,7 +5,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from ultralytics import YOLO
 import cv2
 import requests
-import time
 import json
 import numpy as np
 from datetime import datetime
@@ -14,7 +13,7 @@ from database import query_all
 from face__utils import get_embedding_from_frame, match_face
 
 load_dotenv()
-ESP32_IP    = os.getenv("ESP32_IP")
+ESP32_IP     = os.getenv("ESP32_IP")
 ALARM_ON_URL  = f"http://{ESP32_IP}/on"
 ALARM_OFF_URL = f"http://{ESP32_IP}/off"
 BACKEND_URL   = "http://127.0.0.1:5000"
@@ -53,8 +52,9 @@ if not cap.isOpened():
     exit()
 
 last_alarm_state = None
-checked_in_today = set()  # track who already checked in this session
-frame_counter = 0
+checked_in_today = set()   # tracks who is currently Active
+face_last_seen   = {}      # tracks last toggle timestamp per worker
+frame_counter    = 0
 
 print("SiteSentinel Started — Press Q to quit")
 
@@ -65,7 +65,7 @@ try:
             break
 
         frame_counter += 1
-        annotated = frame.copy()
+        annotated      = frame.copy()
         detected_labels = []
 
         # --- PPE Detection ---
@@ -95,6 +95,7 @@ try:
             live_embeddings = get_embedding_from_frame(rgb)
 
             for live_emb in live_embeddings:
+                # Find best matching known face
                 best_match = None
                 best_dist  = 1.0
                 for kf in known_faces:
@@ -103,30 +104,56 @@ try:
                         best_dist  = dist
                         best_match = kf
 
-                if best_match:
-                    wid = best_match["worker_id"]
-                    if wid not in checked_in_today:
-                        checked_in_today.add(wid)
-                        checkin_time = datetime.now().strftime("%I:%M %p")
-                        try:
-                            requests.post(
-                                f"{BACKEND_URL}/api/workers/checkin",
-                                json={
-                                    "worker_id":   wid,
-                                    "ppe_score":   ppe_score,
-                                    "checkin_time": checkin_time,
-                                    "status":      "Active"
-                                },
-                                timeout=3
-                            )
-                            print(f"Checked in: {best_match['name']} | PPE: {ppe_score}")
-                        except Exception as e:
-                            print("Check-in API error:", e)
+                if not best_match:
+                    continue
 
+                wid = best_match["worker_id"]
+                now = datetime.now()
+
+                # Cooldown: ignore same face for 10 seconds to avoid rapid toggling
+                last_seen = face_last_seen.get(wid, 0)
+                if (now.timestamp() - last_seen) < 10:
                     cv2.putText(annotated, best_match["name"], (20, 120),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
+                    continue
 
-        # --- Person count & violation ---
+                # Update last seen timestamp
+                face_last_seen[wid] = now.timestamp()
+
+                # Toggle check-in / check-out
+                if wid not in checked_in_today:
+                    checked_in_today.add(wid)
+                    checkin_time = now.strftime("%I:%M %p")
+                    new_status   = "Active"
+                    score_to_save = ppe_score
+                    print(f"Checked IN:  {best_match['name']} | PPE: {ppe_score}")
+                else:
+                    checked_in_today.discard(wid)
+                    checkin_time  = "--:--"
+                    new_status    = "Off-Site"
+                    score_to_save = 0
+                    print(f"Checked OUT: {best_match['name']}")
+
+                # Send to backend
+                try:
+                    requests.post(
+                        f"{BACKEND_URL}/api/workers/checkin",
+                        json={
+                            "worker_id":    wid,
+                            "ppe_score":    score_to_save,
+                            "checkin_time": checkin_time,
+                            "status":       new_status
+                        },
+                        timeout=3
+                    )
+                except Exception as e:
+                    print("Check-in API error:", e)
+
+                # Show name + status on frame
+                cv2.putText(annotated, f"{best_match['name']} ({new_status})", (20, 120),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
+
+        # --- HUD overlays ---
         person_count = detected_labels.count("Person")
         violation    = "NO-Hardhat" in detected_labels or "NO-Safety Vest" in detected_labels
 
