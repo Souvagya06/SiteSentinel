@@ -16,6 +16,8 @@ load_dotenv()
 ESP32_IP     = os.getenv("ESP32_IP")
 ALARM_ON_URL  = f"http://{ESP32_IP}/on"
 ALARM_OFF_URL = f"http://{ESP32_IP}/off"
+CHECKIN_URL  = f"http://{ESP32_IP}/checkin"
+CHECKOUT_URL = f"http://{ESP32_IP}/checkout"
 BACKEND_URL   = "http://127.0.0.1:5000"
 
 # Load PPE model
@@ -148,6 +150,17 @@ try:
                     )
                 except Exception as e:
                     print("Check-in API error:", e)
+
+                # Trigger LED on ESP32
+                try:
+                    if new_status == "Active":
+                        requests.get(CHECKIN_URL,  timeout=2)
+                        print("Green light triggered")
+                    else:
+                        requests.get(CHECKOUT_URL, timeout=2)
+                        print("Red light triggered")
+                except Exception as e:
+                    print("ESP32 LED error:", e)
 
                 # Show name + status on frame
                 cv2.putText(annotated, f"{best_match['name']} ({new_status})", (20, 120),
