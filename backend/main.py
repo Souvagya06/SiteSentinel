@@ -8,6 +8,8 @@ import secrets
 import cloudinary
 import cloudinary.uploader
 import base64
+from face__utils import get_embedding_from_url
+import json
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -206,11 +208,14 @@ def add_worker():
 
     # Save all image URLs to worker_images table
     for url in image_urls:
+        embedding = get_embedding_from_url(url)
+        embedding_json = json.dumps(embedding) if embedding else None
         execute(
-            "INSERT INTO worker_images (worker_db_id, image_url) VALUES (?, ?)",
+            "INSERT INTO worker_images (worker_db_id, image_url, face_embedding) VALUES (?, ?, ?)",
             [
                 {"type": "text", "value": worker_id},
                 {"type": "text", "value": url},
+                {"type": "text", "value": embedding_json or ""},
             ]
         )
 
@@ -260,6 +265,26 @@ def get_worker_images(worker_id):
     except (KeyError, IndexError):
         urls = []
     return jsonify({"images": urls})
+
+@app.route("/api/workers/checkin", methods=["POST"])
+def worker_checkin():
+    """Called by webcam_detection.py when a face is matched."""
+    data = request.get_json()
+    worker_id  = data.get("worker_id")
+    ppe_score  = data.get("ppe_score", 0)
+    checkin_time = data.get("checkin_time")
+    status     = data.get("status", "Active")
+
+    execute(
+        "UPDATE workers SET checkin_time = ?, ppe_score = ?, status = ? WHERE worker_id = ?",
+        [
+            {"type": "text", "value": checkin_time},
+            {"type": "text", "value": str(ppe_score)},
+            {"type": "text", "value": status},
+            {"type": "text", "value": worker_id},
+        ]
+    )
+    return jsonify({"message": "Check-in updated."})
 
 if __name__ == "__main__":
 

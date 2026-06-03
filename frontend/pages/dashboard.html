@@ -311,14 +311,15 @@
 <div class="overflow-x-auto">
 <table class="w-full text-left border-collapse whitespace-nowrap">
 <thead>
-<tr class="bg-surface-container-low/50">
-<th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider w-16">ID</th>
-<th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Worker</th>
-<th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Status</th>
-<th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Check-in</th>
-<th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-center">PPE</th>
-<th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Safety Score</th>
-</tr>
+    <tr class="bg-surface-container-low/50">
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider w-16">ID</th>
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Worker</th>
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Status</th>
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Check-in</th>
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-center">PPE</th>
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Safety Score</th>
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
+    </tr>
 </thead>
 <tbody class="font-mono-data text-mono-data text-on-surface" id="workers-tbody">
 </tbody>
@@ -465,32 +466,50 @@
                         </td></tr>`;
                     return;
                 }
-                tbody.innerHTML = workers.map(w => `
-                    <tr class="data-table-row hover:bg-surface-variant/10 transition-colors">
-                        <td class="px-6 py-4 text-on-surface-variant">${w.worker_id}</td>
-                        <td class="px-6 py-4 font-body-md text-on-surface flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-full bg-surface-variant border border-outline-variant/30 flex items-center justify-center overflow-hidden">
-                                ${w.image_url
-                                    ? `<img src="${w.image_url}" class="w-full h-full object-cover" alt="${w.first_name}"/>`
-                                    : `<span class="font-headline-md text-sm">${w.first_name[0]}${w.last_name[0]}</span>`
-                                }
-                            </div>
-                            ${w.first_name} ${w.last_name}
-                        </td>
-                        <td class="px-6 py-4">
-                            <span class="px-2 py-1 bg-tertiary/10 text-tertiary rounded-md text-[11px] font-bold uppercase tracking-wider border border-tertiary/20">Active</span>
-                        </td>
-                        <td class="px-6 py-4">--:--</td>
-                        <td class="px-6 py-4 text-center">
-                            <span class="material-symbols-outlined text-surface-variant text-[18px]">construction</span>
-                            <span class="material-symbols-outlined text-surface-variant text-[18px]">security</span>
-                        </td>
-                        <td class="px-6 py-4">
-                            <button onclick="deleteWorker(${w.id})" class="text-error hover:opacity-70 transition-opacity">
-                                <span class="material-symbols-outlined text-[18px]">delete</span>
-                            </button>
-                        </td>
-                    </tr>`).join('');
+                tbody.innerHTML = workers.map(w => {
+    const score = w.ppe_score || 0;
+    const scoreColor = score >= 80 ? 'bg-tertiary' : score >= 50 ? 'bg-primary-container' : 'bg-error';
+    const isActive = w.status === 'Active';
+    return `
+    <tr class="data-table-row hover:bg-surface-variant/10 transition-colors">
+        <td class="px-6 py-4 text-on-surface-variant">${w.worker_id}</td>
+        <td class="px-6 py-4 font-body-md text-on-surface">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-surface-variant border border-outline-variant/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    ${w.image_url
+                        ? `<img src="${w.image_url}" class="w-full h-full object-cover" alt="${w.first_name}"/>`
+                        : `<span class="text-sm">${w.first_name[0]}${w.last_name[0]}</span>`
+                    }
+                </div>
+                ${w.first_name} ${w.last_name}
+            </div>
+        </td>
+        <td class="px-6 py-4">
+            ${isActive
+                ? `<span class="px-2 py-1 bg-tertiary/10 text-tertiary rounded-md text-[11px] font-bold uppercase tracking-wider border border-tertiary/20">Active</span>`
+                : `<span class="px-2 py-1 bg-surface-variant/50 text-on-surface-variant rounded-md text-[11px] font-bold uppercase tracking-wider border border-surface-variant">Off-Site</span>`
+            }
+        </td>
+        <td class="px-6 py-4">${w.checkin_time || '--:--'}</td>
+        <td class="px-6 py-4 text-center">
+            <span class="material-symbols-outlined text-[18px] ${isActive ? 'text-tertiary' : 'text-surface-variant'}">construction</span>
+            <span class="material-symbols-outlined text-[18px] ${isActive ? 'text-tertiary' : 'text-surface-variant'}">security</span>
+        </td>
+        <td class="px-6 py-4">
+            <div class="flex items-center gap-2">
+                <div class="w-16 h-1.5 bg-surface-variant rounded-full overflow-hidden">
+                    <div class="${scoreColor} h-full rounded-full" style="width:${score}%"></div>
+                </div>
+                <span>${score}</span>
+            </div>
+        </td>
+        <td class="px-6 py-4 text-right">
+            <button onclick="deleteWorker(${w.id})" class="text-error hover:opacity-70 transition-opacity" title="Remove worker">
+                <span class="material-symbols-outlined text-[18px]">delete</span>
+            </button>
+        </td>
+    </tr>`;
+}).join('');
             });
     }
     loadWorkers();
