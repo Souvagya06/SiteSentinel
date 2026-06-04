@@ -1,3 +1,4 @@
+from database import execute, query_one, query_all
 from flask import Flask, send_from_directory, request, jsonify, session, redirect
 from threading import Timer
 import webbrowser
@@ -268,13 +269,21 @@ def get_worker_images(worker_id):
 
 @app.route("/api/workers/checkin", methods=["POST"])
 def worker_checkin():
-    """Called by webcam_detection.py when a face is matched."""
-    data = request.get_json()
-    worker_id  = data.get("worker_id")
-    ppe_score  = data.get("ppe_score", 0)
+    data         = request.get_json()
+    worker_id    = data.get("worker_id")
+    ppe_score    = data.get("ppe_score", 0)
     checkin_time = data.get("checkin_time")
-    status     = data.get("status", "Active")
+    status       = data.get("status", "Active")
 
+    # Map status to event label
+    event = "CHECK-IN" if status == "Active" else "CHECK-OUT"
+
+    from datetime import datetime
+    now       = datetime.now()
+    date_str  = now.strftime("%Y-%m-%d")
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Update worker's current status
     execute(
         "UPDATE workers SET checkin_time = ?, ppe_score = ?, status = ? WHERE worker_id = ?",
         [
@@ -284,7 +293,47 @@ def worker_checkin():
             {"type": "text", "value": worker_id},
         ]
     )
-    return jsonify({"message": "Check-in updated."})
+
+    # Get user_id for this worker
+    worker = query_one(
+        "SELECT user_id FROM workers WHERE worker_id = ?",
+        [{"type": "text", "value": worker_id}]
+    )
+    user_id_val = str(worker["user_id"]) if worker else ""
+
+    # Log the event
+    execute(
+        "INSERT INTO attendance_log (worker_id, user_id, event, ppe_score, timestamp, date) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": user_id_val},
+            {"type": "text", "value": event},
+            {"type": "text", "value": str(ppe_score)},
+            {"type": "text", "value": timestamp},
+            {"type": "text", "value": date_str},
+        ]
+    )
+
+    return jsonify({"message": f"{event} logged for worker {worker_id}."})
+
+@app.route("/api/attendance", methods=["GET"])
+def get_attendance():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    date_filter = request.args.get("date", "")
+    if date_filter:
+        rows = query_all(
+            "SELECT * FROM attendance_log WHERE user_id = ? AND date = ? ORDER BY timestamp DESC",
+            [{"type": "text", "value": str(session["user_id"])},
+             {"type": "text", "value": date_filter}]
+        )
+    else:
+        rows = query_all(
+            "SELECT * FROM attendance_log WHERE user_id = ? ORDER BY timestamp DESC LIMIT 100",
+            [{"type": "text", "value": str(session["user_id"])}]
+        )
+    return jsonify({"logs": rows})
 
 if __name__ == "__main__":
 
