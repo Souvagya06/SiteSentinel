@@ -38,6 +38,19 @@ CREATE TABLE IF NOT EXISTS worker_images (
 """)
 print("Worker images table created successfully")
 
+execute("""
+CREATE TABLE IF NOT EXISTS attendance_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    event TEXT NOT NULL,
+    ppe_score INTEGER DEFAULT 0,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    date TEXT NOT NULL
+)
+""")
+print("Attendance log table created successfully")
+
 # Run these once to add new columns (safe to run multiple times)
 try:
     execute("ALTER TABLE workers ADD COLUMN checkin_time TEXT DEFAULT '--:--'")
