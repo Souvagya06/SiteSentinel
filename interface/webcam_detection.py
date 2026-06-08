@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
+from threading import Thread
 from ultralytics import YOLO
 import cv2
 import requests
@@ -9,29 +10,56 @@ import json
 import numpy as np
 from datetime import datetime
 from dotenv import load_dotenv
-from database import query_all
+from pathlib import Path
+from database import query_all, query_one
 from face__utils import get_embedding_from_frame, match_face
 
-load_dotenv()
-ESP32_IP     = os.getenv("ESP32_IP")
-ALARM_ON_URL  = f"http://{ESP32_IP}/on"
-ALARM_OFF_URL = f"http://{ESP32_IP}/off"
-CHECKIN_URL  = f"http://{ESP32_IP}/checkin"
-CHECKOUT_URL = f"http://{ESP32_IP}/checkout"
-BACKEND_URL   = "http://127.0.0.1:5000"
+# Load .env from project root
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(env_path)
 
+ESP32_IP        = os.getenv("ESP32_IP", "")
+MANAGER_USER_ID = os.getenv("MANAGER_USER_ID", "")
+BACKEND_URL     = "http://127.0.0.1:5000"
+
+ALARM_ON_URL  = f"http://{ESP32_IP}/on"      if ESP32_IP else None
+ALARM_OFF_URL = f"http://{ESP32_IP}/off"     if ESP32_IP else None
+CHECKIN_URL   = f"http://{ESP32_IP}/checkin" if ESP32_IP else None
+CHECKOUT_URL  = f"http://{ESP32_IP}/checkout"if ESP32_IP else None
+
+# -----------------------------
 # Load PPE model
-model = YOLO("models/best.pt")
+# -----------------------------
+MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "best.pt"
+model = YOLO(str(MODEL_PATH))
 print("Loaded Model Classes:", model.names)
 
-# Load all workers + embeddings from DB
+# -----------------------------
+# Load known faces for this manager only
+# -----------------------------
 def load_known_faces():
+    if not MANAGER_USER_ID:
+        print("ERROR: MANAGER_USER_ID not set in .env")
+        return []
+
+    user = query_one(
+        "SELECT id FROM users WHERE email = ?",
+        [{"type": "text", "value": MANAGER_USER_ID.strip().lower()}]
+    )
+    if not user:
+        print(f"ERROR: No user found with email '{MANAGER_USER_ID}'")
+        return []
+
+    numeric_id = str(user["id"])
     rows = query_all("""
         SELECT w.worker_id, w.first_name, w.last_name, wi.face_embedding
         FROM workers w
         JOIN worker_images wi ON w.worker_id = wi.worker_db_id
-        WHERE wi.face_embedding IS NOT NULL AND wi.face_embedding != ''
-    """)
+        WHERE wi.face_embedding IS NOT NULL
+          AND wi.face_embedding != ''
+          AND w.user_id = ?
+    """, [{"type": "text", "value": numeric_id}])
+
     known = []
     for row in rows:
         try:
@@ -43,20 +71,54 @@ def load_known_faces():
             })
         except:
             pass
-    print(f"Loaded {len(known)} known face(s)")
+
+    print(f"Loaded {len(known)} known face(s) for {MANAGER_USER_ID}")
     return known
 
 known_faces = load_known_faces()
 
+# -----------------------------
+# Open webcam
+# -----------------------------
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     print("Failed to open webcam")
     exit()
 
 last_alarm_state = None
-checked_in_today = set()   # tracks who is currently Active
-face_last_seen   = {}      # tracks last toggle timestamp per worker
+checked_in_today = set()  # tracks who is currently Active
+face_last_seen   = {}     # tracks last toggle timestamp per worker
 frame_counter    = 0
+
+# -----------------------------
+# Non-blocking backend + ESP32 notify
+# -----------------------------
+def notify(wid, score_to_save, checkin_time, new_status):
+    # Backend
+    try:
+        requests.post(
+            f"{BACKEND_URL}/api/workers/checkin",
+            json={
+                "worker_id":    wid,
+                "ppe_score":    score_to_save,
+                "checkin_time": checkin_time,
+                "status":       new_status
+            },
+            timeout=5
+        )
+    except Exception as e:
+        print("Check-in API error:", e)
+
+    # ESP32 LED
+    if ESP32_IP:
+        try:
+            url = CHECKIN_URL if new_status == "Active" else CHECKOUT_URL
+            if url:
+                requests.get(url, timeout=5)
+            color = "Green" if new_status == "Active" else "Red"
+            print(f"{color} light triggered")
+        except Exception as e:
+            print("ESP32 LED error:", e)
 
 print("SiteSentinel Started — Press Q to quit")
 
@@ -67,7 +129,7 @@ try:
             break
 
         frame_counter += 1
-        annotated      = frame.copy()
+        annotated       = frame.copy()
         detected_labels = []
 
         # --- PPE Detection ---
@@ -87,17 +149,16 @@ try:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
         # --- PPE Score ---
-        helmet_ok = "Hardhat" in detected_labels and "NO-Hardhat" not in detected_labels
+        helmet_ok = "Hardhat"     in detected_labels and "NO-Hardhat"     not in detected_labels
         vest_ok   = "Safety Vest" in detected_labels and "NO-Safety Vest" not in detected_labels
         ppe_score = (50 if helmet_ok else 0) + (50 if vest_ok else 0)
 
-        # --- Face Recognition (every 15 frames for performance) ---
+        # --- Face Recognition (every 15 frames) ---
         if frame_counter % 15 == 0 and known_faces:
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            rgb            = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             live_embeddings = get_embedding_from_frame(rgb)
 
             for live_emb in live_embeddings:
-                # Find best matching known face
                 best_match = None
                 best_dist  = 1.0
                 for kf in known_faces:
@@ -112,21 +173,19 @@ try:
                 wid = best_match["worker_id"]
                 now = datetime.now()
 
-                # Cooldown: ignore same face for 10 seconds to avoid rapid toggling
-                last_seen = face_last_seen.get(wid, 0)
-                if (now.timestamp() - last_seen) < 10:
+                # 10-second cooldown to avoid rapid toggling
+                if (now.timestamp() - face_last_seen.get(wid, 0)) < 10:
                     cv2.putText(annotated, best_match["name"], (20, 120),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
                     continue
 
-                # Update last seen timestamp
                 face_last_seen[wid] = now.timestamp()
 
                 # Toggle check-in / check-out
                 if wid not in checked_in_today:
                     checked_in_today.add(wid)
-                    checkin_time = now.strftime("%I:%M %p")
-                    new_status   = "Active"
+                    checkin_time  = now.strftime("%I:%M %p")
+                    new_status    = "Active"
                     score_to_save = ppe_score
                     print(f"Checked IN:  {best_match['name']} | PPE: {ppe_score}")
                 else:
@@ -136,33 +195,13 @@ try:
                     score_to_save = 0
                     print(f"Checked OUT: {best_match['name']}")
 
-                # Send to backend
-                try:
-                    requests.post(
-                        f"{BACKEND_URL}/api/workers/checkin",
-                        json={
-                            "worker_id":    wid,
-                            "ppe_score":    score_to_save,
-                            "checkin_time": checkin_time,
-                            "status":       new_status
-                        },
-                        timeout=3
-                    )
-                except Exception as e:
-                    print("Check-in API error:", e)
+                # Non-blocking backend + LED call
+                Thread(
+                    target=notify,
+                    args=(wid, score_to_save, checkin_time, new_status),
+                    daemon=True
+                ).start()
 
-                # Trigger LED on ESP32
-                try:
-                    if new_status == "Active":
-                        requests.get(CHECKIN_URL,  timeout=2)
-                        print("Green light triggered")
-                    else:
-                        requests.get(CHECKOUT_URL, timeout=2)
-                        print("Red light triggered")
-                except Exception as e:
-                    print("ESP32 LED error:", e)
-
-                # Show name + status on frame
                 cv2.putText(annotated, f"{best_match['name']} ({new_status})", (20, 120),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
 
@@ -177,15 +216,17 @@ try:
 
         if violation:
             if last_alarm_state != "ON":
-                try: requests.get(ALARM_ON_URL, timeout=1)
-                except: pass
+                if ALARM_ON_URL:
+                    try: requests.get(ALARM_ON_URL, timeout=1)
+                    except: pass
                 last_alarm_state = "ON"
             cv2.putText(annotated, "PPE VIOLATION DETECTED", (20, 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
         else:
             if last_alarm_state != "OFF":
-                try: requests.get(ALARM_OFF_URL, timeout=1)
-                except: pass
+                if ALARM_OFF_URL:
+                    try: requests.get(ALARM_OFF_URL, timeout=1)
+                    except: pass
                 last_alarm_state = "OFF"
 
         cv2.imshow("SiteSentinel PPE Detection", annotated)
@@ -195,8 +236,9 @@ try:
 except KeyboardInterrupt:
     print("\nStopped by user")
 finally:
-    try: requests.get(ALARM_OFF_URL, timeout=1)
-    except: pass
+    if ALARM_OFF_URL:
+        try: requests.get(ALARM_OFF_URL, timeout=1)
+        except: pass
     cap.release()
     cv2.destroyAllWindows()
     print("System safely closed")
