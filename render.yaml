@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: sitesentinel
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend/main.py
