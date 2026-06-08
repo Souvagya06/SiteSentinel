@@ -11,9 +11,11 @@ from datetime import datetime
 from dotenv import load_dotenv
 from database import query_all
 from face__utils import get_embedding_from_frame, match_face
+from database import query_all, query_one
 
 load_dotenv()
 ESP32_IP     = os.getenv("ESP32_IP")
+MANAGER_USER_ID = os.getenv("MANAGER_USER_ID", "")
 ALARM_ON_URL  = f"http://{ESP32_IP}/on"
 ALARM_OFF_URL = f"http://{ESP32_IP}/off"
 CHECKIN_URL  = f"http://{ESP32_IP}/checkin"
@@ -26,12 +28,30 @@ print("Loaded Model Classes:", model.names)
 
 # Load all workers + embeddings from DB
 def load_known_faces():
+    if not MANAGER_USER_ID:
+        print("ERROR: MANAGER_USER_ID not set in .env")
+        return []
+
+    # Resolve email → numeric user id
+    user = query_one(
+        "SELECT id FROM users WHERE email = ?",
+        [{"type": "text", "value": MANAGER_USER_ID.strip().lower()}]
+    )
+    if not user:
+        print(f"ERROR: No user found with email '{MANAGER_USER_ID}'")
+        return []
+
+    numeric_id = str(user["id"])
+
     rows = query_all("""
         SELECT w.worker_id, w.first_name, w.last_name, wi.face_embedding
         FROM workers w
         JOIN worker_images wi ON w.worker_id = wi.worker_db_id
-        WHERE wi.face_embedding IS NOT NULL AND wi.face_embedding != ''
-    """)
+        WHERE wi.face_embedding IS NOT NULL
+          AND wi.face_embedding != ''
+          AND w.user_id = ?
+    """, [{"type": "text", "value": numeric_id}])
+
     known = []
     for row in rows:
         try:
@@ -43,7 +63,8 @@ def load_known_faces():
             })
         except:
             pass
-    print(f"Loaded {len(known)} known face(s)")
+
+    print(f"Loaded {len(known)} known face(s) for {MANAGER_USER_ID}")
     return known
 
 known_faces = load_known_faces()
@@ -154,10 +175,10 @@ try:
                 # Trigger LED on ESP32
                 try:
                     if new_status == "Active":
-                        requests.get(CHECKIN_URL,  timeout=2)
+                        requests.get(CHECKIN_URL,  timeout=5)
                         print("Green light triggered")
                     else:
-                        requests.get(CHECKOUT_URL, timeout=2)
+                        requests.get(CHECKOUT_URL, timeout=5)
                         print("Red light triggered")
                 except Exception as e:
                     print("ESP32 LED error:", e)
