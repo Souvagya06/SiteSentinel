@@ -66,3 +66,31 @@ try:
     execute("ALTER TABLE workers ADD COLUMN status TEXT DEFAULT 'Off-Site'")
     print("Added status column")
 except: pass
+
+try:
+    execute("ALTER TABLE users ADD COLUMN esp32_ip TEXT DEFAULT ''")
+    print("Added esp32_ip column")
+except: pass
+
+try:
+    execute("ALTER TABLE workers ADD COLUMN helmet_id TEXT DEFAULT ''")
+    print("Added helmet_id column")
+except: pass
+
+try:
+    execute("ALTER TABLE attendance_log ADD COLUMN helmet_id TEXT DEFAULT ''")
+    print("Added helmet_id to attendance_log")
+except: pass
+
+execute("""
+CREATE TABLE IF NOT EXISTS helmets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    helmet_id TEXT NOT NULL,
+    status TEXT DEFAULT 'Available',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, helmet_id)
+)
+""")
+print("Helmets table created successfully")

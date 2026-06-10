@@ -318,6 +318,7 @@
         <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Check-in</th>
         <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-center">PPE</th>
         <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Safety Score</th>
+        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Helmet ID</th>
         <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
     </tr>
 </thead>
@@ -336,6 +337,15 @@
 <span class="material-symbols-outlined group-hover:scale-110 transition-transform">person_add</span>
                             Add New Worker
                         </button>
+<button onclick="openHelmetsModal()" class="w-full mt-3 bg-surface-container-low border border-tertiary/30 hover:border-tertiary text-tertiary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
+    <span class="material-symbols-outlined group-hover:scale-110 transition-transform">construction</span>
+    Manage Helmets
+</button>
+<button id="esp32-btn" onclick="document.getElementById('esp32Modal').classList.remove('hidden')"
+    class="w-full mt-3 bg-surface-container-low border border-secondary/30 hover:border-secondary text-secondary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
+    <span class="material-symbols-outlined group-hover:scale-110 transition-transform">router</span>
+    <span id="esp32-btn-label">Set ESP32 IP</span>
+</button>
 </div>
 <!-- Section 3: Recent Violations -->
 <div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">
@@ -439,6 +449,96 @@
 </div>
 </div>
 </div>
+<div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="esp32Modal">
+    <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+            <h3 class="font-headline-md text-headline-md text-on-surface">ESP32 IP Address</h3>
+            <button onclick="document.getElementById('esp32Modal').classList.add('hidden')" class="text-on-surface-variant hover:text-on-surface">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="font-body-md text-on-surface-variant">Enter the IP shown on your ESP32 serial monitor.</p>
+            <input id="esp32-ip-input" type="text" placeholder="e.g. 192.168.1.105"
+                class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data"/>
+            <p id="esp32-save-msg" class="text-tertiary font-body-md text-sm hidden">Saved!</p>
+        </div>
+        <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end gap-3">
+            <button onclick="document.getElementById('esp32Modal').classList.add('hidden')"
+                class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Cancel</button>
+            <button onclick="saveEsp32Ip()"
+                class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save IP</button>
+        </div>
+    </div>
+</div>
+<div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="manageHelmetsModal">
+    <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
+        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+            <h3 class="font-headline-md text-headline-md text-on-surface">Manage Registered Helmets</h3>
+            <button onclick="closeHelmetsModal()" class="text-on-surface-variant hover:text-on-surface">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-6 space-y-6">
+            <div>
+                <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Add New Helmet ID</label>
+                <div class="flex gap-2">
+                    <input id="new-helmet-id-input" type="text" placeholder="e.g. SKC0001"
+                        class="flex-1 bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data uppercase"/>
+                    <button onclick="addHelmet()"
+                        class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[18px]">add</span> Add
+                    </button>
+                </div>
+                <p id="new-helmet-error" class="text-error font-body-md text-sm mt-1 hidden"></p>
+                <p id="new-helmet-success" class="text-tertiary font-body-md text-sm mt-1 hidden">Helmet registered!</p>
+            </div>
+            
+            <div>
+                <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Registered Helmets</label>
+                <div class="max-h-60 overflow-y-auto border border-surface-variant/30 rounded-lg">
+                    <table class="w-full text-left border-collapse whitespace-nowrap">
+                        <thead>
+                            <tr class="bg-surface-container-low/50 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                                <th class="px-4 py-3">Helmet ID</th>
+                                <th class="px-4 py-3">Status</th>
+                                <th class="px-4 py-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="font-mono-data text-mono-data text-on-surface" id="helmets-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end">
+            <button onclick="closeHelmetsModal()"
+                class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Close</button>
+        </div>
+    </div>
+</div>
+<div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="helmetModal">
+    <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+            <h3 class="font-headline-md text-headline-md text-on-surface">Scan Helmet QR Code</h3>
+            <button onclick="closeHelmetModal()" class="text-on-surface-variant hover:text-on-surface">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="font-body-md text-on-surface-variant">Point the camera at the helmet QR code, or enter the helmet ID manually.</p>
+            <video id="qr-video" class="w-full rounded-lg border border-surface-variant" autoplay></video>
+            <div class="flex gap-2">
+                <input id="helmet-id-input" type="text" placeholder="Or enter helmet ID manually"
+                    class="flex-1 bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data"/>
+                <button onclick="saveHelmetId()"
+                    class="px-4 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save</button>
+            </div>
+            <p id="helmet-save-msg" class="text-tertiary font-body-md text-sm hidden">Helmet ID assigned!</p>
+        </div>
+    </div>
+</div>
 <script>
     // --- Load user info ---
     fetch('/api/me')
@@ -460,7 +560,7 @@
                 const workers = data.workers || [];
                 if (workers.length === 0) {
                     tbody.innerHTML = `
-                        <tr><td colspan="6" class="px-6 py-10 text-center text-on-surface-variant font-body-md">
+                        <tr><td colspan="8" class="px-6 py-10 text-center text-on-surface-variant font-body-md">
                             <span class="material-symbols-outlined text-3xl mb-2 block">person_off</span>
                             No workers registered yet. Add your first worker.
                         </td></tr>`;
@@ -502,6 +602,12 @@
                 </div>
                 <span>${score}</span>
             </div>
+        </td>
+        <td class="px-6 py-4 font-mono-data text-on-surface-variant">
+            ${w.helmet_id
+                ? `<span class="px-2 py-1 bg-surface-variant rounded text-[11px] font-mono">${w.helmet_id}</span>`
+                : `<span class="text-on-surface-variant/40 text-[11px]">—</span>`
+            }
         </td>
         <td class="px-6 py-4 text-right">
             <button onclick="deleteWorker(${w.id})" class="text-error hover:opacity-70 transition-opacity" title="Remove worker">
@@ -607,5 +713,193 @@ function removeFile(index) {
         await fetch(`/api/workers/${id}`, { method: 'DELETE' });
         loadWorkers();
     }
+// Load ESP32 IP
+fetch('/api/esp32-ip').then(r => r.json()).then(d => {
+    if (d.esp32_ip) {
+        document.getElementById('esp32-ip-input').value = d.esp32_ip;
+        document.getElementById('esp32-btn-label').textContent = `ESP32: ${d.esp32_ip}`;
+    }
+});
+
+async function saveEsp32Ip() {
+    const ip  = document.getElementById('esp32-ip-input').value.trim();
+    const msg = document.getElementById('esp32-save-msg');
+    const res = await fetch('/api/esp32-ip', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ esp32_ip: ip })
+    });
+    if (res.ok) {
+        msg.classList.remove('hidden');
+        document.getElementById('esp32-btn-label').textContent = ip ? `ESP32: ${ip}` : 'Set ESP32 IP';
+        setTimeout(() => {
+            msg.classList.add('hidden');
+            document.getElementById('esp32Modal').classList.add('hidden');
+        }, 1500);
+    }
+}
+let currentHelmetWorkerId = null;
+let qrStream = null;
+
+async function scanHelmet(workerId) {
+    currentHelmetWorkerId = workerId;
+    document.getElementById('helmetModal').classList.remove('hidden');
+    document.getElementById('helmet-save-msg').classList.add('hidden');
+
+    // Start camera for QR scanning
+    try {
+        qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const video = document.getElementById('qr-video');
+        video.srcObject = qrStream;
+
+        // Use BarcodeDetector if available
+        if ('BarcodeDetector' in window) {
+            const detector = new BarcodeDetector({ formats: ['qr_code'] });
+            const scanLoop = setInterval(async () => {
+                try {
+                    const codes = await detector.detect(video);
+                    if (codes.length > 0) {
+                        const helmetId = codes[0].rawValue;
+                        document.getElementById('helmet-id-input').value = helmetId;
+                        clearInterval(scanLoop);
+                        await saveHelmetId();
+                    }
+                } catch {}
+            }, 500);
+        } else {
+            // BarcodeDetector not supported — manual entry only
+            console.log('BarcodeDetector not supported, use manual entry');
+        }
+    } catch (e) {
+        console.log('Camera not available, use manual entry');
+    }
+}
+
+function closeHelmetModal() {
+    if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+    document.getElementById('helmetModal').classList.add('hidden');
+    document.getElementById('helmet-id-input').value = '';
+    currentHelmetWorkerId = null;
+}
+
+async function saveHelmetId() {
+    const helmetId = document.getElementById('helmet-id-input').value.trim();
+    if (!helmetId || !currentHelmetWorkerId) return;
+
+    const res = await fetch(`/api/workers/${currentHelmetWorkerId}/helmet`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ helmet_id: helmetId })
+    });
+    if (res.ok) {
+        document.getElementById('helmet-save-msg').classList.remove('hidden');
+        setTimeout(() => { closeHelmetModal(); loadWorkers(); }, 1500);
+    }
+}
+
+// Poll for updates every 3 seconds to keep the attendance dashboard live
+setInterval(loadWorkers, 3000);
+
+// --- Helmet Inventory Management ---
+function openHelmetsModal() {
+    document.getElementById('manageHelmetsModal').classList.remove('hidden');
+    document.getElementById('new-helmet-id-input').value = '';
+    document.getElementById('new-helmet-error').classList.add('hidden');
+    document.getElementById('new-helmet-success').classList.add('hidden');
+    loadHelmets();
+}
+
+function closeHelmetsModal() {
+    document.getElementById('manageHelmetsModal').classList.add('hidden');
+}
+
+async function loadHelmets() {
+    try {
+        const res = await fetch('/api/helmets');
+        const data = await res.json();
+        const tbody = document.getElementById('helmets-tbody');
+        const helmets = data.helmets || [];
+        
+        if (helmets.length === 0) {
+            tbody.innerHTML = `
+                <tr><td colspan="3" class="px-4 py-6 text-center text-on-surface-variant font-body-md">
+                    No helmets registered yet.
+                </td></tr>`;
+            return;
+        }
+        
+        tbody.innerHTML = helmets.map(h => {
+            const isAssigned = h.status === 'Unavailable';
+            const statusColor = isAssigned ? 'bg-secondary-container/50 text-secondary border-secondary/20' : 'bg-tertiary/10 text-tertiary border-tertiary/20';
+            return `
+                <tr class="border-b border-surface-variant/10 hover:bg-surface-variant/10 transition-colors">
+                    <td class="px-4 py-3 font-mono">${h.helmet_id}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusColor}">${h.status}</span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <button onclick="deleteHelmet(${h.id})" class="text-error hover:opacity-70 transition-opacity disabled:opacity-30" ${isAssigned ? 'disabled title="Cannot delete unavailable helmet"' : 'title="Delete helmet"'}>
+                            <span class="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                    </td>
+                </tr>`;
+        }).join('');
+    } catch (e) {
+        console.error('Error loading helmets:', e);
+    }
+}
+
+async function addHelmet() {
+    const input = document.getElementById('new-helmet-id-input');
+    const helmetId = input.value.trim().toUpperCase();
+    const errorEl = document.getElementById('new-helmet-error');
+    const successEl = document.getElementById('new-helmet-success');
+    
+    errorEl.classList.add('hidden');
+    successEl.classList.add('hidden');
+    
+    if (!helmetId) {
+        errorEl.textContent = 'Helmet ID is required.';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/helmets', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ helmet_id: helmetId })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+            input.value = '';
+            successEl.classList.remove('hidden');
+            loadHelmets();
+            setTimeout(() => successEl.classList.add('hidden'), 2000);
+        } else {
+            errorEl.textContent = data.error || 'Failed to add helmet.';
+            errorEl.classList.remove('hidden');
+        }
+    } catch (e) {
+        errorEl.textContent = 'Connection error.';
+        errorEl.classList.remove('hidden');
+    }
+}
+
+async function deleteHelmet(id) {
+    if (!confirm('Are you sure you want to remove this helmet from inventory?')) return;
+    try {
+        const res = await fetch(`/api/helmets/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok) {
+            loadHelmets();
+        } else {
+            alert(data.error || 'Failed to delete helmet.');
+        }
+    } catch (e) {
+        alert('Connection error.');
+    }
+}
 </script>
 </body></html>

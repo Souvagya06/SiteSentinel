@@ -11,6 +11,9 @@ import cloudinary.uploader
 import base64
 from face__utils import get_embedding_from_url
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -135,6 +138,8 @@ def login_api():
 
     session["user_id"] = user["id"]
     session["email"] = user["email"]
+    uid = user["id"]
+    Timer(1, lambda: start_webcam_detection(uid)).start()
     return jsonify({"message": "Login successful."}), 200
 
 
@@ -274,6 +279,8 @@ def worker_checkin():
     ppe_score    = data.get("ppe_score", 0)
     checkin_time = data.get("checkin_time")
     status       = data.get("status", "Active")
+    helmet_id    = data.get("helmet_id", "")
+
 
     # Map status to event label
     event = "CHECK-IN" if status == "Active" else "CHECK-OUT"
@@ -284,15 +291,38 @@ def worker_checkin():
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
 
     # Update worker's current status
-    execute(
-        "UPDATE workers SET checkin_time = ?, ppe_score = ?, status = ? WHERE worker_id = ?",
-        [
-            {"type": "text", "value": checkin_time},
-            {"type": "text", "value": str(ppe_score)},
-            {"type": "text", "value": status},
-            {"type": "text", "value": worker_id},
-        ]
-    )
+    # On checkout clear helmet_id so it can be reassigned next shift
+    if status == "Off-Site":
+        # First retrieve worker to release helmet
+        worker_info = query_one(
+            "SELECT user_id, helmet_id FROM workers WHERE worker_id = ?",
+            [{"type": "text", "value": worker_id}]
+        )
+        user_id_val = str(worker_info["user_id"]) if worker_info else ""
+        if worker_info and worker_info["helmet_id"]:
+            execute(
+                "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+                [{"type": "text", "value": worker_info["helmet_id"]}, {"type": "text", "value": user_id_val}]
+            )
+        execute(
+            "UPDATE workers SET checkin_time = ?, ppe_score = ?, status = ?, helmet_id = '' WHERE worker_id = ?",
+            [
+                {"type": "text", "value": checkin_time},
+                {"type": "text", "value": str(ppe_score)},
+                {"type": "text", "value": status},
+                {"type": "text", "value": worker_id},
+            ]
+        )
+    else:
+        execute(
+            "UPDATE workers SET checkin_time = ?, ppe_score = ?, status = ? WHERE worker_id = ?",
+            [
+                {"type": "text", "value": checkin_time},
+                {"type": "text", "value": str(ppe_score)},
+                {"type": "text", "value": status},
+                {"type": "text", "value": worker_id},
+            ]
+        )
 
     # Get user_id for this worker
     worker = query_one(
@@ -303,7 +333,7 @@ def worker_checkin():
 
     # Log the event
     execute(
-        "INSERT INTO attendance_log (worker_id, user_id, event, ppe_score, timestamp, date) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO attendance_log (worker_id, user_id, event, ppe_score, timestamp, date, helmet_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             {"type": "text", "value": worker_id},
             {"type": "text", "value": user_id_val},
@@ -311,6 +341,7 @@ def worker_checkin():
             {"type": "text", "value": str(ppe_score)},
             {"type": "text", "value": timestamp},
             {"type": "text", "value": date_str},
+            {"type": "text", "value": helmet_id},
         ]
     )
 
@@ -335,16 +366,177 @@ def get_attendance():
         )
     return jsonify({"logs": rows})
 
-if __name__ == "__main__":
+@app.route("/api/esp32-ip", methods=["GET"])
+def get_esp32_ip():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    user = query_one("SELECT esp32_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}])
+    return jsonify({"esp32_ip": user["esp32_ip"] if user else ""})
 
-    Timer(
-        1,
-        open_browser
-    ).start()
+@app.route("/api/esp32-ip", methods=["POST"])
+def set_esp32_ip():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    ip = request.get_json().get("esp32_ip", "").strip()
+    execute("UPDATE users SET esp32_ip = ? WHERE id = ?",
+        [{"type": "text", "value": ip},
+         {"type": "text", "value": str(session["user_id"])}])
+    return jsonify({"message": "ESP32 IP saved."})
 
-    app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=True,
-        use_reloader=False
+@app.route("/api/session-esp32-ip")
+def session_esp32_ip():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    user = query_one("SELECT esp32_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}])
+    return jsonify({"esp32_ip": user["esp32_ip"] if user else ""})
+
+@app.route("/api/session-user-id")
+def session_user_id():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    return jsonify({"user_id": str(session["user_id"])})
+
+@app.route("/api/helmets", methods=["POST"])
+def add_helmet():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    data = request.get_json()
+    helmet_id = data.get("helmet_id", "").strip().upper()
+    if not helmet_id:
+        return jsonify({"error": "Helmet ID is required."}), 400
+    
+    existing = query_one(
+        "SELECT id FROM helmets WHERE helmet_id = ? AND user_id = ?",
+        [{"type": "text", "value": helmet_id}, {"type": "text", "value": str(session["user_id"])}]
     )
+    if existing:
+        return jsonify({"error": f"Helmet {helmet_id} is already registered."}), 409
+    
+    execute(
+        "INSERT INTO helmets (user_id, helmet_id, status) VALUES (?, ?, 'Available')",
+        [{"type": "text", "value": str(session["user_id"])}, {"type": "text", "value": helmet_id}]
+    )
+    return jsonify({"message": "Helmet registered successfully."}), 201
+
+@app.route("/api/helmets", methods=["GET"])
+def get_helmets():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    result = execute(
+        "SELECT * FROM helmets WHERE user_id = ? ORDER BY created_at DESC",
+        [{"type": "text", "value": str(session["user_id"])}]
+    )
+    try:
+        cols = [c["name"] for c in result["results"][0]["response"]["result"]["cols"]]
+        rows = result["results"][0]["response"]["result"]["rows"]
+        helmets = [dict(zip(cols, [v["value"] for v in row])) for row in rows]
+    except (KeyError, IndexError):
+        helmets = []
+    return jsonify({"helmets": helmets})
+
+@app.route("/api/helmets/<int:helmet_db_id>", methods=["DELETE"])
+def delete_helmet(helmet_db_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    # Check if the helmet is currently assigned to any worker
+    helmet = query_one(
+        "SELECT helmet_id, status FROM helmets WHERE id = ? AND user_id = ?",
+        [{"type": "text", "value": str(helmet_db_id)}, {"type": "text", "value": str(session["user_id"])}]
+    )
+    if not helmet:
+        return jsonify({"error": "Helmet not found."}), 404
+        
+    if helmet["status"] == "Unavailable":
+        return jsonify({"error": "Cannot delete an unavailable helmet. Please check out the worker or reassign the helmet first."}), 400
+        
+    execute(
+        "DELETE FROM helmets WHERE id = ? AND user_id = ?",
+        [{"type": "text", "value": str(helmet_db_id)}, {"type": "text", "value": str(session["user_id"])}]
+    )
+    return jsonify({"message": "Helmet deleted successfully."})
+
+@app.route("/api/workers/<worker_id>/helmet", methods=["POST"])
+def set_helmet(worker_id):
+    user_id = session.get("user_id")
+    if not user_id:
+        user_id = request.get_json().get("user_id")
+    if not user_id:
+        return jsonify({"error": "Not logged in"}), 401
+    helmet_id = request.get_json().get("helmet_id", "").strip().upper()
+    if not helmet_id:
+        return jsonify({"error": "Helmet ID is required."}), 400
+
+    # 1. Match against user's registered helmets inventory
+    helmet = query_one(
+        "SELECT id, status FROM helmets WHERE helmet_id = ? AND user_id = ?",
+        [{"type": "text", "value": helmet_id}, {"type": "text", "value": str(user_id)}]
+    )
+    if not helmet:
+        return jsonify({"error": f"Helmet {helmet_id} is not registered in the system inventory."}), 404
+
+    # 2. Reject duplicate — no two active workers can share a helmet
+    existing = query_one(
+        "SELECT worker_id FROM workers WHERE helmet_id = ? AND worker_id != ? AND user_id = ?",
+        [{"type": "text", "value": helmet_id},
+         {"type": "text", "value": worker_id},
+         {"type": "text", "value": str(user_id)}]
+    )
+    if existing:
+        return jsonify({"error": f"Helmet {helmet_id} is already assigned to another worker."}), 409
+
+    # 3. Retrieve any current helmet assigned to this worker and set it back to Available
+    current = query_one(
+        "SELECT helmet_id FROM workers WHERE worker_id = ? AND user_id = ?",
+        [{"type": "text", "value": worker_id}, {"type": "text", "value": str(user_id)}]
+    )
+    if current and current["helmet_id"]:
+        execute(
+            "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+            [{"type": "text", "value": current["helmet_id"]}, {"type": "text", "value": str(user_id)}]
+        )
+
+    # 4. Assign the new helmet and update the helmets table status to 'Assigned'
+    execute("UPDATE workers SET helmet_id = ? WHERE worker_id = ? AND user_id = ?",
+        [{"type": "text", "value": helmet_id},
+         {"type": "text", "value": worker_id},
+         {"type": "text", "value": str(user_id)}])
+
+    execute(
+        "UPDATE helmets SET status = 'Unavailable' WHERE helmet_id = ? AND user_id = ?",
+        [{"type": "text", "value": helmet_id}, {"type": "text", "value": str(user_id)}]
+    )
+
+    return jsonify({"message": "Helmet ID updated."})
+
+webcam_process = None  # global handle so we can kill it on shutdown
+
+def start_webcam_detection(user_id):
+    global webcam_process
+    script = Path(__file__).resolve().parent.parent / "interface" / "webcam_detection.py"
+    if not script.exists():
+        print(f"webcam_detection.py not found at {script}")
+        return
+    webcam_process = subprocess.Popen(
+        [sys.executable, str(script), "--user-id", str(user_id)],
+        creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+    )
+    print(f"webcam_detection.py started for user_id={user_id} (pid={webcam_process.pid})")
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    Timer(1, open_browser).start()
+    try:
+        app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+    finally:
+        # Ctrl+C or crash — terminate webcam window cleanly
+        if webcam_process and webcam_process.poll() is None:
+            print("Shutting down webcam process...")
+            webcam_process.terminate()
+            try:
+                webcam_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                webcam_process.kill()
+            print("Webcam process stopped.")
