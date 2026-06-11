@@ -86,12 +86,34 @@ if cap is None:
     exit()
 
 last_alarm_state  = None
-checked_in_today  = set()
 face_last_seen    = {}
 frame_counter     = 0
 ocr_reader        = easyocr.Reader(['en'], gpu=False, verbose=False)
-helmet_registered = set()   # tracks which worker_ids already have helmet_id saved this session
 HELMET_ID_PATTERN = re.compile(r'[A-Z]{2,6}_?\d{3,6}', re.IGNORECASE)  # e.g. SKC0001, SKC_0001, HELM042
+
+# -----------------------------
+# Pre-load checked-in workers and registered helmets from DB
+# -----------------------------
+def load_checked_in_workers():
+    try:
+        rows = query_all(
+            "SELECT worker_id, helmet_id FROM workers WHERE status = 'Active' AND user_id = ?",
+            [{"type": "text", "value": MANAGER_USER_ID}]
+        )
+        checked_in = set()
+        registered = set()
+        for row in rows:
+            wid = row["worker_id"]
+            checked_in.add(wid)
+            if row["helmet_id"] and row["helmet_id"].strip():
+                registered.add(wid)
+        print(f"Pre-loaded {len(checked_in)} checked-in worker(s) and {len(registered)} with helmet(s).")
+        return checked_in, registered
+    except Exception as e:
+        print(f"Error loading checked-in workers: {e}")
+        return set(), set()
+
+checked_in_today, helmet_registered = load_checked_in_workers()
 
 # -----------------------------
 # Get ESP32 IP directly from DB — no session needed
@@ -185,9 +207,12 @@ def notify(wid, score_to_save, checkin_time, new_status):
     ip = get_esp32_ip()
     if ip:
         try:
-            endpoint = "/checkin" if new_status == "Active" else "/checkout"
-            requests.get(f"http://{ip}{endpoint}", timeout=5)
-            print(f"{'Green' if new_status == 'Active' else 'Red'} light triggered")
+            if new_status == "Off-Site":
+                requests.get(f"http://{ip}/checkout", timeout=5)
+                print("Red light triggered")
+            elif new_status == "Active" and score_to_save == 0:
+                requests.get(f"http://{ip}/checkin", timeout=5)
+                print("Green light triggered (checked in with PPE score 0)")
         except Exception as e:
             print("ESP32 LED error:", e)
 
@@ -203,6 +228,13 @@ def register_helmet(worker_id, helmet_id):
         )
         if resp.ok:
             print(f"Helmet {helmet_id} registered to worker {worker_id}")
+            ip = get_esp32_ip()
+            if ip:
+                try:
+                    requests.get(f"http://{ip}/checkin", timeout=5)
+                    print("Green light triggered (helmet assigned)")
+                except Exception as e:
+                    print("ESP32 LED error on helmet assignment:", e)
         else:
             print(f"Helmet register failed: {resp.text}")
             helmet_registered.discard(worker_id)  # allow retry with different helmet on failure
@@ -238,8 +270,13 @@ try:
                 cv2.putText(annotated, f"{class_name} {conf:.2f}", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
+        # --- PPE Score ---
+        helmet_ok = "Hardhat"     in detected_labels and "NO-Hardhat"     not in detected_labels
+        vest_ok   = "Safety Vest" in detected_labels and "NO-Safety Vest" not in detected_labels
+        ppe_score = (50 if helmet_ok else 0) + (50 if vest_ok else 0)
+
         # --- Helmet ID OCR (every 20 frames to reduce CPU load) ---
-        if frame_counter % 20 == 0:
+        if ppe_score > 0 and frame_counter % 20 == 0:
             ocr_results = ocr_reader.readtext(frame, detail=1, paragraph=False)
             if ocr_results:
                 print(f"[OCR DEBUG] Found {len(ocr_results)} text region(s) in frame {frame_counter}")
@@ -304,11 +341,6 @@ try:
                     cv2.putText(annotated, f"Helmet linked: {best_name}", (20, 230),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0), 2)
 
-        # --- PPE Score ---
-        helmet_ok = "Hardhat"     in detected_labels and "NO-Hardhat"     not in detected_labels
-        vest_ok   = "Safety Vest" in detected_labels and "NO-Safety Vest" not in detected_labels
-        ppe_score = (50 if helmet_ok else 0) + (50 if vest_ok else 0)
-
         # --- Face Recognition (every 15 frames) ---
         if frame_counter % 15 == 0 and known_faces:
             rgb             = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -345,6 +377,73 @@ try:
                     score_to_save = ppe_score
                     print(f"Checked IN:  {best_match['name']} | PPE: {ppe_score}")
                 else:
+                    try:
+                        worker_db = query_one(
+                            "SELECT ppe_score, helmet_id FROM workers WHERE worker_id = ? AND user_id = ?",
+                            [{"type": "text", "value": wid}, {"type": "text", "value": MANAGER_USER_ID}]
+                        )
+                    except Exception as db_err:
+                        print(f"Error querying worker DB for checkout: {db_err}")
+                        worker_db = None
+
+                    if worker_db:
+                        db_ppe = int(worker_db.get("ppe_score") or 0)
+                        db_helmet = (worker_db.get("helmet_id") or "").strip()
+                        if db_ppe > 0 and not db_helmet:
+                            print(f"Checkout block checking for helmet ID for {best_match['name']}...")
+                            ocr_results = ocr_reader.readtext(frame, detail=1, paragraph=False)
+                            matched_registered_id = None
+                            if ocr_results:
+                                try:
+                                    db_helmets = query_all(
+                                        "SELECT helmet_id FROM helmets WHERE user_id = ?",
+                                        [{"type": "text", "value": MANAGER_USER_ID}]
+                                    )
+                                    registered_helmet_ids = [h["helmet_id"] for h in db_helmets]
+                                except:
+                                    registered_helmet_ids = []
+
+                                for (bbox, text, conf) in ocr_results:
+                                    text_clean = text.strip().upper().replace(' ', '').replace('_', '')
+                                    if float(conf) < 0.5:
+                                        continue
+                                    for reg_id in registered_helmet_ids:
+                                        if ocr_matches_registered(text_clean, reg_id):
+                                            matched_registered_id = reg_id
+                                            break
+                                    if matched_registered_id:
+                                        break
+
+                            if matched_registered_id:
+                                print(f"Found helmet {matched_registered_id} during checkout block. Registering...")
+                                try:
+                                    resp = requests.post(
+                                        f"{BACKEND_URL}/api/workers/{wid}/helmet",
+                                        json={"helmet_id": matched_registered_id, "user_id": MANAGER_USER_ID},
+                                        timeout=5
+                                    )
+                                    if resp.ok:
+                                        print(f"Helmet {matched_registered_id} registered to worker {wid} during checkout block.")
+                                        helmet_registered.add(wid)
+                                        db_helmet = matched_registered_id
+                                        ip = get_esp32_ip()
+                                        if ip:
+                                            try:
+                                                requests.get(f"http://{ip}/checkin", timeout=5)
+                                                print("Green light triggered (helmet assigned on checkout block)")
+                                            except Exception as e:
+                                                print("ESP32 LED error on helmet assignment:", e)
+                                    else:
+                                        print(f"Helmet register failed: {resp.text}")
+                                except Exception as e:
+                                    print(f"Helmet register error: {e}")
+
+                            if not db_helmet:
+                                print(f"Checkout BLOCKED for {best_match['name']}: PPE score > 0 but helmet not assigned.")
+                                cv2.putText(annotated, "CHECKOUT BLOCKED: NO HELMET", (20, 260),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                                continue
+
                     checked_in_today.discard(wid)
                     helmet_registered.discard(wid)   # allow re-scan next shift
                     checkin_time  = "--:--"

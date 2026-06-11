@@ -1,14 +1,22 @@
 <!DOCTYPE html>
 
-<html class="dark" lang="en"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>SiteSentinel - Manager Dashboard</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<script id="tailwind-config">
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>SiteSentinel - Manager Dashboard</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
         tailwind.config = {
             darkMode: "class",
             theme: {
@@ -103,492 +111,638 @@
             }
         }
     </script>
-<style>
+    <style>
         body {
             background-color: #131314;
             color: #e5e2e3;
         }
+
         .glass-panel {
             background: rgba(32, 31, 32, 0.4);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
+
         .data-table-row {
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
+
         .data-table-row:last-child {
             border-bottom: none;
         }
-        
+
         /* Custom Scrollbar for dark theme */
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
         }
+
         ::-webkit-scrollbar-track {
             background: #131314;
         }
+
         ::-webkit-scrollbar-thumb {
             background: #353436;
             border-radius: 3px;
         }
+
         ::-webkit-scrollbar-thumb:hover {
             background: #5a4136;
         }
     </style>
 </head>
-<body class="font-body-md text-body-md min-h-screen flex antialiased selection:bg-primary-container selection:text-white">
-<!-- SideNavBar (Shared Component) -->
-<nav class="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant/20 p-md z-40 transition-all duration-300">
-<div class="mb-lg">
-<h1 class="font-headline-md text-headline-md text-primary tracking-tight">SiteSentinel AI</h1>
 
-</div>
-<button class="w-full bg-primary-container text-background py-sm px-md rounded-lg font-label-md text-label-md uppercase tracking-wider mb-lg flex items-center justify-center gap-2 hover:bg-primary transition-colors">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add</span>
+<body
+    class="font-body-md text-body-md min-h-screen flex antialiased selection:bg-primary-container selection:text-white">
+    <!-- SideNavBar (Shared Component) -->
+    <nav
+        class="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant/20 p-md z-40 transition-all duration-300">
+        <div class="mb-lg">
+            <h1 class="font-headline-md text-headline-md text-primary tracking-tight">SiteSentinel AI</h1>
+
+        </div>
+        <button
+            class="w-full bg-primary-container text-background py-sm px-md rounded-lg font-label-md text-label-md uppercase tracking-wider mb-lg flex items-center justify-center gap-2 hover:bg-primary transition-colors">
+            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add</span>
             New Safety Report
         </button>
-<ul class="flex-1 space-y-2">
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg bg-secondary-container text-on-secondary-container font-label-md text-label-md uppercase tracking-wider font-bold transition-transform duration-150 active:scale-95" href="#">
-<span class="material-symbols-outlined">dashboard</span>
+        <ul class="flex-1 space-y-2">
+            <li>
+                <a class="flex items-center gap-3 px-sm py-sm rounded-lg bg-secondary-container text-on-secondary-container font-label-md text-label-md uppercase tracking-wider font-bold transition-transform duration-150 active:scale-95"
+                    href="#">
+                    <span class="material-symbols-outlined">dashboard</span>
                     Dashboard
                 </a>
-</li>
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95" href="#">
-<span class="material-symbols-outlined">videocam</span>
+            </li>
+            <li>
+                <a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95"
+                    href="#">
+                    <span class="material-symbols-outlined">videocam</span>
                     Live Feed
                 </a>
-</li>
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95" href="#">
-<span class="material-symbols-outlined">engineering</span>
+            </li>
+            <li>
+                <a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95"
+                    href="#">
+                    <span class="material-symbols-outlined">engineering</span>
                     Site Workers
                 </a>
-</li>
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95" href="#">
-<span class="material-symbols-outlined">verified_user</span>
+            </li>
+            <li>
+                <a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95"
+                    href="#">
+                    <span class="material-symbols-outlined">verified_user</span>
                     Safety Logs
                 </a>
-</li>
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95" href="#">
-<span class="material-symbols-outlined">analytics</span>
+            </li>
+            <li>
+                <a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95"
+                    href="#">
+                    <span class="material-symbols-outlined">analytics</span>
                     Analytics
                 </a>
-</li>
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95" href="#">
-<span class="material-symbols-outlined">settings</span>
+            </li>
+            <li>
+                <a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150 active:scale-95"
+                    href="#">
+                    <span class="material-symbols-outlined">settings</span>
                     Settings
                 </a>
-</li>
-</ul>
-<div class="mt-auto pt-md border-t border-outline-variant/20">
-<ul class="space-y-2">
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150" href="#">
-<span class="material-symbols-outlined">help</span>
+            </li>
+        </ul>
+        <div class="mt-auto pt-md border-t border-outline-variant/20">
+            <ul class="space-y-2">
+                <li>
+                    <a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150"
+                        href="#">
+                        <span class="material-symbols-outlined">help</span>
                         Support
                     </a>
-</li>
-<li>
-<a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150" href="/api/logout">
-<span class="material-symbols-outlined">logout</span>
+                </li>
+                <li>
+                    <a class="flex items-center gap-3 px-sm py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface font-label-md text-label-md uppercase tracking-wider transition-all duration-150"
+                        href="/api/logout">
+                        <span class="material-symbols-outlined">logout</span>
                         Sign Out
                     </a>
-</li>
-</ul>
-</div>
-</nav>
-<!-- Main Content Area -->
-<main class="flex-1 md:ml-64 flex flex-col min-h-screen bg-background relative overflow-x-hidden">
-<!-- TopAppBar (Custom for Dashboard Context) -->
-<header class="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-surface-variant/10 px-margin-desktop py-4 w-full">
-<div class="max-w-[1600px] mx-auto flex justify-between items-center">
-<div class="md:hidden flex items-center gap-3">
-<span class="material-symbols-outlined text-primary text-2xl">menu</span>
-<span class="font-headline-md text-headline-md text-primary font-bold">SiteSentinel</span>
-</div>
-<div class="hidden md:flex items-center gap-4 w-full max-w-md">
-<div class="relative w-full">
-<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
-<input class="w-full bg-surface-container-low border border-surface-variant/20 rounded-lg py-2 pl-10 pr-4 text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-on-surface-variant/50" placeholder="Search workers, zones, or reports..." type="text"/>
-</div>
-</div>
-<div class="flex items-center gap-6">
-<button class="relative text-on-surface-variant hover:text-on-surface transition-colors">
-</button>
-<div class="flex items-center gap-3 cursor-pointer group">
-<div class="text-right hidden sm:block">
-<p class="font-label-md text-label-md text-on-surface" id="user-name">...</p>
-<p class="font-mono-data text-mono-data text-on-surface-variant">Site Manager</p>
-</div>
-<div class="w-10 h-10 rounded-full bg-surface-variant border-2 border-outline-variant/30 overflow-hidden group-hover:border-primary/50 transition-colors">
-<div class="w-full h-full flex items-center justify-center bg-secondary-container text-on-secondary-container font-headline-md" id="user-initials">--</div>
-</div>
-</div>
-</div>
-</div>
-</header>
-<div class="p-margin-desktop max-w-[1600px] mx-auto w-full flex-1 flex flex-col gap-gutter">
-<!-- Dashboard Header -->
-<div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-2">
-<div>
-<h2 class="font-headline-lg text-headline-lg text-on-surface">Daily Overview</h2>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    <!-- Main Content Area -->
+    <main class="flex-1 md:ml-64 flex flex-col min-h-screen bg-background relative overflow-x-hidden">
+        <!-- TopAppBar (Custom for Dashboard Context) -->
+        <header
+            class="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-surface-variant/10 px-margin-desktop py-4 w-full">
+            <div class="max-w-[1600px] mx-auto flex justify-between items-center">
+                <div class="md:hidden flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary text-2xl">menu</span>
+                    <span class="font-headline-md text-headline-md text-primary font-bold">SiteSentinel</span>
+                </div>
+                <div class="hidden md:flex items-center gap-4 w-full max-w-md">
+                    <div class="relative w-full">
+                        <span
+                            class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+                        <input
+                            class="w-full bg-surface-container-low border border-surface-variant/20 rounded-lg py-2 pl-10 pr-4 text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-on-surface-variant/50"
+                            placeholder="Search workers, zones, or reports..." type="text" />
+                    </div>
+                </div>
+                <div class="flex items-center gap-6">
+                    <button class="relative text-on-surface-variant hover:text-on-surface transition-colors">
+                    </button>
+                    <div class="flex items-center gap-3 cursor-pointer group">
+                        <div class="text-right hidden sm:block">
+                            <p class="font-label-md text-label-md text-on-surface" id="user-name">...</p>
+                            <p class="font-mono-data text-mono-data text-on-surface-variant">Site Manager</p>
+                        </div>
+                        <div
+                            class="w-10 h-10 rounded-full bg-surface-variant border-2 border-outline-variant/30 overflow-hidden group-hover:border-primary/50 transition-colors">
+                            <div class="w-full h-full flex items-center justify-center bg-secondary-container text-on-secondary-container font-headline-md"
+                                id="user-initials">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <div class="p-margin-desktop max-w-[1600px] mx-auto w-full flex-1 flex flex-col gap-gutter">
+            <!-- Dashboard Header -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-2">
+                <div>
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface">Daily Overview</h2>
 
-</div>
-<button class="bg-surface-container-low border border-surface-variant hover:bg-surface-variant/30 text-on-surface px-4 py-2 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center gap-2 transition-all">
-<span class="material-symbols-outlined text-sm">download</span>
+                </div>
+                <button
+                    class="bg-surface-container-low border border-surface-variant hover:bg-surface-variant/30 text-on-surface px-4 py-2 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center gap-2 transition-all">
+                    <span class="material-symbols-outlined text-sm">download</span>
                     Export Summary
                 </button>
-</div>
-<!-- Top Cards (KPIs) -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
-<!-- Card 1 -->
-<div class="glass-panel rounded-xl p-6 relative overflow-hidden group">
-<div class="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
-<div class="flex justify-between items-start mb-4 relative z-10">
-<h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Total Workers Present</h3>
-<span class="material-symbols-outlined text-secondary">groups</span>
-</div>
-<div class="flex items-baseline gap-3 relative z-10">
-<span class="font-display-lg text-display-lg text-on-surface">342</span>
-<span class="font-mono-data text-mono-data text-tertiary flex items-center">
-<span class="material-symbols-outlined text-[16px]">arrow_upward</span> 12%
-                        </span>
-</div>
-<p class="font-mono-data text-mono-data text-on-surface-variant mt-2 relative z-10">vs yesterday (305)</p>
-</div>
-<!-- Card 2 -->
-<div class="glass-panel rounded-xl p-6 relative overflow-hidden group">
-<div class="absolute top-0 right-0 w-32 h-32 bg-tertiary/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
-<div class="flex justify-between items-start mb-4 relative z-10">
-<h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Safety Compliance</h3>
-<span class="material-symbols-outlined text-tertiary">health_and_safety</span>
-</div>
-<div class="flex items-baseline gap-3 relative z-10">
-<span class="font-display-lg text-display-lg text-on-surface">94.8%</span>
-<span class="font-mono-data text-mono-data text-error flex items-center">
-<span class="material-symbols-outlined text-[16px]">arrow_downward</span> 1.2%
-                        </span>
-</div>
-<div class="w-full bg-surface-variant h-1.5 rounded-full mt-4 relative z-10 overflow-hidden">
-<div class="bg-tertiary h-full rounded-full" style="width: 94.8%"></div>
-</div>
-</div>
-<!-- Card 3 -->
-<div class="glass-panel rounded-xl p-6 relative overflow-hidden group">
-<div class="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
-<div class="flex justify-between items-start mb-4 relative z-10">
-<h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Violations Today</h3>
-<span class="material-symbols-outlined text-error">warning</span>
-</div>
-<div class="flex items-baseline gap-3 relative z-10">
-<span class="font-display-lg text-display-lg text-on-surface">18</span>
-<span class="font-mono-data text-mono-data text-tertiary flex items-center">
-<span class="material-symbols-outlined text-[16px]">arrow_downward</span> 4
-                        </span>
-</div>
-<p class="font-mono-data text-mono-data text-on-surface-variant mt-2 relative z-10">12 minor, 6 critical</p>
-</div>
-</div>
-<!-- Main Layout Grid -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-<!-- Left Column (Live Attendance & Management) -->
-<div class="lg:col-span-2 flex flex-col gap-gutter">
-<!-- Section 2: Live Attendance Table -->
-<div class="glass-panel rounded-xl flex flex-col overflow-hidden h-full">
-<div class="p-6 border-b border-surface-variant/20 flex justify-between items-center">
-<h3 class="font-headline-md text-headline-md text-on-surface">Live Attendance Log</h3>
-<button class="text-primary hover:text-primary-container font-label-md text-label-md uppercase tracking-wider transition-colors flex items-center gap-1">
+            </div>
+            <!-- Top Cards (KPIs) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+                <!-- Card 1 -->
+                <div class="glass-panel rounded-xl p-6 relative overflow-hidden group">
+                    <div
+                        class="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110">
+                    </div>
+                    <div class="flex justify-between items-start mb-4 relative z-10">
+                        <h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Total
+                            Workers Present</h3>
+                        <span class="material-symbols-outlined text-secondary">groups</span>
+                    </div>
+                    <div class="flex items-baseline gap-3 relative z-10">
+                        <span class="font-display-lg text-display-lg text-on-surface" id="active-workers-count">0</span>
+                        <span class="font-mono-data text-mono-data text-on-surface-variant" id="total-workers-subtext">of 0 registered</span>
+                    </div>
+                    <div class="w-full bg-surface-variant h-1.5 rounded-full mt-4 relative z-10 overflow-hidden">
+                        <div class="bg-secondary h-full rounded-full" id="active-workers-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <!-- Card 2 -->
+                <div class="glass-panel rounded-xl p-6 relative overflow-hidden group">
+                    <div
+                        class="absolute top-0 right-0 w-32 h-32 bg-tertiary/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110">
+                    </div>
+                    <div class="flex justify-between items-start mb-4 relative z-10">
+                        <h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Safety
+                            Compliance</h3>
+                        <span class="material-symbols-outlined text-tertiary">health_and_safety</span>
+                    </div>
+                    <div class="flex items-baseline gap-3 relative z-10">
+                        <span class="font-display-lg text-display-lg text-on-surface" id="safety-compliance-pct">100.0%</span>
+                    </div>
+                    <div class="w-full bg-surface-variant h-1.5 rounded-full mt-4 relative z-10 overflow-hidden">
+                        <div class="bg-tertiary h-full rounded-full" id="safety-compliance-bar" style="width: 100%"></div>
+                    </div>
+                </div>
+                <!-- Card 3 -->
+                <div class="glass-panel rounded-xl p-6 relative overflow-hidden group">
+                    <div
+                        class="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110">
+                    </div>
+                    <div class="flex justify-between items-start mb-4 relative z-10">
+                        <h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                            Active Violations</h3>
+                        <span class="material-symbols-outlined text-error">warning</span>
+                    </div>
+                    <div class="flex items-baseline gap-3 relative z-10">
+                        <span class="font-display-lg text-display-lg text-on-surface" id="violations-count">0</span>
+                    </div>
+                    <p class="font-mono-data text-mono-data text-on-surface-variant mt-2 relative z-10" id="violations-subtext">
+                        0 minor, 0 critical
+                    </p>
+                </div>
+            </div>
+            <!-- Main Layout Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+                <!-- Left Column (Live Attendance & Management) -->
+                <div class="lg:col-span-2 flex flex-col gap-gutter">
+                    <!-- Section 2: Live Attendance Table -->
+                    <div class="glass-panel rounded-xl flex flex-col overflow-hidden h-full">
+                        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center">
+                            <h3 class="font-headline-md text-headline-md text-on-surface">Live Attendance Log</h3>
+                            <button
+                                class="text-primary hover:text-primary-container font-label-md text-label-md uppercase tracking-wider transition-colors flex items-center gap-1">
                                 View Full Log <span class="material-symbols-outlined text-sm">arrow_forward</span>
-</button>
-</div>
-<div class="overflow-x-auto">
-<table class="w-full text-left border-collapse whitespace-nowrap">
-<thead>
-    <tr class="bg-surface-container-low/50">
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider w-16">ID</th>
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Worker</th>
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Status</th>
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Check-in</th>
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-center">PPE</th>
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Safety Score</th>
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Helmet ID</th>
-        <th class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
-    </tr>
-</thead>
-<tbody class="font-mono-data text-mono-data text-on-surface" id="workers-tbody">
-</tbody>
-</table>
-</div>
-</div>
-</div>
-<!-- Right Column (Violations & Actions) -->
-<div class="lg:col-span-1 flex flex-col gap-gutter">
-<!-- Quick Actions / Section 1 -->
-<div class="glass-panel rounded-xl p-6">
-<h3 class="font-headline-md text-headline-md text-on-surface mb-4">Worker Management</h3>
-<button class="w-full bg-surface-container-low border border-primary/30 hover:border-primary text-primary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group" onclick="document.getElementById('addWorkerModal').classList.remove('hidden')">
-<span class="material-symbols-outlined group-hover:scale-110 transition-transform">person_add</span>
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse whitespace-nowrap">
+                                <thead>
+                                    <tr class="bg-surface-container-low/50">
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider w-16">
+                                            ID</th>
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                                            Worker</th>
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                                            Status</th>
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                                            Check-in</th>
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-center">
+                                            PPE</th>
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                                            Safety Score</th>
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                                            Helmet ID</th>
+                                        <th
+                                            class="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-right">
+                                            Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="font-mono-data text-mono-data text-on-surface" id="workers-tbody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right Column (Violations & Actions) -->
+                <div class="lg:col-span-1 flex flex-col gap-gutter">
+                    <!-- Quick Actions / Section 1 -->
+                    <div class="glass-panel rounded-xl p-6">
+                        <h3 class="font-headline-md text-headline-md text-on-surface mb-4">Worker Management</h3>
+                        <button
+                            class="w-full bg-surface-container-low border border-primary/30 hover:border-primary text-primary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group"
+                            onclick="document.getElementById('addWorkerModal').classList.remove('hidden')">
+                            <span
+                                class="material-symbols-outlined group-hover:scale-110 transition-transform">person_add</span>
                             Add New Worker
                         </button>
-<button onclick="openHelmetsModal()" class="w-full mt-3 bg-surface-container-low border border-tertiary/30 hover:border-tertiary text-tertiary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
-    <span class="material-symbols-outlined group-hover:scale-110 transition-transform">construction</span>
-    Manage Helmets
-</button>
-<button id="esp32-btn" onclick="document.getElementById('esp32Modal').classList.remove('hidden')"
-    class="w-full mt-3 bg-surface-container-low border border-secondary/30 hover:border-secondary text-secondary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
-    <span class="material-symbols-outlined group-hover:scale-110 transition-transform">router</span>
-    <span id="esp32-btn-label">Set ESP32 IP</span>
-</button>
-</div>
-<!-- Section 3: Recent Violations -->
-<div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">
-<div class="p-6 border-b border-surface-variant/20 flex justify-between items-center">
-<h3 class="font-headline-md text-headline-md text-on-surface">Recent Alerts</h3>
-</div>
-<div class="flex-1 overflow-y-auto p-4 space-y-3 max-h-[400px]">
-<!-- Alert Item 1 -->
-<div class="bg-surface-container-low border border-error/20 rounded-lg p-4 relative overflow-hidden">
-<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
-<div class="flex justify-between items-start mb-2">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-error text-[18px]">warning</span>
-<span class="font-label-md text-label-md text-error uppercase tracking-wider">No Hardhat Detected</span>
-</div>
-<span class="font-mono-data text-[11px] text-on-surface-variant">10:42 AM</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface mb-3">Zone C (Scaffolding). Unidentified worker entering restricted zone without proper headgear.</p>
-<button class="text-xs font-label-md uppercase tracking-wider text-secondary hover:text-white border border-secondary/30 px-3 py-1.5 rounded transition-colors flex items-center gap-1">
-<span class="material-symbols-outlined text-[14px]">visibility</span> View Evidence
+                        <button onclick="openHelmetsModal()"
+                            class="w-full mt-3 bg-surface-container-low border border-tertiary/30 hover:border-tertiary text-tertiary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
+                            <span
+                                class="material-symbols-outlined group-hover:scale-110 transition-transform">construction</span>
+                            Manage Helmets
+                        </button>
+                        <button id="esp32-btn"
+                            onclick="document.getElementById('esp32Modal').classList.remove('hidden')"
+                            class="w-full mt-3 bg-surface-container-low border border-secondary/30 hover:border-secondary text-secondary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
+                            <span
+                                class="material-symbols-outlined group-hover:scale-110 transition-transform">router</span>
+                            <span id="esp32-btn-label">Set ESP32 IP</span>
+                        </button>
+                    </div>
+                    <!-- Section 3: Recent Violations -->
+                    <div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">
+                        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center">
+                            <h3 class="font-headline-md text-headline-md text-on-surface">Recent Alerts</h3>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-4 space-y-3 max-h-[400px]">
+                            <!-- Alert Item 1 -->
+                            <div
+                                class="bg-surface-container-low border border-error/20 rounded-lg p-4 relative overflow-hidden">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-error text-[18px]">warning</span>
+                                        <span class="font-label-md text-label-md text-error uppercase tracking-wider">No
+                                            Hardhat Detected</span>
+                                    </div>
+                                    <span class="font-mono-data text-[11px] text-on-surface-variant">10:42 AM</span>
+                                </div>
+                                <p class="font-body-md text-body-md text-on-surface mb-3">Zone C (Scaffolding).
+                                    Unidentified worker entering restricted zone without proper headgear.</p>
+                                <button
+                                    class="text-xs font-label-md uppercase tracking-wider text-secondary hover:text-white border border-secondary/30 px-3 py-1.5 rounded transition-colors flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-[14px]">visibility</span> View Evidence
                                 </button>
-</div>
-<!-- Alert Item 2 -->
-<div class="bg-surface-container-low border border-primary-container/20 rounded-lg p-4 relative overflow-hidden">
-<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary-container"></div>
-<div class="flex justify-between items-start mb-2">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-primary-container text-[18px]">gpp_maybe</span>
-<span class="font-label-md text-label-md text-primary-container uppercase tracking-wider">Missing High-Vis</span>
-</div>
-<span class="font-mono-data text-[11px] text-on-surface-variant">09:15 AM</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface mb-3">Worker #4105 (S. Jenkins) flagged in Loading Bay.</p>
-<button class="text-xs font-label-md uppercase tracking-wider text-secondary hover:text-white border border-secondary/30 px-3 py-1.5 rounded transition-colors flex items-center gap-1">
-<span class="material-symbols-outlined text-[14px]">visibility</span> View Evidence
+                            </div>
+                            <!-- Alert Item 2 -->
+                            <div
+                                class="bg-surface-container-low border border-primary-container/20 rounded-lg p-4 relative overflow-hidden">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary-container"></div>
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            class="material-symbols-outlined text-primary-container text-[18px]">gpp_maybe</span>
+                                        <span
+                                            class="font-label-md text-label-md text-primary-container uppercase tracking-wider">Missing
+                                            High-Vis</span>
+                                    </div>
+                                    <span class="font-mono-data text-[11px] text-on-surface-variant">09:15 AM</span>
+                                </div>
+                                <p class="font-body-md text-body-md text-on-surface mb-3">Worker #4105 (S. Jenkins)
+                                    flagged in Loading Bay.</p>
+                                <button
+                                    class="text-xs font-label-md uppercase tracking-wider text-secondary hover:text-white border border-secondary/30 px-3 py-1.5 rounded transition-colors flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-[14px]">visibility</span> View Evidence
                                 </button>
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- Bottom Section (Reports Preview) -->
-<div class="glass-panel rounded-xl p-6 mt-4">
-<div class="flex justify-between items-center mb-6 border-b border-surface-variant/20 pb-4">
-<h3 class="font-headline-md text-headline-md text-on-surface">Weekly Safety Trends</h3>
-<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 font-label-md text-label-md uppercase tracking-wider">
-<span class="material-symbols-outlined">bar_chart</span> Open Full Report
-                    </button>
-</div>
-<div class="h-48 w-full bg-surface-container-low border border-surface-variant/30 rounded-lg flex items-center justify-center relative overflow-hidden">
-<!-- Faux Chart visualization using CSS patterns -->
-<div class="absolute inset-0 opacity-20" style="background-image: linear-gradient(to right, #353436 1px, transparent 1px), linear-gradient(to bottom, #353436 1px, transparent 1px); background-size: 20px 20px;"></div>
-<div class="text-center relative z-10">
-<span class="material-symbols-outlined text-4xl text-on-surface-variant mb-2">monitoring</span>
-<p class="font-mono-data text-on-surface-variant">Data Visualization Module (Chart.js / D3 placeholder)</p>
-</div>
-</div>
-</div>
-</div>
-</main>
-<!-- Modal: Add Worker -->
-<div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="addWorkerModal">
-<div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden relative">
-<div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
-<h3 class="font-headline-md text-headline-md text-on-surface">Register New Worker</h3>
-<button class="text-on-surface-variant hover:text-on-surface" onclick="document.getElementById('addWorkerModal').classList.add('hidden')">
-<span class="material-symbols-outlined">close</span>
-</button>
-</div>
-<div class="p-6 space-y-6">
-    <div class="grid grid-cols-2 gap-4">
-        <div>
-            <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">First Name</label>
-            <input id="w-first" class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all font-body-md" type="text" placeholder="John"/>
-        </div>
-        <div>
-            <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Last Name</label>
-            <input id="w-last" class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all font-body-md" type="text" placeholder="Doe"/>
-        </div>
-    </div>
-    <div>
-        <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Worker ID</label>
-        <input id="w-workerid" class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all font-body-md font-mono-data" type="text" placeholder="e.g. #4115"/>
-    </div>
-    <div>
-        <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Facial Recognition Data</label>
-        <div id="drop-zone" class="border-2 border-dashed border-surface-variant hover:border-primary/50 bg-surface-container-low/50 rounded-lg p-8 text-center transition-colors cursor-pointer group">
-            <span class="material-symbols-outlined text-4xl text-on-surface-variant group-hover:text-primary mb-3 transition-colors">face</span>
-            <p class="font-body-md text-on-surface mb-1">Drag and drop face images here</p>
-            <p class="font-mono-data text-xs text-on-surface-variant">PNG, JPG up to 5MB each. Multiple allowed.</p>
-            <input id="w-images" type="file" accept="image/*" multiple class="hidden"/>
-            <button type="button" onclick="document.getElementById('w-images').click()" class="mt-4 bg-surface-variant text-on-surface px-4 py-1.5 rounded text-sm font-label-md uppercase tracking-wider hover:bg-surface-variant/80 transition-colors">Browse Files</button>
-        </div>
-        <div id="image-preview" class="flex flex-wrap gap-2 mt-3"></div>
-    </div>
-    <p id="w-error" class="text-error font-body-md text-sm hidden"></p>
-</div>
-<div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end gap-3">
-    <button class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors" onclick="document.getElementById('addWorkerModal').classList.add('hidden')">Cancel</button>
-    <button id="register-btn" onclick="registerWorker()" class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Register Worker</button>
-</div>
-</div>
-</div>
-<div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="esp32Modal">
-    <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
-        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
-            <h3 class="font-headline-md text-headline-md text-on-surface">ESP32 IP Address</h3>
-            <button onclick="document.getElementById('esp32Modal').classList.add('hidden')" class="text-on-surface-variant hover:text-on-surface">
-                <span class="material-symbols-outlined">close</span>
-            </button>
-        </div>
-        <div class="p-6 space-y-4">
-            <p class="font-body-md text-on-surface-variant">Enter the IP shown on your ESP32 serial monitor.</p>
-            <input id="esp32-ip-input" type="text" placeholder="e.g. 192.168.1.105"
-                class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data"/>
-            <p id="esp32-save-msg" class="text-tertiary font-body-md text-sm hidden">Saved!</p>
-        </div>
-        <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end gap-3">
-            <button onclick="document.getElementById('esp32Modal').classList.add('hidden')"
-                class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Cancel</button>
-            <button onclick="saveEsp32Ip()"
-                class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save IP</button>
-        </div>
-    </div>
-</div>
-<div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="manageHelmetsModal">
-    <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
-        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
-            <h3 class="font-headline-md text-headline-md text-on-surface">Manage Registered Helmets</h3>
-            <button onclick="closeHelmetsModal()" class="text-on-surface-variant hover:text-on-surface">
-                <span class="material-symbols-outlined">close</span>
-            </button>
-        </div>
-        <div class="p-6 space-y-6">
-            <div>
-                <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Add New Helmet ID</label>
-                <div class="flex gap-2">
-                    <input id="new-helmet-id-input" type="text" placeholder="e.g. SKC0001"
-                        class="flex-1 bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data uppercase"/>
-                    <button onclick="addHelmet()"
-                        class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors flex items-center gap-1">
-                        <span class="material-symbols-outlined text-[18px]">add</span> Add
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Bottom Section (Reports Preview) -->
+            <div class="glass-panel rounded-xl p-6 mt-4">
+                <div class="flex justify-between items-center mb-6 border-b border-surface-variant/20 pb-4">
+                    <h3 class="font-headline-md text-headline-md text-on-surface">Weekly Safety Trends</h3>
+                    <button
+                        class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 font-label-md text-label-md uppercase tracking-wider">
+                        <span class="material-symbols-outlined">bar_chart</span> Open Full Report
                     </button>
                 </div>
-                <p id="new-helmet-error" class="text-error font-body-md text-sm mt-1 hidden"></p>
-                <p id="new-helmet-success" class="text-tertiary font-body-md text-sm mt-1 hidden">Helmet registered!</p>
-            </div>
-            
-            <div>
-                <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Registered Helmets</label>
-                <div class="max-h-60 overflow-y-auto border border-surface-variant/30 rounded-lg">
-                    <table class="w-full text-left border-collapse whitespace-nowrap">
-                        <thead>
-                            <tr class="bg-surface-container-low/50 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
-                                <th class="px-4 py-3">Helmet ID</th>
-                                <th class="px-4 py-3">Status</th>
-                                <th class="px-4 py-3 text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="font-mono-data text-mono-data text-on-surface" id="helmets-tbody">
-                            <!-- Populated dynamically -->
-                        </tbody>
-                    </table>
+                <div
+                    class="h-48 w-full bg-surface-container-low border border-surface-variant/30 rounded-lg flex items-center justify-center relative overflow-hidden">
+                    <!-- Faux Chart visualization using CSS patterns -->
+                    <div class="absolute inset-0 opacity-20"
+                        style="background-image: linear-gradient(to right, #353436 1px, transparent 1px), linear-gradient(to bottom, #353436 1px, transparent 1px); background-size: 20px 20px;">
+                    </div>
+                    <div class="text-center relative z-10">
+                        <span class="material-symbols-outlined text-4xl text-on-surface-variant mb-2">monitoring</span>
+                        <p class="font-mono-data text-on-surface-variant">Data Visualization Module (Chart.js / D3
+                            placeholder)</p>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end">
-            <button onclick="closeHelmetsModal()"
-                class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Close</button>
-        </div>
-    </div>
-</div>
-<div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="helmetModal">
-    <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
-        <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
-            <h3 class="font-headline-md text-headline-md text-on-surface">Scan Helmet QR Code</h3>
-            <button onclick="closeHelmetModal()" class="text-on-surface-variant hover:text-on-surface">
-                <span class="material-symbols-outlined">close</span>
-            </button>
-        </div>
-        <div class="p-6 space-y-4">
-            <p class="font-body-md text-on-surface-variant">Point the camera at the helmet QR code, or enter the helmet ID manually.</p>
-            <video id="qr-video" class="w-full rounded-lg border border-surface-variant" autoplay></video>
-            <div class="flex gap-2">
-                <input id="helmet-id-input" type="text" placeholder="Or enter helmet ID manually"
-                    class="flex-1 bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data"/>
-                <button onclick="saveHelmetId()"
-                    class="px-4 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save</button>
+    </main>
+    <!-- Modal: Add Worker -->
+    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
+        id="addWorkerModal">
+        <div
+            class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden relative">
+            <div
+                class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+                <h3 class="font-headline-md text-headline-md text-on-surface">Register New Worker</h3>
+                <button class="text-on-surface-variant hover:text-on-surface"
+                    onclick="document.getElementById('addWorkerModal').classList.add('hidden')">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
             </div>
-            <p id="helmet-save-msg" class="text-tertiary font-body-md text-sm hidden">Helmet ID assigned!</p>
+            <div class="p-6 space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label
+                            class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">First
+                            Name</label>
+                        <input id="w-first"
+                            class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all font-body-md"
+                            type="text" placeholder="John" />
+                    </div>
+                    <div>
+                        <label
+                            class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Last
+                            Name</label>
+                        <input id="w-last"
+                            class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all font-body-md"
+                            type="text" placeholder="Doe" />
+                    </div>
+                </div>
+                <div>
+                    <label
+                        class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Worker
+                        ID</label>
+                    <input id="w-workerid"
+                        class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all font-body-md font-mono-data"
+                        type="text" placeholder="e.g. #4115" />
+                </div>
+                <div>
+                    <label
+                        class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Facial
+                        Recognition Data</label>
+                    <div id="drop-zone"
+                        class="border-2 border-dashed border-surface-variant hover:border-primary/50 bg-surface-container-low/50 rounded-lg p-8 text-center transition-colors cursor-pointer group">
+                        <span
+                            class="material-symbols-outlined text-4xl text-on-surface-variant group-hover:text-primary mb-3 transition-colors">face</span>
+                        <p class="font-body-md text-on-surface mb-1">Drag and drop face images here</p>
+                        <p class="font-mono-data text-xs text-on-surface-variant">PNG, JPG up to 5MB each. Multiple
+                            allowed.</p>
+                        <input id="w-images" type="file" accept="image/*" multiple class="hidden" />
+                        <button type="button" onclick="document.getElementById('w-images').click()"
+                            class="mt-4 bg-surface-variant text-on-surface px-4 py-1.5 rounded text-sm font-label-md uppercase tracking-wider hover:bg-surface-variant/80 transition-colors">Browse
+                            Files</button>
+                    </div>
+                    <div id="image-preview" class="flex flex-wrap gap-2 mt-3"></div>
+                </div>
+                <p id="w-error" class="text-error font-body-md text-sm hidden"></p>
+            </div>
+            <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end gap-3">
+                <button
+                    class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors"
+                    onclick="document.getElementById('addWorkerModal').classList.add('hidden')">Cancel</button>
+                <button id="register-btn" onclick="registerWorker()"
+                    class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Register
+                    Worker</button>
+            </div>
         </div>
     </div>
-</div>
-<script>
-    // --- Load user info ---
-    fetch('/api/me')
-        .then(res => { if (!res.ok) window.location.href = '/login.html'; return res.json(); })
-        .then(data => {
-            const name = data.name || data.email || 'User';
-            document.getElementById('user-name').textContent = name;
-            const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-            document.getElementById('user-initials').textContent = initials;
-        })
-        .catch(() => window.location.href = '/login.html');
+    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
+        id="esp32Modal">
+        <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div
+                class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+                <h3 class="font-headline-md text-headline-md text-on-surface">ESP32 IP Address</h3>
+                <button onclick="document.getElementById('esp32Modal').classList.add('hidden')"
+                    class="text-on-surface-variant hover:text-on-surface">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="font-body-md text-on-surface-variant">Enter the IP shown on your ESP32 serial monitor.</p>
+                <input id="esp32-ip-input" type="text" placeholder="e.g. 192.168.1.105"
+                    class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data" />
+                <p id="esp32-save-msg" class="text-tertiary font-body-md text-sm hidden">Saved!</p>
+            </div>
+            <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end gap-3">
+                <button onclick="document.getElementById('esp32Modal').classList.add('hidden')"
+                    class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Cancel</button>
+                <button onclick="saveEsp32Ip()"
+                    class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save
+                    IP</button>
+            </div>
+        </div>
+    </div>
+    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
+        id="manageHelmetsModal">
+        <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div
+                class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+                <h3 class="font-headline-md text-headline-md text-on-surface">Manage Registered Helmets</h3>
+                <button onclick="closeHelmetsModal()" class="text-on-surface-variant hover:text-on-surface">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-6">
+                <div>
+                    <label
+                        class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Add
+                        New Helmet ID</label>
+                    <div class="flex gap-2">
+                        <input id="new-helmet-id-input" type="text" placeholder="e.g. SKC0001"
+                            class="flex-1 bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data uppercase" />
+                        <button onclick="addHelmet()"
+                            class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[18px]">add</span> Add
+                        </button>
+                    </div>
+                    <p id="new-helmet-error" class="text-error font-body-md text-sm mt-1 hidden"></p>
+                    <p id="new-helmet-success" class="text-tertiary font-body-md text-sm mt-1 hidden">Helmet registered!
+                    </p>
+                </div>
 
-    // --- Load workers ---
-    function loadWorkers() {
-        fetch('/api/workers')
-            .then(r => r.json())
+                <div>
+                    <label
+                        class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Registered
+                        Helmets</label>
+                    <div class="max-h-60 overflow-y-auto border border-surface-variant/30 rounded-lg">
+                        <table class="w-full text-left border-collapse whitespace-nowrap">
+                            <thead>
+                                <tr
+                                    class="bg-surface-container-low/50 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+                                    <th class="px-4 py-3">Helmet ID</th>
+                                    <th class="px-4 py-3">Status</th>
+                                    <th class="px-4 py-3 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="font-mono-data text-mono-data text-on-surface" id="helmets-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end">
+                <button onclick="closeHelmetsModal()"
+                    class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Close</button>
+            </div>
+        </div>
+    </div>
+    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
+        id="helmetModal">
+        <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div
+                class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+                <h3 class="font-headline-md text-headline-md text-on-surface">Scan Helmet QR Code</h3>
+                <button onclick="closeHelmetModal()" class="text-on-surface-variant hover:text-on-surface">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="font-body-md text-on-surface-variant">Point the camera at the helmet QR code, or enter the
+                    helmet ID manually.</p>
+                <video id="qr-video" class="w-full rounded-lg border border-surface-variant" autoplay></video>
+                <div class="flex gap-2">
+                    <input id="helmet-id-input" type="text" placeholder="Or enter helmet ID manually"
+                        class="flex-1 bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data" />
+                    <button onclick="saveHelmetId()"
+                        class="px-4 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save</button>
+                </div>
+                <p id="helmet-save-msg" class="text-tertiary font-body-md text-sm hidden">Helmet ID assigned!</p>
+            </div>
+        </div>
+    </div>
+    <script>
+        // --- Load user info ---
+        fetch('/api/me')
+            .then(res => { if (!res.ok) window.location.href = '/login.html'; return res.json(); })
             .then(data => {
-                const tbody = document.getElementById('workers-tbody');
-                const workers = data.workers || [];
-                if (workers.length === 0) {
-                    tbody.innerHTML = `
+                const name = data.name || data.email || 'User';
+                document.getElementById('user-name').textContent = name;
+                const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                document.getElementById('user-initials').textContent = initials;
+            })
+            .catch(() => window.location.href = '/login.html');
+
+        // --- Load workers ---
+        function loadWorkers() {
+            fetch('/api/workers')
+                .then(r => r.json())
+                .then(data => {
+                    const tbody = document.getElementById('workers-tbody');
+                    const workers = data.workers || [];
+
+                    // --- KPI Calculations & Updates ---
+                    const totalWorkersCount = workers.length;
+                    const activeWorkers = workers.filter(w => w.status === 'Active');
+                    const activeWorkersCount = activeWorkers.length;
+
+                    // Card 1: Total Workers Present / registered
+                    document.getElementById('active-workers-count').textContent = activeWorkersCount;
+                    document.getElementById('total-workers-subtext').textContent = `of ${totalWorkersCount} registered`;
+                    const activeWorkersPct = totalWorkersCount > 0 ? (activeWorkersCount / totalWorkersCount) * 100 : 0;
+                    document.getElementById('active-workers-bar').style.width = `${activeWorkersPct}%`;
+
+                    // Card 2: Safety Compliance
+                    const safetyComplianceEl = document.getElementById('safety-compliance-pct');
+                    if (activeWorkersCount > 0) {
+                        const totalPpeScore = activeWorkers.reduce((sum, w) => sum + (parseInt(w.ppe_score) || 0), 0);
+                        const safetyCompliancePct = (totalPpeScore / (activeWorkersCount * 100)) * 100;
+                        safetyComplianceEl.textContent = `${safetyCompliancePct.toFixed(1)}%`;
+                        safetyComplianceEl.className = "font-display-lg text-display-lg text-on-surface";
+                        document.getElementById('safety-compliance-bar').style.width = `${safetyCompliancePct}%`;
+                    } else {
+                        safetyComplianceEl.textContent = "No workers on-site";
+                        safetyComplianceEl.className = "font-headline-md text-headline-md text-on-surface-variant";
+                        document.getElementById('safety-compliance-bar').style.width = "0%";
+                    }
+
+                    // Card 3: Violations Today
+                    const activeViolations = activeWorkers.filter(w => (parseInt(w.ppe_score) || 0) < 100);
+                    const totalViolationsCount = activeViolations.length;
+                    const minorViolationsCount = activeViolations.filter(w => (parseInt(w.ppe_score) || 0) === 50).length;
+                    const criticalViolationsCount = activeViolations.filter(w => (parseInt(w.ppe_score) || 0) === 0).length;
+
+                    document.getElementById('violations-count').textContent = totalViolationsCount;
+                    document.getElementById('violations-subtext').textContent = `${minorViolationsCount} minor, ${criticalViolationsCount} critical`;
+
+                    if (workers.length === 0) {
+                        tbody.innerHTML = `
                         <tr><td colspan="8" class="px-6 py-10 text-center text-on-surface-variant font-body-md">
                             <span class="material-symbols-outlined text-3xl mb-2 block">person_off</span>
                             No workers registered yet. Add your first worker.
                         </td></tr>`;
-                    return;
-                }
-                tbody.innerHTML = workers.map(w => {
-    const score = w.ppe_score || 0;
-    const scoreColor = score >= 80 ? 'bg-tertiary' : score >= 50 ? 'bg-primary-container' : 'bg-error';
-    const isActive = w.status === 'Active';
-    return `
+                        return;
+                    }
+                    tbody.innerHTML = workers.map(w => {
+                        const score = parseInt(w.ppe_score) || 0;
+                        const scoreColor = score >= 80 ? 'bg-tertiary' : score >= 50 ? 'bg-primary-container' : 'bg-error';
+                        const isActive = w.status === 'Active';
+                        return `
     <tr class="data-table-row hover:bg-surface-variant/10 transition-colors">
         <td class="px-6 py-4 text-on-surface-variant">${w.worker_id}</td>
         <td class="px-6 py-4 font-body-md text-on-surface">
             <div class="flex items-center gap-3">
                 <div class="w-8 h-8 rounded-full bg-surface-variant border border-outline-variant/30 flex items-center justify-center overflow-hidden flex-shrink-0">
                     ${w.image_url
-                        ? `<img src="${w.image_url}" class="w-full h-full object-cover" alt="${w.first_name}"/>`
-                        : `<span class="text-sm">${w.first_name[0]}${w.last_name[0]}</span>`
-                    }
+                                ? `<img src="${w.image_url}" class="w-full h-full object-cover" alt="${w.first_name}"/>`
+                                : `<span class="text-sm">${w.first_name[0]}${w.last_name[0]}</span>`
+                            }
                 </div>
                 ${w.first_name} ${w.last_name}
             </div>
         </td>
         <td class="px-6 py-4">
             ${isActive
-                ? `<span class="px-2 py-1 bg-tertiary/10 text-tertiary rounded-md text-[11px] font-bold uppercase tracking-wider border border-tertiary/20">Active</span>`
-                : `<span class="px-2 py-1 bg-surface-variant/50 text-on-surface-variant rounded-md text-[11px] font-bold uppercase tracking-wider border border-surface-variant">Off-Site</span>`
-            }
+                                ? `<span class="px-2 py-1 bg-tertiary/10 text-tertiary rounded-md text-[11px] font-bold uppercase tracking-wider border border-tertiary/20">Active</span>`
+                                : `<span class="px-2 py-1 bg-surface-variant/50 text-on-surface-variant rounded-md text-[11px] font-bold uppercase tracking-wider border border-surface-variant">Off-Site</span>`
+                            }
         </td>
         <td class="px-6 py-4">${w.checkin_time || '--:--'}</td>
         <td class="px-6 py-4 text-center">
@@ -605,9 +759,9 @@
         </td>
         <td class="px-6 py-4 font-mono-data text-on-surface-variant">
             ${w.helmet_id
-                ? `<span class="px-2 py-1 bg-surface-variant rounded text-[11px] font-mono">${w.helmet_id}</span>`
-                : `<span class="text-on-surface-variant/40 text-[11px]">—</span>`
-            }
+                                ? `<span class="px-2 py-1 bg-surface-variant rounded text-[11px] font-mono">${w.helmet_id}</span>`
+                                : `<span class="text-on-surface-variant/40 text-[11px]">—</span>`
+                            }
         </td>
         <td class="px-6 py-4 text-right">
             <button onclick="deleteWorker(${w.id})" class="text-error hover:opacity-70 transition-opacity" title="Remove worker">
@@ -615,223 +769,223 @@
             </button>
         </td>
     </tr>`;
-}).join('');
+                    }).join('');
+                });
+        }
+        loadWorkers();
+
+        // --- Image preview ---
+        let selectedFiles = [];
+        document.getElementById('w-images').addEventListener('change', function () {
+            // Accumulate files instead of replacing
+            const newFiles = Array.from(this.files);
+            newFiles.forEach(newFile => {
+                const isDuplicate = selectedFiles.some(f => f.name === newFile.name && f.size === newFile.size);
+                if (!isDuplicate) selectedFiles.push(newFile);
             });
-    }
-    loadWorkers();
+            renderPreviews();
+        });
 
-    // --- Image preview ---
-let selectedFiles = [];
-document.getElementById('w-images').addEventListener('change', function() {
-    // Accumulate files instead of replacing
-    const newFiles = Array.from(this.files);
-    newFiles.forEach(newFile => {
-        const isDuplicate = selectedFiles.some(f => f.name === newFile.name && f.size === newFile.size);
-        if (!isDuplicate) selectedFiles.push(newFile);
-    });
-    renderPreviews();
-});
-
-function renderPreviews() {
-    const preview = document.getElementById('image-preview');
-    preview.innerHTML = selectedFiles.map((f, i) => `
+        function renderPreviews() {
+            const preview = document.getElementById('image-preview');
+            preview.innerHTML = selectedFiles.map((f, i) => `
         <div class="relative group">
             <img src="${URL.createObjectURL(f)}" class="w-16 h-16 object-cover rounded-lg border border-surface-variant"/>
             <button type="button" onclick="removeFile(${i})" class="absolute -top-1 -right-1 bg-error text-white rounded-full w-4 h-4 items-center justify-center text-[10px] hidden group-hover:flex">✕</button>
             <span class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center rounded-b-lg">${i + 1}</span>
         </div>`).join('');
-}
-
-function removeFile(index) {
-    selectedFiles.splice(index, 1);
-    renderPreviews();
-}
-
-    // --- Drag and drop ---
-    const dropZone = document.getElementById('drop-zone');
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-primary'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-primary'));
-    dropZone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropZone.classList.remove('border-primary');
-        document.getElementById('w-images').files = e.dataTransfer.files;
-        document.getElementById('w-images').dispatchEvent(new Event('change'));
-    });
-
-    // --- Register worker ---
-    async function registerWorker() {
-        const btn = document.getElementById('register-btn');
-        const err = document.getElementById('w-error');
-        err.classList.add('hidden');
-
-        const first_name = document.getElementById('w-first').value.trim();
-        const last_name  = document.getElementById('w-last').value.trim();
-        const worker_id  = document.getElementById('w-workerid').value.trim();
-
-        if (!first_name || !last_name || !worker_id) {
-            err.textContent = 'First name, last name and worker ID are required.';
-            err.classList.remove('hidden');
-            return;
         }
 
-        btn.disabled = true;
-        btn.textContent = 'Uploading...';
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            renderPreviews();
+        }
 
-        const images = await Promise.all(selectedFiles.map(f => new Promise((res, rej) => {
-            const reader = new FileReader();
-            reader.onload = () => res(reader.result);
-            reader.onerror = rej;
-            reader.readAsDataURL(f);
-        })));
-
-        const response = await fetch('/api/workers', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ first_name, last_name, worker_id, images })
+        // --- Drag and drop ---
+        const dropZone = document.getElementById('drop-zone');
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-primary'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-primary'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('border-primary');
+            document.getElementById('w-images').files = e.dataTransfer.files;
+            document.getElementById('w-images').dispatchEvent(new Event('change'));
         });
-        const data = await response.json();
 
-        if (response.ok) {
-            document.getElementById('addWorkerModal').classList.add('hidden');
-            document.getElementById('w-first').value = '';
-            document.getElementById('w-last').value = '';
-            document.getElementById('w-workerid').value = '';
-            document.getElementById('image-preview').innerHTML = '';
-            selectedFiles = [];
+        // --- Register worker ---
+        async function registerWorker() {
+            const btn = document.getElementById('register-btn');
+            const err = document.getElementById('w-error');
+            err.classList.add('hidden');
+
+            const first_name = document.getElementById('w-first').value.trim();
+            const last_name = document.getElementById('w-last').value.trim();
+            const worker_id = document.getElementById('w-workerid').value.trim();
+
+            if (!first_name || !last_name || !worker_id) {
+                err.textContent = 'First name, last name and worker ID are required.';
+                err.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Uploading...';
+
+            const images = await Promise.all(selectedFiles.map(f => new Promise((res, rej) => {
+                const reader = new FileReader();
+                reader.onload = () => res(reader.result);
+                reader.onerror = rej;
+                reader.readAsDataURL(f);
+            })));
+
+            const response = await fetch('/api/workers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ first_name, last_name, worker_id, images })
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                document.getElementById('addWorkerModal').classList.add('hidden');
+                document.getElementById('w-first').value = '';
+                document.getElementById('w-last').value = '';
+                document.getElementById('w-workerid').value = '';
+                document.getElementById('image-preview').innerHTML = '';
+                selectedFiles = [];
+                loadWorkers();
+            } else {
+                err.textContent = data.error || 'Registration failed.';
+                err.classList.remove('hidden');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Register Worker';
+        }
+
+        // --- Delete worker ---
+        async function deleteWorker(id) {
+            if (!confirm('Remove this worker?')) return;
+            await fetch(`/api/workers/${id}`, { method: 'DELETE' });
             loadWorkers();
-        } else {
-            err.textContent = data.error || 'Registration failed.';
-            err.classList.remove('hidden');
         }
-        btn.disabled = false;
-        btn.textContent = 'Register Worker';
-    }
+        // Load ESP32 IP
+        fetch('/api/esp32-ip').then(r => r.json()).then(d => {
+            if (d.esp32_ip) {
+                document.getElementById('esp32-ip-input').value = d.esp32_ip;
+                document.getElementById('esp32-btn-label').textContent = `ESP32: ${d.esp32_ip}`;
+            }
+        });
 
-    // --- Delete worker ---
-    async function deleteWorker(id) {
-        if (!confirm('Remove this worker?')) return;
-        await fetch(`/api/workers/${id}`, { method: 'DELETE' });
-        loadWorkers();
-    }
-// Load ESP32 IP
-fetch('/api/esp32-ip').then(r => r.json()).then(d => {
-    if (d.esp32_ip) {
-        document.getElementById('esp32-ip-input').value = d.esp32_ip;
-        document.getElementById('esp32-btn-label').textContent = `ESP32: ${d.esp32_ip}`;
-    }
-});
-
-async function saveEsp32Ip() {
-    const ip  = document.getElementById('esp32-ip-input').value.trim();
-    const msg = document.getElementById('esp32-save-msg');
-    const res = await fetch('/api/esp32-ip', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ esp32_ip: ip })
-    });
-    if (res.ok) {
-        msg.classList.remove('hidden');
-        document.getElementById('esp32-btn-label').textContent = ip ? `ESP32: ${ip}` : 'Set ESP32 IP';
-        setTimeout(() => {
-            msg.classList.add('hidden');
-            document.getElementById('esp32Modal').classList.add('hidden');
-        }, 1500);
-    }
-}
-let currentHelmetWorkerId = null;
-let qrStream = null;
-
-async function scanHelmet(workerId) {
-    currentHelmetWorkerId = workerId;
-    document.getElementById('helmetModal').classList.remove('hidden');
-    document.getElementById('helmet-save-msg').classList.add('hidden');
-
-    // Start camera for QR scanning
-    try {
-        qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        const video = document.getElementById('qr-video');
-        video.srcObject = qrStream;
-
-        // Use BarcodeDetector if available
-        if ('BarcodeDetector' in window) {
-            const detector = new BarcodeDetector({ formats: ['qr_code'] });
-            const scanLoop = setInterval(async () => {
-                try {
-                    const codes = await detector.detect(video);
-                    if (codes.length > 0) {
-                        const helmetId = codes[0].rawValue;
-                        document.getElementById('helmet-id-input').value = helmetId;
-                        clearInterval(scanLoop);
-                        await saveHelmetId();
-                    }
-                } catch {}
-            }, 500);
-        } else {
-            // BarcodeDetector not supported — manual entry only
-            console.log('BarcodeDetector not supported, use manual entry');
+        async function saveEsp32Ip() {
+            const ip = document.getElementById('esp32-ip-input').value.trim();
+            const msg = document.getElementById('esp32-save-msg');
+            const res = await fetch('/api/esp32-ip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ esp32_ip: ip })
+            });
+            if (res.ok) {
+                msg.classList.remove('hidden');
+                document.getElementById('esp32-btn-label').textContent = ip ? `ESP32: ${ip}` : 'Set ESP32 IP';
+                setTimeout(() => {
+                    msg.classList.add('hidden');
+                    document.getElementById('esp32Modal').classList.add('hidden');
+                }, 1500);
+            }
         }
-    } catch (e) {
-        console.log('Camera not available, use manual entry');
-    }
-}
+        let currentHelmetWorkerId = null;
+        let qrStream = null;
 
-function closeHelmetModal() {
-    if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
-    document.getElementById('helmetModal').classList.add('hidden');
-    document.getElementById('helmet-id-input').value = '';
-    currentHelmetWorkerId = null;
-}
+        async function scanHelmet(workerId) {
+            currentHelmetWorkerId = workerId;
+            document.getElementById('helmetModal').classList.remove('hidden');
+            document.getElementById('helmet-save-msg').classList.add('hidden');
 
-async function saveHelmetId() {
-    const helmetId = document.getElementById('helmet-id-input').value.trim();
-    if (!helmetId || !currentHelmetWorkerId) return;
+            // Start camera for QR scanning
+            try {
+                qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                const video = document.getElementById('qr-video');
+                video.srcObject = qrStream;
 
-    const res = await fetch(`/api/workers/${currentHelmetWorkerId}/helmet`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ helmet_id: helmetId })
-    });
-    if (res.ok) {
-        document.getElementById('helmet-save-msg').classList.remove('hidden');
-        setTimeout(() => { closeHelmetModal(); loadWorkers(); }, 1500);
-    }
-}
+                // Use BarcodeDetector if available
+                if ('BarcodeDetector' in window) {
+                    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+                    const scanLoop = setInterval(async () => {
+                        try {
+                            const codes = await detector.detect(video);
+                            if (codes.length > 0) {
+                                const helmetId = codes[0].rawValue;
+                                document.getElementById('helmet-id-input').value = helmetId;
+                                clearInterval(scanLoop);
+                                await saveHelmetId();
+                            }
+                        } catch { }
+                    }, 500);
+                } else {
+                    // BarcodeDetector not supported — manual entry only
+                    console.log('BarcodeDetector not supported, use manual entry');
+                }
+            } catch (e) {
+                console.log('Camera not available, use manual entry');
+            }
+        }
 
-// Poll for updates every 3 seconds to keep the attendance dashboard live
-setInterval(loadWorkers, 3000);
+        function closeHelmetModal() {
+            if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+            document.getElementById('helmetModal').classList.add('hidden');
+            document.getElementById('helmet-id-input').value = '';
+            currentHelmetWorkerId = null;
+        }
 
-// --- Helmet Inventory Management ---
-function openHelmetsModal() {
-    document.getElementById('manageHelmetsModal').classList.remove('hidden');
-    document.getElementById('new-helmet-id-input').value = '';
-    document.getElementById('new-helmet-error').classList.add('hidden');
-    document.getElementById('new-helmet-success').classList.add('hidden');
-    loadHelmets();
-}
+        async function saveHelmetId() {
+            const helmetId = document.getElementById('helmet-id-input').value.trim();
+            if (!helmetId || !currentHelmetWorkerId) return;
 
-function closeHelmetsModal() {
-    document.getElementById('manageHelmetsModal').classList.add('hidden');
-}
+            const res = await fetch(`/api/workers/${currentHelmetWorkerId}/helmet`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ helmet_id: helmetId })
+            });
+            if (res.ok) {
+                document.getElementById('helmet-save-msg').classList.remove('hidden');
+                setTimeout(() => { closeHelmetModal(); loadWorkers(); }, 1500);
+            }
+        }
 
-async function loadHelmets() {
-    try {
-        const res = await fetch('/api/helmets');
-        const data = await res.json();
-        const tbody = document.getElementById('helmets-tbody');
-        const helmets = data.helmets || [];
-        
-        if (helmets.length === 0) {
-            tbody.innerHTML = `
+        // Poll for updates every 3 seconds to keep the attendance dashboard live
+        setInterval(loadWorkers, 3000);
+
+        // --- Helmet Inventory Management ---
+        function openHelmetsModal() {
+            document.getElementById('manageHelmetsModal').classList.remove('hidden');
+            document.getElementById('new-helmet-id-input').value = '';
+            document.getElementById('new-helmet-error').classList.add('hidden');
+            document.getElementById('new-helmet-success').classList.add('hidden');
+            loadHelmets();
+        }
+
+        function closeHelmetsModal() {
+            document.getElementById('manageHelmetsModal').classList.add('hidden');
+        }
+
+        async function loadHelmets() {
+            try {
+                const res = await fetch('/api/helmets');
+                const data = await res.json();
+                const tbody = document.getElementById('helmets-tbody');
+                const helmets = data.helmets || [];
+
+                if (helmets.length === 0) {
+                    tbody.innerHTML = `
                 <tr><td colspan="3" class="px-4 py-6 text-center text-on-surface-variant font-body-md">
                     No helmets registered yet.
                 </td></tr>`;
-            return;
-        }
-        
-        tbody.innerHTML = helmets.map(h => {
-            const isAssigned = h.status === 'Unavailable';
-            const statusColor = isAssigned ? 'bg-secondary-container/50 text-secondary border-secondary/20' : 'bg-tertiary/10 text-tertiary border-tertiary/20';
-            return `
+                    return;
+                }
+
+                tbody.innerHTML = helmets.map(h => {
+                    const isAssigned = h.status === 'Unavailable';
+                    const statusColor = isAssigned ? 'bg-secondary-container/50 text-secondary border-secondary/20' : 'bg-tertiary/10 text-tertiary border-tertiary/20';
+                    return `
                 <tr class="border-b border-surface-variant/10 hover:bg-surface-variant/10 transition-colors">
                     <td class="px-4 py-3 font-mono">${h.helmet_id}</td>
                     <td class="px-4 py-3">
@@ -843,63 +997,65 @@ async function loadHelmets() {
                         </button>
                     </td>
                 </tr>`;
-        }).join('');
-    } catch (e) {
-        console.error('Error loading helmets:', e);
-    }
-}
-
-async function addHelmet() {
-    const input = document.getElementById('new-helmet-id-input');
-    const helmetId = input.value.trim().toUpperCase();
-    const errorEl = document.getElementById('new-helmet-error');
-    const successEl = document.getElementById('new-helmet-success');
-    
-    errorEl.classList.add('hidden');
-    successEl.classList.add('hidden');
-    
-    if (!helmetId) {
-        errorEl.textContent = 'Helmet ID is required.';
-        errorEl.classList.remove('hidden');
-        return;
-    }
-    
-    try {
-        const res = await fetch('/api/helmets', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ helmet_id: helmetId })
-        });
-        const data = await res.json();
-        
-        if (res.ok) {
-            input.value = '';
-            successEl.classList.remove('hidden');
-            loadHelmets();
-            setTimeout(() => successEl.classList.add('hidden'), 2000);
-        } else {
-            errorEl.textContent = data.error || 'Failed to add helmet.';
-            errorEl.classList.remove('hidden');
+                }).join('');
+            } catch (e) {
+                console.error('Error loading helmets:', e);
+            }
         }
-    } catch (e) {
-        errorEl.textContent = 'Connection error.';
-        errorEl.classList.remove('hidden');
-    }
-}
 
-async function deleteHelmet(id) {
-    if (!confirm('Are you sure you want to remove this helmet from inventory?')) return;
-    try {
-        const res = await fetch(`/api/helmets/${id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (res.ok) {
-            loadHelmets();
-        } else {
-            alert(data.error || 'Failed to delete helmet.');
+        async function addHelmet() {
+            const input = document.getElementById('new-helmet-id-input');
+            const helmetId = input.value.trim().toUpperCase();
+            const errorEl = document.getElementById('new-helmet-error');
+            const successEl = document.getElementById('new-helmet-success');
+
+            errorEl.classList.add('hidden');
+            successEl.classList.add('hidden');
+
+            if (!helmetId) {
+                errorEl.textContent = 'Helmet ID is required.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/helmets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ helmet_id: helmetId })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    input.value = '';
+                    successEl.classList.remove('hidden');
+                    loadHelmets();
+                    setTimeout(() => successEl.classList.add('hidden'), 2000);
+                } else {
+                    errorEl.textContent = data.error || 'Failed to add helmet.';
+                    errorEl.classList.remove('hidden');
+                }
+            } catch (e) {
+                errorEl.textContent = 'Connection error.';
+                errorEl.classList.remove('hidden');
+            }
         }
-    } catch (e) {
-        alert('Connection error.');
-    }
-}
-</script>
-</body></html>
+
+        async function deleteHelmet(id) {
+            if (!confirm('Are you sure you want to remove this helmet from inventory?')) return;
+            try {
+                const res = await fetch(`/api/helmets/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) {
+                    loadHelmets();
+                } else {
+                    alert(data.error || 'Failed to delete helmet.');
+                }
+            } catch (e) {
+                alert('Connection error.');
+            }
+        }
+    </script>
+</body>
+
+</html>
