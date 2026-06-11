@@ -1,0 +1,26 @@
+# Everything from Render requirements
+Flask==3.1.3
+Werkzeug==3.1.8
+gunicorn==21.2.0
+bcrypt==5.0.0
+requests==2.33.1
+python-dotenv==1.2.2
+cloudinary==1.44.2
+face-recognition==1.3.0
+face_recognition_models==0.3.0
+Pillow==11.0.0
+numpy==2.1.2
+
+# Local-only: Computer Vision
+ultralytics==8.4.56
+torch==2.12.0
+torchvision==0.27.0
+opencv-python==4.10.0.84
+easyocr==1.7.2
+dlib==20.0.1
+
+# Data/Viz
+pandas==2.3.0
+matplotlib==3.10.3
+seaborn==0.13.2
+scipy==1.17.1
