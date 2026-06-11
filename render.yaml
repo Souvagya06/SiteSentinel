@@ -2,5 +2,18 @@ services:
   - type: web
     name: sitesentinel
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python backend/main.py
+    buildCommand: pip install -r requirements_render.txt
+    startCommand: gunicorn --chdir backend main:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
