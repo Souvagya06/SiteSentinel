@@ -509,6 +509,29 @@ def set_helmet(worker_id):
         [{"type": "text", "value": helmet_id}, {"type": "text", "value": str(user_id)}]
     )
 
+    # 5. Update worker's PPE score to add helmet points (+50) if not already included
+    worker_db = query_one(
+        "SELECT ppe_score FROM workers WHERE worker_id = ? AND user_id = ?",
+        [{"type": "text", "value": worker_id}, {"type": "text", "value": str(user_id)}]
+    )
+    if worker_db:
+        current_score = int(worker_db.get("ppe_score") or 0)
+        new_score = min(100, current_score + 50)
+        execute(
+            "UPDATE workers SET ppe_score = ? WHERE worker_id = ? AND user_id = ?",
+            [{"type": "text", "value": str(new_score)},
+             {"type": "text", "value": worker_id},
+             {"type": "text", "value": str(user_id)}]
+        )
+        # Also update the most recent CHECK-IN log for this worker in the attendance log
+        execute(
+            "UPDATE attendance_log SET ppe_score = ?, helmet_id = ? WHERE id = (SELECT id FROM attendance_log WHERE worker_id = ? AND user_id = ? AND event = 'CHECK-IN' ORDER BY timestamp DESC LIMIT 1)",
+            [{"type": "text", "value": str(new_score)},
+             {"type": "text", "value": helmet_id},
+             {"type": "text", "value": worker_id},
+             {"type": "text", "value": str(user_id)}]
+        )
+
     return jsonify({"message": "Helmet ID updated."})
 
 webcam_process = None  # global handle so we can kill it on shutdown
