@@ -562,7 +562,14 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
 
     if os.getenv("RENDER") is None:
+        # Local only
         Timer(1, open_browser).start()
+
+        # Start webcam detection locally
+        try:
+            Timer(3, lambda: start_webcam_detection(1)).start()
+        except Exception as e:
+            print(f"Failed to start webcam detection: {e}")
 
     app.run(
         host="0.0.0.0",
