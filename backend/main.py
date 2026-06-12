@@ -16,7 +16,10 @@ import sys
 from pathlib import Path
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    secrets.token_hex(32)
+)
 
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
@@ -139,7 +142,11 @@ def login_api():
     session["user_id"] = user["id"]
     session["email"] = user["email"]
     uid = user["id"]
-    Timer(1, lambda: start_webcam_detection(uid)).start()
+    if os.getenv("RENDER") is None:
+        Timer(
+            1,
+            lambda: start_webcam_detection(uid)
+        ).start()
     return jsonify({"message": "Login successful."}), 200
 
 
@@ -536,7 +543,10 @@ def set_helmet(worker_id):
 
 webcam_process = None  # global handle so we can kill it on shutdown
 
+
 def start_webcam_detection(user_id):
+    if os.getenv("RENDER"):
+        return
     global webcam_process
     script = Path(__file__).resolve().parent.parent / "interface" / "webcam_detection.py"
     if not script.exists():
@@ -550,16 +560,13 @@ def start_webcam_detection(user_id):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    Timer(1, open_browser).start()
-    try:
-        app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
-    finally:
-        # Ctrl+C or crash — terminate webcam window cleanly
-        if webcam_process and webcam_process.poll() is None:
-            print("Shutting down webcam process...")
-            webcam_process.terminate()
-            try:
-                webcam_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                webcam_process.kill()
-            print("Webcam process stopped.")
+
+    if os.getenv("RENDER") is None:
+        Timer(1, open_browser).start()
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        use_reloader=False
+    )
