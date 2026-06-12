@@ -91,6 +91,35 @@ frame_counter     = 0
 ocr_reader        = easyocr.Reader(['en'], gpu=False, verbose=False)
 HELMET_ID_PATTERN = re.compile(r'[A-Z]{2,6}_?\d{3,6}', re.IGNORECASE)  # e.g. SKC0001, SKC_0001, HELM042
 
+# Cache for OCR helmet detection to avoid flickering
+last_ocr_helmet_seen_frame = -999
+last_ocr_helmet_id = None
+
+# Overlap helper function
+def is_inside_or_overlaps(box_b, box_p, threshold=0.5):
+    xb1, yb1, xb2, yb2 = box_b
+    xp1, yp1, xp2, yp2 = box_p
+    
+    # Calculate intersection
+    xi1 = max(xb1, xp1)
+    yi1 = max(yb1, yp1)
+    xi2 = min(xb2, xp2)
+    yi2 = min(yb2, yp2)
+    
+    if xi2 <= xi1 or yi2 <= yi1:
+        return False
+        
+    inter_area = (xi2 - xi1) * (yi2 - yi1)
+    b_area = (xb2 - xb1) * (yb2 - yb1)
+    
+    center_x = (xb1 + xb2) / 2
+    center_y = (yb1 + yb2) / 2
+    
+    center_inside = (xp1 <= center_x <= xp2) and (yp1 <= center_y <= yp2)
+    overlap_ratio = inter_area / b_area
+    
+    return center_inside or (overlap_ratio > threshold)
+
 # -----------------------------
 # Pre-load checked-in workers and registered helmets from DB
 # -----------------------------
@@ -252,10 +281,14 @@ try:
 
         frame_counter += 1
         annotated       = frame.copy()
-        detected_labels = []
-
         # --- PPE Detection ---
-        results = model(frame, conf=0.7, verbose=False)
+        results = model(frame, conf=0.5, verbose=False)
+        persons = []
+        hardhats = []
+        no_hardhats = []
+        vests = []
+        no_vests = []
+
         if results[0].boxes is not None:
             for box in results[0].boxes:
                 cls_id     = int(box.cls[0])
@@ -263,20 +296,58 @@ try:
                 class_name = model.names[cls_id]
                 if class_name in ["Mask", "NO-Mask"]:
                     continue
-                detected_labels.append(class_name)
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
+                box_data = (x1, y1, x2, y2, conf)
+                if class_name == "Person":
+                    persons.append(box_data)
+                elif class_name == "Hardhat":
+                    hardhats.append(box_data)
+                elif class_name == "NO-Hardhat":
+                    no_hardhats.append(box_data)
+                elif class_name == "Safety Vest":
+                    vests.append(box_data)
+                elif class_name == "NO-Safety Vest":
+                    no_vests.append(box_data)
+
+                # Draw bounding box
                 color = (0, 0, 255) if class_name in ["NO-Hardhat", "NO-Safety Vest"] else (0, 255, 0)
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(annotated, f"{class_name} {conf:.2f}", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
+        # Find active person (largest person box)
+        active_person = None
+        max_area = 0
+        for box in persons:
+            x1, y1, x2, y2, conf = box
+            area = (x2 - x1) * (y2 - y1)
+            if area > max_area:
+                max_area = area
+                active_person = box
+
         # --- PPE Score ---
-        helmet_ok = "Hardhat"     in detected_labels and "NO-Hardhat"     not in detected_labels
-        vest_ok   = "Safety Vest" in detected_labels and "NO-Safety Vest" not in detected_labels
+        if active_person:
+            has_hardhat = any(is_inside_or_overlaps(h[:4], active_person[:4]) for h in hardhats)
+            has_no_hardhat = any(is_inside_or_overlaps(nh[:4], active_person[:4]) for nh in no_hardhats)
+            has_vest = any(is_inside_or_overlaps(v[:4], active_person[:4]) for v in vests)
+            has_no_vest = any(is_inside_or_overlaps(nv[:4], active_person[:4]) for nv in no_vests)
+        else:
+            has_hardhat = len(hardhats) > 0
+            has_no_hardhat = len(no_hardhats) > 0
+            has_vest = len(vests) > 0
+            has_no_vest = len(no_vests) > 0
+
+        # OCR fallback for helmet
+        if last_ocr_helmet_id and (frame_counter - last_ocr_helmet_seen_frame < 60):
+            has_hardhat = True
+            has_no_hardhat = False
+
+        helmet_ok = has_hardhat and not has_no_hardhat
+        vest_ok   = has_vest and not has_no_vest
         ppe_score = (50 if helmet_ok else 0) + (50 if vest_ok else 0)
 
         # --- Helmet ID OCR (every 20 frames to reduce CPU load) ---
-        if ppe_score > 0 and frame_counter % 20 == 0:
+        if active_person and frame_counter % 20 == 0:
             ocr_results = ocr_reader.readtext(frame, detail=1, paragraph=False)
             if ocr_results:
                 print(f"[OCR DEBUG] Found {len(ocr_results)} text region(s) in frame {frame_counter}")
@@ -311,6 +382,12 @@ try:
                     continue
 
                 print(f"[OCR DEBUG] Match found! Scanned: '{text_clean}' matches Registered: '{matched_registered_id}'")
+
+                # Cache detected helmet
+                last_ocr_helmet_seen_frame = frame_counter
+                last_ocr_helmet_id = matched_registered_id
+                helmet_ok = True
+                ppe_score = (50 if helmet_ok else 0) + (50 if vest_ok else 0)
 
                 # Draw bounding box around detected text
                 pts = [tuple(map(int, pt)) for pt in bbox]
@@ -461,8 +538,14 @@ try:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
 
         # --- HUD overlays ---
-        person_count = detected_labels.count("Person")
-        violation    = "NO-Hardhat" in detected_labels or "NO-Safety Vest" in detected_labels
+        person_count = len(persons)
+        if person_count > 0:
+            if active_person:
+                violation = (not helmet_ok) or (not vest_ok)
+            else:
+                violation = len(no_hardhats) > 0 or len(no_vests) > 0
+        else:
+            violation = False
 
         cv2.putText(annotated, f"Persons: {person_count}", (20, 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
