@@ -152,6 +152,20 @@ def login_api():
 
 @app.route("/api/logout")
 def logout():
+    global webcam_process
+    if webcam_process is not None:
+        try:
+            print(f"Terminating webcam process (pid={webcam_process.pid}) on logout...")
+            webcam_process.terminate()
+            try:
+                webcam_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                webcam_process.kill()
+                webcam_process.wait()
+            print("Webcam process terminated on logout.")
+        except Exception as e:
+            print(f"Error terminating webcam process on logout: {e}")
+        webcam_process = None
     session.clear()
     return redirect("/login.html")
 
@@ -399,6 +413,40 @@ def session_esp32_ip():
         [{"type": "text", "value": str(session["user_id"])}])
     return jsonify({"esp32_ip": user["esp32_ip"] if user else ""})
 
+@app.route("/api/esp32-cam-ip", methods=["GET"])
+def get_esp32_cam_ip():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    user = query_one("SELECT esp32_cam_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}])
+    return jsonify({"esp32_cam_ip": user["esp32_cam_ip"] if user and user.get("esp32_cam_ip") else ""})
+
+@app.route("/api/esp32-cam-ip", methods=["POST"])
+def set_esp32_cam_ip():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    ip = request.get_json().get("esp32_cam_ip", "").strip()
+    execute("UPDATE users SET esp32_cam_ip = ? WHERE id = ?",
+        [{"type": "text", "value": ip},
+         {"type": "text", "value": str(session["user_id"])}])
+    
+    uid = session["user_id"]
+    if os.getenv("RENDER") is None:
+        Timer(
+            1,
+            lambda: start_webcam_detection(uid)
+        ).start()
+        
+    return jsonify({"message": "ESP32-CAM IP saved."})
+
+@app.route("/api/session-esp32-cam-ip")
+def session_esp32_cam_ip():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    user = query_one("SELECT esp32_cam_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}])
+    return jsonify({"esp32_cam_ip": user["esp32_cam_ip"] if user and user.get("esp32_cam_ip") else ""})
+
 @app.route("/api/session-user-id")
 def session_user_id():
     if "user_id" not in session:
@@ -548,6 +596,21 @@ def start_webcam_detection(user_id):
     if os.getenv("RENDER"):
         return
     global webcam_process
+    if webcam_process is not None:
+        try:
+            print(f"Terminating previous webcam process (pid={webcam_process.pid})...")
+            webcam_process.terminate()
+            try:
+                webcam_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                print("Webcam process termination timed out, killing it...")
+                webcam_process.kill()
+                webcam_process.wait()
+            print("Previous webcam process terminated.")
+        except Exception as e:
+            print(f"Error terminating previous webcam process: {e}")
+        webcam_process = None
+
     script = Path(__file__).resolve().parent.parent / "interface" / "webcam_detection.py"
     if not script.exists():
         print(f"webcam_detection.py not found at {script}")
@@ -564,12 +627,6 @@ if __name__ == "__main__":
     if os.getenv("RENDER") is None:
         # Local only
         Timer(1, open_browser).start()
-
-        # Start webcam detection locally
-        try:
-            Timer(3, lambda: start_webcam_detection(1)).start()
-        except Exception as e:
-            print(f"Failed to start webcam detection: {e}")
 
     app.run(
         host="0.0.0.0",

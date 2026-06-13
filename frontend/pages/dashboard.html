@@ -398,6 +398,11 @@
                                 class="material-symbols-outlined group-hover:scale-110 transition-transform">router</span>
                             <span id="esp32-btn-label">Set ESP32 IP</span>
                         </button>
+                        <button id="esp32-cam-btn" onclick="openCamModal()"
+                            class="w-full mt-3 bg-surface-container-low border border-tertiary/30 hover:border-tertiary text-tertiary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
+                            <span class="material-symbols-outlined group-hover:scale-110 transition-transform">videocam</span>
+                            <span id="esp32-cam-btn-label">Set ESP32-CAM IP</span>
+                        </button>
                     </div>
                     <!-- Section 3: Recent Violations -->
                     <div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">
@@ -624,27 +629,26 @@
             </div>
         </div>
     </div>
-    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
-        id="helmetModal">
+
+    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="esp32CamModal">
         <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div
-                class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
-                <h3 class="font-headline-md text-headline-md text-on-surface">Scan Helmet QR Code</h3>
-                <button onclick="closeHelmetModal()" class="text-on-surface-variant hover:text-on-surface">
+            <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+                <h3 class="font-headline-md text-headline-md text-on-surface">ESP32-CAM IP Address</h3>
+                <button onclick="document.getElementById('esp32CamModal').classList.add('hidden')" class="text-on-surface-variant hover:text-on-surface">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             <div class="p-6 space-y-4">
-                <p class="font-body-md text-on-surface-variant">Point the camera at the helmet QR code, or enter the
-                    helmet ID manually.</p>
-                <video id="qr-video" class="w-full rounded-lg border border-surface-variant" autoplay></video>
-                <div class="flex gap-2">
-                    <input id="helmet-id-input" type="text" placeholder="Or enter helmet ID manually"
-                        class="flex-1 bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data" />
-                    <button onclick="saveHelmetId()"
-                        class="px-4 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save</button>
-                </div>
-                <p id="helmet-save-msg" class="text-tertiary font-body-md text-sm hidden">Helmet ID assigned!</p>
+                <p class="font-body-md text-on-surface-variant">Enter the IP shown on your ESP32-CAM serial monitor. Stream will be at <span class="font-mono-data text-primary">IP:81/stream</span></p>
+                <input id="esp32-cam-ip-input" type="text" placeholder="e.g. 10.36.176.216"
+                    class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data"/>
+                <p id="esp32-cam-save-msg" class="text-tertiary font-body-md text-sm hidden">Saved!</p>
+            </div>
+            <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end gap-3">
+                <button onclick="document.getElementById('esp32CamModal').classList.add('hidden')"
+                    class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Cancel</button>
+                <button onclick="saveEsp32CamIp()"
+                    class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save IP</button>
             </div>
         </div>
     </div>
@@ -882,64 +886,7 @@
                 }, 1500);
             }
         }
-        let currentHelmetWorkerId = null;
-        let qrStream = null;
 
-        async function scanHelmet(workerId) {
-            currentHelmetWorkerId = workerId;
-            document.getElementById('helmetModal').classList.remove('hidden');
-            document.getElementById('helmet-save-msg').classList.add('hidden');
-
-            // Start camera for QR scanning
-            try {
-                qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                const video = document.getElementById('qr-video');
-                video.srcObject = qrStream;
-
-                // Use BarcodeDetector if available
-                if ('BarcodeDetector' in window) {
-                    const detector = new BarcodeDetector({ formats: ['qr_code'] });
-                    const scanLoop = setInterval(async () => {
-                        try {
-                            const codes = await detector.detect(video);
-                            if (codes.length > 0) {
-                                const helmetId = codes[0].rawValue;
-                                document.getElementById('helmet-id-input').value = helmetId;
-                                clearInterval(scanLoop);
-                                await saveHelmetId();
-                            }
-                        } catch { }
-                    }, 500);
-                } else {
-                    // BarcodeDetector not supported — manual entry only
-                    console.log('BarcodeDetector not supported, use manual entry');
-                }
-            } catch (e) {
-                console.log('Camera not available, use manual entry');
-            }
-        }
-
-        function closeHelmetModal() {
-            if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
-            document.getElementById('helmetModal').classList.add('hidden');
-            document.getElementById('helmet-id-input').value = '';
-            currentHelmetWorkerId = null;
-        }
-
-        async function saveHelmetId() {
-            const helmetId = document.getElementById('helmet-id-input').value.trim();
-            if (!helmetId || !currentHelmetWorkerId) return;
-
-            const res = await fetch(`/api/workers/${currentHelmetWorkerId}/helmet`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ helmet_id: helmetId })
-            });
-            if (res.ok) {
-                document.getElementById('helmet-save-msg').classList.remove('hidden');
-                setTimeout(() => { closeHelmetModal(); loadWorkers(); }, 1500);
-            }
-        }
 
         // Poll for updates every 3 seconds to keep the attendance dashboard live
         setInterval(loadWorkers, 3000);
@@ -1045,6 +992,38 @@
                 alert('Connection error.');
             }
         }
+
+        // ESP32-CAM IP
+function openCamModal() {
+    fetch('/api/esp32-cam-ip').then(r => r.json()).then(d => {
+        document.getElementById('esp32-cam-ip-input').value = d.esp32_cam_ip || '';
+    });
+    document.getElementById('esp32CamModal').classList.remove('hidden');
+    document.getElementById('esp32-cam-save-msg').classList.add('hidden');
+}
+
+async function saveEsp32CamIp() {
+    const ip  = document.getElementById('esp32-cam-ip-input').value.trim();
+    const msg = document.getElementById('esp32-cam-save-msg');
+    const res = await fetch('/api/esp32-cam-ip', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ esp32_cam_ip: ip })
+    });
+    if (res.ok) {
+        msg.classList.remove('hidden');
+        document.getElementById('esp32-cam-btn-label').textContent = ip ? `CAM: ${ip}` : 'Set ESP32-CAM IP';
+        setTimeout(() => {
+            msg.classList.add('hidden');
+            document.getElementById('esp32CamModal').classList.add('hidden');
+        }, 1500);
+    }
+}
+
+fetch('/api/esp32-cam-ip').then(r => r.json()).then(d => {
+    if (d.esp32_cam_ip)
+        document.getElementById('esp32-cam-btn-label').textContent = `CAM: ${d.esp32_cam_ip}`;
+});
     </script>
 </body>
 

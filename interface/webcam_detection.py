@@ -4,6 +4,7 @@ import argparse
 import re
 import easyocr
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
+import time 
 
 from threading import Thread
 from ultralytics import YOLO
@@ -71,17 +72,41 @@ known_faces = load_known_faces()
 # -----------------------------
 # Open webcam — try indices 0, 1, 2
 # -----------------------------
-cap = None
-for cam_index in range(3):
-    _cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
-    if _cap.isOpened():
-        cap = _cap
-        print(f"Camera opened at index {cam_index}")
-        break
-    _cap.release()
+def get_cam_ip():
+    try:
+        user = query_one(
+            "SELECT esp32_cam_ip FROM users WHERE id = ?",
+            [{"type": "text", "value": MANAGER_USER_ID}]
+        )
+        return (user.get("esp32_cam_ip") or "").strip() if user else ""
+    except:
+        return ""
 
-if cap is None:
-    print("ERROR: No camera found at indices 0, 1, or 2.")
+cam_ip = get_cam_ip()
+if cam_ip:
+    stream_url = f"http://{cam_ip}:81/stream?rand={time.time()}"
+    print(f"Connecting to ESP32-CAM: {stream_url}")
+    cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
+    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)   # 5s timeout
+    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)              # reduce latency
+    if not cap.isOpened():
+        print("ESP32-CAM stream failed — falling back to USB webcam")
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    else:
+        print("ESP32-CAM stream connected!")
+
+        try:
+            requests.get(f"http://{cam_ip}:81/flash/on", timeout=2)
+            print("ESP32-CAM flash ON")
+        except Exception as e:
+            print("Could not turn flash ON:", e)
+else:
+    print("No ESP32-CAM IP set — using USB webcam")
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+if not cap.isOpened():
+    print("ERROR: No camera available")
     input("Press Enter to exit...")
     exit()
 
@@ -205,9 +230,6 @@ def ocr_matches_registered(ocr_text, registered_id):
             
     return True
 
-# -----------------------------
-# Non-blocking backend + ESP32 notify
-# -----------------------------
 def notify(wid, score_to_save, checkin_time, new_status):
     # Fetch current helmet_id for this worker from DB
     helmet_id = ""
@@ -220,6 +242,7 @@ def notify(wid, score_to_save, checkin_time, new_status):
     except:
         pass
 
+    # Post check-in to backend
     try:
         requests.post(f"{BACKEND_URL}/api/workers/checkin",
             json={
@@ -235,15 +258,31 @@ def notify(wid, score_to_save, checkin_time, new_status):
 
     ip = get_esp32_ip()
     if ip:
+        # LED trigger
         try:
-            if new_status == "Off-Site":
+            if new_status == "Active":
+                requests.get(f"http://{ip}/checkin", timeout=5)
+                print("Green light triggered")
+            else:
                 requests.get(f"http://{ip}/checkout", timeout=5)
                 print("Red light triggered")
-            elif new_status == "Active" and score_to_save == 0:
-                requests.get(f"http://{ip}/checkin", timeout=5)
-                print("Green light triggered (checked in with PPE score 0)")
         except Exception as e:
             print("ESP32 LED error:", e)
+
+        # Matrix: show PPE score on check-in, clear on check-out
+        try:
+            if new_status == "Active":
+                requests.get(
+                    f"http://{ip}/ppe",
+                    params={"score": score_to_save},
+                    timeout=5
+                )
+                print(f"Matrix showing PPE score: {score_to_save}")
+            else:
+                # checkout — matrix already clears in /checkout handler
+                pass
+        except Exception as e:
+            print("Matrix error:", e)
 
 # -----------------------------
 # Save helmet ID to backend
@@ -276,8 +315,23 @@ print("SiteSentinel Started — Press Q to quit")
 try:
     while True:
         ret, frame = cap.read()
+
         if not ret:
-            break
+            print("ESP32 stream lost. Reconnecting...")
+
+            cap.release()
+            cv2.destroyAllWindows()
+
+            time.sleep(1)
+
+            cap = cv2.VideoCapture(
+                f"http://{cam_ip}:81/stream",
+                cv2.CAP_FFMPEG
+            )
+
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+            continue
 
         frame_counter += 1
         annotated       = frame.copy()
@@ -570,7 +624,15 @@ try:
                 last_alarm_state = "OFF"
 
         cv2.imshow("SiteSentinel PPE Detection", annotated)
+
         if cv2.waitKey(1) & 0xFF == ord('q'):
+            try:
+                if cam_ip:
+                    requests.get(f"http://{cam_ip}:81/flash/off", timeout=2)
+                    print("ESP32-CAM flash OFF")
+            except Exception as e:
+                print("Could not turn flash OFF:", e)
+
             break
 
 except KeyboardInterrupt:
@@ -583,6 +645,12 @@ finally:
             print("Alarm/buzzer turned OFF on exit")
     except Exception as e:
         print(f"Could not turn off alarm on exit: {e}")
+    try:
+        if cam_ip:
+            requests.get(f"http://{cam_ip}:81/flash/off", timeout=2)
+            print("ESP32-CAM flash OFF on exit")
+    except:
+        pass
     cap.release()
     cv2.destroyAllWindows()
     print("System safely closed")
