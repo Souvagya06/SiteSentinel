@@ -1,0 +1,168 @@
+#include "esp_camera.h"
+#include <WiFi.h>
+#include "esp_http_server.h"
+
+const char* ssid     = "your ssid";
+const char* password = "your wifi password";
+
+// AI Thinker ESP32-CAM pin map
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+#define FLASH_LED_PIN      4
+
+httpd_handle_t stream_httpd = NULL;
+
+static esp_err_t stream_handler(httpd_req_t *req) {
+    camera_fb_t * fb  = NULL;
+    esp_err_t     res = ESP_OK;
+    char part_buf[64];
+
+    res = httpd_resp_set_type(req,
+        "multipart/x-mixed-replace; boundary=frame");
+    if (res != ESP_OK) return res;
+
+    while (true) {
+        fb = esp_camera_fb_get();
+        if (!fb) { res = ESP_FAIL; break; }
+
+        size_t hlen = snprintf(part_buf, 64,
+            "--frame\r\n"
+            "Content-Type: image/jpeg\r\n"
+            "Content-Length: %u\r\n\r\n",
+            fb->len);
+
+        res = httpd_resp_send_chunk(req, part_buf, hlen);
+        if (res == ESP_OK)
+            res = httpd_resp_send_chunk(req,
+                (const char*)fb->buf, fb->len);
+        if (res == ESP_OK)
+            res = httpd_resp_send_chunk(req, "\r\n", 2);
+
+        esp_camera_fb_return(fb);
+        if (res != ESP_OK) break;
+    }
+    return res;
+}
+
+static esp_err_t flash_on_handler(httpd_req_t *req) {
+    digitalWrite(FLASH_LED_PIN, HIGH);
+    httpd_resp_send(req, "Flash ON", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+static esp_err_t flash_off_handler(httpd_req_t *req) {
+    digitalWrite(FLASH_LED_PIN, LOW);
+    httpd_resp_send(req, "Flash OFF", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+void startCameraServer() {
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 81;
+
+    httpd_uri_t stream_uri = {
+        .uri       = "/stream",
+        .method    = HTTP_GET,
+        .handler   = stream_handler,
+        .user_ctx  = NULL
+    };
+    httpd_uri_t flash_on_uri = {
+        .uri = "/flash/on",
+        .method = HTTP_GET,
+        .handler = flash_on_handler,
+        .user_ctx = NULL
+    };
+
+    httpd_uri_t flash_off_uri = {
+        .uri = "/flash/off",
+        .method = HTTP_GET,
+        .handler = flash_off_handler,
+        .user_ctx = NULL
+    };
+    if (httpd_start(&stream_httpd, &config) == ESP_OK) {
+        httpd_register_uri_handler(stream_httpd, &stream_uri);
+        httpd_register_uri_handler(stream_httpd, &flash_on_uri);
+        httpd_register_uri_handler(stream_httpd, &flash_off_uri);
+
+        Serial.println("Stream server started → port 81");
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    Serial.println("Booting...");
+
+    camera_config_t config;
+    config.ledc_channel = LEDC_CHANNEL_0;
+    config.ledc_timer   = LEDC_TIMER_0;
+    config.pin_d0       = Y2_GPIO_NUM;
+    config.pin_d1       = Y3_GPIO_NUM;
+    config.pin_d2       = Y4_GPIO_NUM;
+    config.pin_d3       = Y5_GPIO_NUM;
+    config.pin_d4       = Y6_GPIO_NUM;
+    config.pin_d5       = Y7_GPIO_NUM;
+    config.pin_d6       = Y8_GPIO_NUM;
+    config.pin_d7       = Y9_GPIO_NUM;
+    config.pin_xclk     = XCLK_GPIO_NUM;
+    config.pin_pclk     = PCLK_GPIO_NUM;
+    config.pin_vsync    = VSYNC_GPIO_NUM;
+    config.pin_href     = HREF_GPIO_NUM;
+    config.pin_sscb_sda = SIOD_GPIO_NUM;
+    config.pin_sscb_scl = SIOC_GPIO_NUM;
+    config.pin_pwdn     = PWDN_GPIO_NUM;
+    config.pin_reset    = RESET_GPIO_NUM;
+    config.xclk_freq_hz = 20000000;
+    config.pixel_format = PIXFORMAT_JPEG;
+    config.frame_size   = FRAMESIZE_QVGA;
+    config.jpeg_quality = 20;
+    config.fb_count     = 2;
+
+    esp_err_t err = esp_camera_init(&config);
+    if (err != ESP_OK) {
+        Serial.printf("Camera init FAILED: 0x%x\n", err);
+        return;
+    }
+    pinMode(FLASH_LED_PIN, OUTPUT);
+    digitalWrite(FLASH_LED_PIN, HIGH);
+
+    // Improve image quality
+    sensor_t * s = esp_camera_sensor_get();
+    s->set_brightness(s, 0);
+    s->set_contrast(s, 0);
+    s->set_saturation(s, 0);
+    s->set_whitebal(s, 1);
+    s->set_awb_gain(s, 1);
+    s->set_exposure_ctrl(s, 1);
+    Serial.println("Camera initialized OK");
+
+    WiFi.begin(ssid, password);
+    Serial.print("Connecting to WiFi");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nConnected!");
+    Serial.print("Stream URL → http://");
+    Serial.print(WiFi.localIP());
+    Serial.println(":81/stream");
+
+    startCameraServer();
+}
+
+void loop() {
+    delay(1);
+}

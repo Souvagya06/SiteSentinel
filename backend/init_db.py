@@ -94,3 +94,8 @@ CREATE TABLE IF NOT EXISTS helmets (
 )
 """)
 print("Helmets table created successfully")
+
+try:
+    execute("ALTER TABLE users ADD COLUMN esp32_cam_ip TEXT DEFAULT ''")
+    print("Added esp32_cam_ip column")
+except: pass

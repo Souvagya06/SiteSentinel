@@ -1,0 +1,140 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <MD_Parola.h>
+#include <MD_MAX72xx.h>
+#include <SPI.h>
+
+const char* ssid     = "your ssid";
+const char* password = "your wifi password";
+
+WebServer server(80);
+
+const int buzzerPin   = 23;
+const int greenLedPin = 18;
+const int redLedPin   = 19;
+
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define MAX_DEVICES   1
+#define CLK_PIN       22
+#define DATA_PIN      21
+#define CS_PIN         5
+
+MD_Parola matrix = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
+
+unsigned long greenOffAt  = 0;
+unsigned long redOffAt    = 0;
+bool matrixActive         = false;
+char scoreDisplay[8]      = "";
+int scrollCount = 0;
+
+void alarmOn()  { digitalWrite(buzzerPin, HIGH); server.send(200, "text/plain", "Alarm ON"); }
+void alarmOff() { digitalWrite(buzzerPin, LOW);  server.send(200, "text/plain", "Alarm OFF"); }
+
+void checkinLight() {
+    digitalWrite(greenLedPin, HIGH);
+    digitalWrite(redLedPin,   LOW);
+    greenOffAt = millis() + 3000;
+    server.send(200, "text/plain", "Check-in light");
+}
+
+void checkoutLight() {
+    digitalWrite(redLedPin,   HIGH);
+    digitalWrite(greenLedPin, LOW);
+    redOffAt = millis() + 3000;
+    server.send(200, "text/plain", "Check-out light");
+}
+
+void showPPEScore() {
+    int score = server.arg("score").toInt();
+
+    matrix.displaySuspend(false);
+
+    if (score == 100) {
+        matrix.setIntensity(10);
+    } else if (score == 50) {
+        matrix.setIntensity(5);
+    } else {
+        matrix.setIntensity(2);
+    }
+
+    String s = String(score);
+    s.toCharArray(scoreDisplay, sizeof(scoreDisplay));
+
+    matrix.displayClear();
+
+    matrix.displayScroll(
+        scoreDisplay,
+        PA_CENTER,
+        PA_SCROLL_LEFT,
+        50
+    );
+
+    matrix.displayReset();
+
+    scrollCount = 0;
+    matrixActive = true;
+
+    server.send(200, "text/plain", "Score displayed: " + String(score));
+}
+
+void setup() {
+    Serial.begin(115200);
+
+    pinMode(buzzerPin,   OUTPUT);
+    pinMode(greenLedPin, OUTPUT);
+    pinMode(redLedPin,   OUTPUT);
+    digitalWrite(buzzerPin,   LOW);
+    digitalWrite(greenLedPin, LOW);
+    digitalWrite(redLedPin,   LOW);
+
+    matrix.begin();
+    matrix.setIntensity(5);
+    matrix.displayClear();
+
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nConnected!");
+    Serial.println(WiFi.localIP());
+
+    server.on("/on",       alarmOn);
+    server.on("/off",      alarmOff);
+    server.on("/checkin",  checkinLight);
+    server.on("/checkout", checkoutLight);
+    server.on("/ppe",      showPPEScore);
+
+    server.begin();
+}
+
+void loop() {
+    server.handleClient();
+
+    // Run PPE score animation 4 times
+    if (matrixActive) {
+        if (matrix.displayAnimate()) {
+
+            scrollCount++;
+
+            if (scrollCount >= 4) {
+                matrix.displayClear();
+                matrix.displaySuspend(true);
+                matrixActive = false;
+            }
+            else {
+                matrix.displayReset();
+            }
+        }
+    }
+
+    // Non-blocking LED off
+    if (greenOffAt && millis() > greenOffAt) {
+        digitalWrite(greenLedPin, LOW);
+        greenOffAt = 0;
+    }
+    if (redOffAt && millis() > redOffAt) {
+        digitalWrite(redLedPin, LOW);
+        redOffAt = 0;
+    }
+}
