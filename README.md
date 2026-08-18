@@ -4,7 +4,7 @@
 
 **SiteSentinel** is an AI, Computer Vision, and IoT-based construction site safety monitoring platform designed to improve worker safety and automate workforce attendance.
 
-The system combines **YOLOv8-based PPE detection**, **face recognition**, **Raspberry Pi camera streaming**, **GPU acceleration**, a **Turso database**, and **ESP32-based alerts** to monitor workers in real time.
+The system combines **YOLOv8-based PPE detection**, **face recognition**, **Raspberry Pi camera streaming**, **GPU acceleration**, a **Turso database** to monitor workers in real time.
 
 A worker can be identified through face recognition, automatically checked in or checked out, and monitored for Personal Protective Equipment (PPE) compliance.
 
@@ -160,7 +160,7 @@ The Raspberry Pi server handles:
 * Live Camera Streaming
 * Health Check
 * GPIO Control
-* ESP32/IoT Communication
+* IoT Communication
 * PPE Score Display Integration
 
 ---
@@ -198,7 +198,6 @@ SiteSentinel integrates IoT hardware for real-time safety alerts.
 Current components include:
 
 * Raspberry Pi 4
-* ESP32
 * Buzzer
 * LED Matrix Display
 
@@ -213,7 +212,7 @@ PPE Score Calculated
       ↓
 HTTP Request
       ↓
-Raspberry Pi / ESP32
+Raspberry Pi
       ↓
 Buzzer / LED Matrix Response
 ```
@@ -391,7 +390,7 @@ Worker Registered
                           │
                           ▼
 
-                   ESP32 / IoT System
+                      IoT System
                           │
                  ┌────────┴────────┐
                  ▼                 ▼
@@ -436,7 +435,6 @@ Worker Registered
 
 * Raspberry Pi 4
 * Raspberry Pi Camera
-* ESP32
 * Buzzer
 * LED Matrix
 
@@ -469,7 +467,7 @@ SiteSentinel
 │   └── test_images
 │
 ├── iot
-│   └── Raspberry Pi / ESP32 related files
+│   └── Raspberry Pi
 │
 ├── models
 │   ├── best.pt
@@ -530,9 +528,6 @@ TURSO_AUTH_TOKEN=
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
-
-PI_IP=
-ESP32_IP=
 ```
 
 Never upload your `.env` file to GitHub.
@@ -635,7 +630,6 @@ Do not commit the following:
 * Cloudinary API Secret
 * Database Credentials
 * Raspberry Pi IP configuration if private
-* ESP32 Configuration
 * API Keys
 
 Ensure `.env` is included in `.gitignore`.
@@ -658,7 +652,7 @@ The major integrated components include:
 * ✅ Turso Database Integration
 * ✅ Cloudinary Worker Image Storage
 * ✅ Raspberry Pi HTTP API
-* ✅ ESP32/Buzzer Integration
+* ✅ Buzzer Integration
 * ✅ LED Matrix PPE Score Display
 
 The PPE detection and scoring logic is currently being refined to ensure accurate association between valid person detection, detected safety equipment, and worker attendance events.
