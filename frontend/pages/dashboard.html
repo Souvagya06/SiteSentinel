@@ -391,18 +391,12 @@
                                 class="material-symbols-outlined group-hover:scale-110 transition-transform">construction</span>
                             Manage Helmets
                         </button>
-                        <button id="esp32-btn"
-                            onclick="document.getElementById('esp32Modal').classList.remove('hidden')"
+                        <button id="pi-btn"
+                            onclick="document.getElementById('piModal').classList.remove('hidden')"
                             class="w-full mt-3 bg-surface-container-low border border-secondary/30 hover:border-secondary text-secondary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
-                            <span
-                                class="material-symbols-outlined group-hover:scale-110 transition-transform">router</span>
-                            <span id="esp32-btn-label">Set ESP32 IP</span>
-                        </button>
-                        <button id="esp32-cam-btn" onclick="openCamModal()"
-                            class="w-full mt-3 bg-surface-container-low border border-tertiary/30 hover:border-tertiary text-tertiary py-3 px-4 rounded-lg font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-2 transition-all group">
-                            <span class="material-symbols-outlined group-hover:scale-110 transition-transform">videocam</span>
-                            <span id="esp32-cam-btn-label">Set ESP32-CAM IP</span>
-                        </button>
+                            <span class="material-symbols-outlined group-hover:scale-110 transition-transform">memory</span>
+                            <span id="pi-btn-label">Set Raspberry Pi IP</span>
+                        </button>       
                     </div>
                     <!-- Section 3: Recent Violations -->
                     <div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">
@@ -548,32 +542,30 @@
             </div>
         </div>
     </div>
-    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
-        id="esp32Modal">
+    <!-- Modal: Raspberry Pi IP -->
+    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm" id="piModal">
         <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div
-                class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
-                <h3 class="font-headline-md text-headline-md text-on-surface">ESP32 IP Address</h3>
-                <button onclick="document.getElementById('esp32Modal').classList.add('hidden')"
-                    class="text-on-surface-variant hover:text-on-surface">
+            <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+                <h3 class="font-headline-md text-headline-md text-on-surface">Raspberry Pi IP Address</h3>
+                <button onclick="document.getElementById('piModal').classList.add('hidden')" class="text-on-surface-variant hover:text-on-surface">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             <div class="p-6 space-y-4">
-                <p class="font-body-md text-on-surface-variant">Enter the IP shown on your ESP32 serial monitor.</p>
-                <input id="esp32-ip-input" type="text" placeholder="e.g. 192.168.1.105"
-                    class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data" />
-                <p id="esp32-save-msg" class="text-tertiary font-body-md text-sm hidden">Saved!</p>
+                <p class="font-body-md text-on-surface-variant">Enter the IP address of your Raspberry Pi shown on its terminal.</p>
+                <input id="pi-ip-input" type="text" placeholder="e.g. 10.205.70.159"
+                    class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none font-mono-data"/>
+                <p id="pi-save-msg" class="text-tertiary font-body-md text-sm hidden">Saved!</p>
             </div>
             <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-end gap-3">
-                <button onclick="document.getElementById('esp32Modal').classList.add('hidden')"
+                <button onclick="document.getElementById('piModal').classList.add('hidden')"
                     class="px-6 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Cancel</button>
-                <button onclick="saveEsp32Ip()"
-                    class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save
-                    IP</button>
+                <button onclick="savePiIp()"
+                    class="px-6 py-2 bg-primary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:bg-primary transition-colors">Save IP</button>
             </div>
         </div>
     </div>
+</div>
     <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
         id="manageHelmetsModal">
         <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -654,6 +646,15 @@
     </div>
     <script>
         // --- Load user info ---
+        fetch('/api/me')
+            .then(res => { if (!res.ok) window.location.href = '/login.html'; return res.json(); })
+            .then(data => {
+                const name = data.name || data.email || 'User';
+                document.getElementById('user-name').textContent = name;
+                const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                document.getElementById('user-initials').textContent = initials;
+            })
+            .catch(() => window.location.href = '/login.html');
         fetch('/api/me')
             .then(res => { if (!res.ok) window.location.href = '/login.html'; return res.json(); })
             .then(data => {
@@ -861,13 +862,6 @@
             await fetch(`/api/workers/${id}`, { method: 'DELETE' });
             loadWorkers();
         }
-        // Load ESP32 IP
-        fetch('/api/esp32-ip').then(r => r.json()).then(d => {
-            if (d.esp32_ip) {
-                document.getElementById('esp32-ip-input').value = d.esp32_ip;
-                document.getElementById('esp32-btn-label').textContent = `ESP32: ${d.esp32_ip}`;
-            }
-        });
 
         async function saveEsp32Ip() {
             const ip = document.getElementById('esp32-ip-input').value.trim();
@@ -920,7 +914,7 @@
                 }
 
                 tbody.innerHTML = helmets.map(h => {
-                    const isAssigned = h.status === 'Unavailable';
+                    const isAssigned = h.status === 'Occupied';
                     const statusColor = isAssigned ? 'bg-secondary-container/50 text-secondary border-secondary/20' : 'bg-tertiary/10 text-tertiary border-tertiary/20';
                     return `
                 <tr class="border-b border-surface-variant/10 hover:bg-surface-variant/10 transition-colors">
@@ -929,9 +923,9 @@
                         <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusColor}">${h.status}</span>
                     </td>
                     <td class="px-4 py-3 text-right">
-                        <button onclick="deleteHelmet(${h.id})" class="text-error hover:opacity-70 transition-opacity disabled:opacity-30" ${isAssigned ? 'disabled title="Cannot delete unavailable helmet"' : 'title="Delete helmet"'}>
+                        <button onclick="deleteHelmet('${h.helmet_id}')" class="text-error hover:opacity-70 transition-opacity disabled:opacity-30" ${isAssigned ? 'disabled title="Cannot delete unavailable helmet"' : 'title="Delete helmet"'}>
                             <span class="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
+                        </>
                     </td>
                 </tr>`;
                 }).join('');
@@ -993,15 +987,6 @@
             }
         }
 
-        // ESP32-CAM IP
-function openCamModal() {
-    fetch('/api/esp32-cam-ip').then(r => r.json()).then(d => {
-        document.getElementById('esp32-cam-ip-input').value = d.esp32_cam_ip || '';
-    });
-    document.getElementById('esp32CamModal').classList.remove('hidden');
-    document.getElementById('esp32-cam-save-msg').classList.add('hidden');
-}
-
 async function saveEsp32CamIp() {
     const ip  = document.getElementById('esp32-cam-ip-input').value.trim();
     const msg = document.getElementById('esp32-cam-save-msg');
@@ -1019,11 +1004,31 @@ async function saveEsp32CamIp() {
         }, 1500);
     }
 }
+// Raspberry Pi IP
+fetch('/api/pi-ip').then(r => r.json()).then(d => {
+    if (d.pi_ip) {
+        document.getElementById('pi-ip-input').value = d.pi_ip;
+        document.getElementById('pi-btn-label').textContent = `Pi: ${d.pi_ip}`;
+    }
+}).catch(() => {});
 
-fetch('/api/esp32-cam-ip').then(r => r.json()).then(d => {
-    if (d.esp32_cam_ip)
-        document.getElementById('esp32-cam-btn-label').textContent = `CAM: ${d.esp32_cam_ip}`;
-});
+async function savePiIp() {
+    const ip  = document.getElementById('pi-ip-input').value.trim();
+    const msg = document.getElementById('pi-save-msg');
+    const res = await fetch('/api/pi-ip', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ pi_ip: ip })
+    });
+    if (res.ok) {
+        msg.classList.remove('hidden');
+        document.getElementById('pi-btn-label').textContent = ip ? `Pi: ${ip}` : 'Set Raspberry Pi IP';
+        setTimeout(() => {
+            msg.classList.add('hidden');
+            document.getElementById('piModal').classList.add('hidden');
+        }, 1500);
+    }
+}
     </script>
 </body>
 

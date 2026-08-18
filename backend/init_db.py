@@ -68,11 +68,6 @@ try:
 except: pass
 
 try:
-    execute("ALTER TABLE users ADD COLUMN esp32_ip TEXT DEFAULT ''")
-    print("Added esp32_ip column")
-except: pass
-
-try:
     execute("ALTER TABLE workers ADD COLUMN helmet_id TEXT DEFAULT ''")
     print("Added helmet_id column")
 except: pass
@@ -95,7 +90,8 @@ CREATE TABLE IF NOT EXISTS helmets (
 """)
 print("Helmets table created successfully")
 
+
 try:
-    execute("ALTER TABLE users ADD COLUMN esp32_cam_ip TEXT DEFAULT ''")
-    print("Added esp32_cam_ip column")
+    execute("ALTER TABLE users ADD COLUMN pi_ip TEXT DEFAULT ''")
+    print("Added pi_ip column")
 except: pass
