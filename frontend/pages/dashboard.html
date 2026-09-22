@@ -514,6 +514,18 @@
                 </div>
                 <div>
                     <label
+                        class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">
+                        <span class="material-symbols-outlined text-[15px] align-middle mr-1">construction</span>
+                        Assign Helmet <span class="text-on-surface-variant/50 normal-case">(optional)</span>
+                    </label>
+                    <select id="w-helmetid"
+                        class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all font-mono-data">
+                        <option value="">— No helmet assigned yet —</option>
+                    </select>
+                    <p class="font-body-md text-[11px] text-on-surface-variant/60 mt-1">Select a registered &amp; available helmet to pre-assign to this worker.</p>
+                </div>
+                <div>
+                    <label
                         class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">Facial
                         Recognition Data</label>
                     <div id="drop-zone"
@@ -644,6 +656,65 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal: Assign Helmet to Worker -->
+    <div class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 bg-background/80 backdrop-blur-sm"
+        id="assignHelmetModal">
+        <div class="bg-surface border border-surface-variant/50 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-surface-variant/20 flex justify-between items-center bg-surface-container-low">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-tertiary">construction</span>
+                    <div>
+                        <h3 class="font-headline-md text-headline-md text-on-surface">Assign Helmet</h3>
+                        <p class="font-body-md text-[12px] text-on-surface-variant mt-0.5">Worker: <span id="assign-helmet-worker-name" class="text-on-surface font-semibold"></span></p>
+                    </div>
+                </div>
+                <button onclick="closeAssignHelmetModal()" class="text-on-surface-variant hover:text-on-surface">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div>
+                    <label class="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-2">
+                        Helmet ID
+                    </label>
+                    <select id="assign-helmet-select"
+                        class="w-full bg-surface-container-lowest border border-surface-variant/50 rounded-lg px-4 py-2.5 text-on-surface focus:border-tertiary focus:ring-1 focus:ring-tertiary/50 outline-none transition-all font-mono-data">
+                        <option value="">— No helmet assigned —</option>
+                    </select>
+                    <p class="font-body-md text-[11px] text-on-surface-variant/60 mt-2">
+                        Only <strong>Available</strong> helmets are listed. Occupied helmets are already assigned to other workers.
+                    </p>
+                </div>
+                <!-- Info box -->
+                <div class="bg-tertiary/5 border border-tertiary/15 rounded-lg p-3 flex gap-2">
+                    <span class="material-symbols-outlined text-tertiary text-[18px] mt-0.5 flex-shrink-0">info</span>
+                    <p class="font-body-md text-[12px] text-on-surface-variant">
+                        This ID should be <strong class="text-on-surface">written on the physical helmet</strong>. 
+                        The camera will read it via OCR during attendance check-in and verify it matches.
+                    </p>
+                </div>
+                <p id="assign-helmet-error" class="text-error font-body-md text-sm hidden"></p>
+                <p id="assign-helmet-success" class="text-tertiary font-body-md text-sm hidden"></p>
+            </div>
+            <div class="p-6 border-t border-surface-variant/20 bg-surface-container-low flex justify-between items-center gap-3">
+                <button onclick="saveHelmetAssignment(); document.getElementById('assign-helmet-select').value = '';"
+                    class="text-xs font-label-md uppercase tracking-wider text-error hover:opacity-70 border border-error/30 px-4 py-2 rounded-lg transition-colors"
+                    title="Remove helmet assignment">
+                    <span class="material-symbols-outlined text-[14px] align-middle mr-1">link_off</span> Unassign
+                </button>
+                <div class="flex gap-3">
+                    <button onclick="closeAssignHelmetModal()"
+                        class="px-5 py-2 border border-surface-variant text-on-surface rounded-lg font-label-md uppercase tracking-wider hover:bg-surface-variant/30 transition-colors">Cancel</button>
+                    <button onclick="saveHelmetAssignment()"
+                        class="px-5 py-2 bg-tertiary-container text-white rounded-lg font-label-md uppercase tracking-wider hover:opacity-90 transition-opacity flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[16px]">check</span> Assign
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- Load user info ---
         fetch('/api/me')
@@ -752,16 +823,33 @@
                 <span>${score}</span>
             </div>
         </td>
-        <td class="px-6 py-4 font-mono-data text-on-surface-variant">
+        <td class="px-6 py-4">
             ${w.helmet_id
-                                ? `<span class="px-2 py-1 bg-surface-variant rounded text-[11px] font-mono">${w.helmet_id}</span>`
-                                : `<span class="text-on-surface-variant/40 text-[11px]">—</span>`
-                            }
+                ? `<div class="flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[15px] ${isActive ? 'text-tertiary' : 'text-on-surface-variant/60'}">construction</span>
+                        <span class="px-2 py-0.5 rounded font-mono text-[11px] font-semibold tracking-wider
+                            ${isActive
+                                ? 'bg-tertiary/10 text-tertiary border border-tertiary/20'
+                                : 'bg-surface-variant text-on-surface-variant border border-surface-variant/50'
+                            }">${w.helmet_id}</span>
+                        ${isActive
+                            ? '<span class="text-[10px] text-tertiary font-bold uppercase tracking-wide">&#10003; Scanned</span>'
+                            : '<span class="text-[10px] text-on-surface-variant/50 uppercase tracking-wide">Assigned</span>'
+                        }
+                   </div>`
+                : `<span class="text-on-surface-variant/30 text-[11px] italic">—</span>`
+            }
         </td>
         <td class="px-6 py-4 text-right">
-            <button onclick="deleteWorker(${w.id})" class="text-error hover:opacity-70 transition-opacity" title="Remove worker">
-                <span class="material-symbols-outlined text-[18px]">delete</span>
-            </button>
+            <div class="flex items-center justify-end gap-2">
+                <button onclick="openAssignHelmetModal('${w.worker_id}', '${w.first_name} ${w.last_name}', '${w.helmet_id || ''}')" 
+                    class="text-on-surface-variant hover:text-tertiary transition-colors" title="Assign Helmet">
+                    <span class="material-symbols-outlined text-[18px]">construction</span>
+                </button>
+                <button onclick="deleteWorker(${w.id})" class="text-error hover:opacity-70 transition-opacity" title="Remove worker">
+                    <span class="material-symbols-outlined text-[18px]">delete</span>
+                </button>
+            </div>
         </td>
     </tr>`;
                     }).join('');
@@ -816,6 +904,7 @@
             const first_name = document.getElementById('w-first').value.trim();
             const last_name = document.getElementById('w-last').value.trim();
             const worker_id = document.getElementById('w-workerid').value.trim();
+            const helmet_id = document.getElementById('w-helmetid').value.trim();
 
             if (!first_name || !last_name || !worker_id) {
                 err.textContent = 'First name, last name and worker ID are required.';
@@ -836,7 +925,7 @@
             const response = await fetch('/api/workers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ first_name, last_name, worker_id, images })
+                body: JSON.stringify({ first_name, last_name, worker_id, images, helmet_id })
             });
             const data = await response.json();
 
@@ -845,6 +934,7 @@
                 document.getElementById('w-first').value = '';
                 document.getElementById('w-last').value = '';
                 document.getElementById('w-workerid').value = '';
+                document.getElementById('w-helmetid').value = '';
                 document.getElementById('image-preview').innerHTML = '';
                 selectedFiles = [];
                 loadWorkers();
@@ -884,6 +974,74 @@
 
         // Poll for updates every 3 seconds to keep the attendance dashboard live
         setInterval(loadWorkers, 3000);
+
+        // --- Populate helmet dropdown in Add Worker modal ---
+        async function populateHelmetDropdown(selectId = 'w-helmetid', currentVal = '') {
+            try {
+                const res  = await fetch('/api/helmets');
+                const data = await res.json();
+                const sel  = document.getElementById(selectId);
+                const available = (data.helmets || []).filter(h => h.status === 'Available' || h.helmet_id === currentVal);
+                sel.innerHTML = '<option value="">\u2014 No helmet assigned yet \u2014</option>'
+                    + available.map(h => `<option value="${h.helmet_id}" ${h.helmet_id === currentVal ? 'selected' : ''}>${h.helmet_id}</option>`).join('');
+            } catch(e) {
+                console.error('Failed to load helmets:', e);
+            }
+        }
+
+        // Populate when Add Worker modal opens
+        document.getElementById('addWorkerModal').addEventListener('click', function openCb(e) {
+            // Only when the modal itself becomes visible (triggered by the Add button)
+        });
+        document.querySelector('[onclick*="addWorkerModal"]').addEventListener('click', () => populateHelmetDropdown());
+
+        // --- Assign Helmet Modal ---
+        let _assignWorkerIdTarget = '';
+
+        function openAssignHelmetModal(workerId, workerName, currentHelmet) {
+            _assignWorkerIdTarget = workerId;
+            document.getElementById('assign-helmet-worker-name').textContent = workerName;
+            document.getElementById('assign-helmet-error').classList.add('hidden');
+            document.getElementById('assign-helmet-success').classList.add('hidden');
+            document.getElementById('assignHelmetModal').classList.remove('hidden');
+            populateHelmetDropdown('assign-helmet-select', currentHelmet);
+        }
+
+        function closeAssignHelmetModal() {
+            document.getElementById('assignHelmetModal').classList.add('hidden');
+            _assignWorkerIdTarget = '';
+        }
+
+        async function saveHelmetAssignment() {
+            const helmetId  = document.getElementById('assign-helmet-select').value.trim();
+            const errEl     = document.getElementById('assign-helmet-error');
+            const successEl = document.getElementById('assign-helmet-success');
+            errEl.classList.add('hidden');
+            successEl.classList.add('hidden');
+
+            if (!_assignWorkerIdTarget) return;
+
+            try {
+                const res  = await fetch(`/api/workers/${_assignWorkerIdTarget}/helmet`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ helmet_id: helmetId })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    successEl.textContent = helmetId ? `Helmet ${helmetId} assigned!` : 'Helmet unassigned.';
+                    successEl.classList.remove('hidden');
+                    loadWorkers();
+                    setTimeout(() => closeAssignHelmetModal(), 1500);
+                } else {
+                    errEl.textContent = data.error || 'Failed to assign helmet.';
+                    errEl.classList.remove('hidden');
+                }
+            } catch(e) {
+                errEl.textContent = 'Connection error.';
+                errEl.classList.remove('hidden');
+            }
+        }
 
         // --- Helmet Inventory Management ---
         function openHelmetsModal() {

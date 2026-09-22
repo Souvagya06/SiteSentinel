@@ -438,13 +438,47 @@ try:
                 if helmet_id_found in matched_helmet_ids:
                     continue
 
-                # Pass current PPE score so matrix shows it after helmet confirmed
-                score_for_matrix = ppe_score if ppe_score >= 0 else last_ppe_score if last_ppe_score >= 0 else 0
-                Thread(
-                    target=store_helmet_for_worker,
-                    args=(current_detected_worker_id, helmet_id_found, score_for_matrix),
-                    daemon=True
-                ).start()
+                # ── Verification against pre-assigned helmet ──
+                try:
+                    worker_row = query_one(
+                        "SELECT helmet_id FROM workers WHERE worker_id = ?",
+                        [{"type": "text", "value": current_detected_worker_id}]
+                    )
+                    pre_assigned = (worker_row.get("helmet_id") or "").strip().upper() if worker_row else ""
+                except Exception as e:
+                    print(f"Pre-assigned helmet lookup error: {e}")
+                    pre_assigned = ""
+
+                scanned_norm  = normalize_helmet_id(helmet_id_found)
+                assigned_norm = normalize_helmet_id(pre_assigned)
+
+                if pre_assigned:
+                    if scanned_norm == assigned_norm:
+                        # ✅ Correct helmet — confirm on-screen
+                        cv2.putText(annotated, f"HELMET OK: {pre_assigned}", (20, 230),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 100), 2)
+                        print(f"Helmet MATCH: scanned={helmet_id_found}, assigned={pre_assigned}")
+                        # Mark as matched and update DB / matrix
+                        score_for_matrix = ppe_score if ppe_score >= 0 else last_ppe_score if last_ppe_score >= 0 else 0
+                        Thread(
+                            target=store_helmet_for_worker,
+                            args=(current_detected_worker_id, pre_assigned, score_for_matrix),
+                            daemon=True
+                        ).start()
+                        matched_helmet_ids.add(helmet_id_found)
+                    else:
+                        # ❌ Mismatch — do NOT assign, show warning
+                        cv2.putText(annotated, f"HELMET MISMATCH! Expected: {pre_assigned}", (20, 230),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+                        print(f"Helmet MISMATCH: scanned={helmet_id_found}, expected={pre_assigned} — ignoring")
+                else:
+                    # No pre-assigned helmet — fallback: auto-assign any available helmet
+                    score_for_matrix = ppe_score if ppe_score >= 0 else last_ppe_score if last_ppe_score >= 0 else 0
+                    Thread(
+                        target=store_helmet_for_worker,
+                        args=(current_detected_worker_id, helmet_id_found, score_for_matrix),
+                        daemon=True
+                    ).start()
 
         # ── HUD ────────────────────────────────────────
         person_count = detected_labels.count("Person")
