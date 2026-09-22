@@ -175,6 +175,7 @@ def add_worker():
     last_name  = data.get("last_name",  "").strip()
     worker_id  = data.get("worker_id",  "").strip()
     images     = data.get("images", [])
+    helmet_id  = data.get("helmet_id",  "").strip().upper()
 
     if not first_name or not last_name or not worker_id:
         return jsonify({"error": "First name, last name and worker ID are required."}), 400
@@ -188,6 +189,20 @@ def add_worker():
     )
     if existing:
         return jsonify({"error": "A worker with this ID already exists."}), 409
+
+    # Validate pre-assigned helmet (optional)
+    if helmet_id:
+        helmet_row = query_one(
+            "SELECT status FROM helmets WHERE helmet_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": helmet_id},
+                {"type": "text", "value": str(session["user_id"])}
+            ]
+        )
+        if not helmet_row:
+            return jsonify({"error": f"Helmet {helmet_id} is not registered in your inventory."}), 400
+        if helmet_row["status"] == "Occupied":
+            return jsonify({"error": f"Helmet {helmet_id} is already assigned to another worker."}), 409
 
     image_urls = []
     for i, img_b64 in enumerate(images):
@@ -205,15 +220,26 @@ def add_worker():
     image_url = image_urls[0] if image_urls else ""
 
     execute(
-        "INSERT INTO workers (user_id, worker_id, first_name, last_name, image_url) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO workers (user_id, worker_id, first_name, last_name, image_url, helmet_id) VALUES (?, ?, ?, ?, ?, ?)",
         [
             {"type": "text", "value": str(session["user_id"])},
             {"type": "text", "value": worker_id},
             {"type": "text", "value": first_name},
             {"type": "text", "value": last_name},
             {"type": "text", "value": image_url},
+            {"type": "text", "value": helmet_id},
         ]
     )
+
+    # Mark helmet as Occupied if pre-assigned
+    if helmet_id:
+        execute(
+            "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": helmet_id},
+                {"type": "text", "value": str(session["user_id"])}
+            ]
+        )
 
     for url in image_urls:
         embedding      = get_embedding_from_url(url)
@@ -272,6 +298,77 @@ def get_worker_images(worker_id):
     except (KeyError, IndexError):
         urls = []
     return jsonify({"images": urls})
+
+# ─────────────────────────────────────────
+# Assign / Unassign Helmet per Worker
+# ─────────────────────────────────────────
+@app.route("/api/workers/<worker_id>/helmet", methods=["PUT"])
+def update_worker_helmet(worker_id):
+    """Assign or unassign a helmet for a specific worker."""
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    data      = request.get_json()
+    new_hid   = (data.get("helmet_id") or "").strip().upper()
+
+    # Fetch the worker
+    worker = query_one(
+        "SELECT helmet_id FROM workers WHERE worker_id = ? AND user_id = ?",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+    if not worker:
+        return jsonify({"error": "Worker not found."}), 404
+
+    old_hid = (worker.get("helmet_id") or "").strip().upper()
+
+    # Validate the new helmet if assigning
+    if new_hid:
+        helmet_row = query_one(
+            "SELECT status FROM helmets WHERE helmet_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": new_hid},
+                {"type": "text", "value": str(session["user_id"])}
+            ]
+        )
+        if not helmet_row:
+            return jsonify({"error": f"Helmet {new_hid} is not registered in your inventory."}), 400
+        if helmet_row["status"] == "Occupied" and new_hid != old_hid:
+            return jsonify({"error": f"Helmet {new_hid} is already assigned to another worker."}), 409
+
+    # Release old helmet if different
+    if old_hid and old_hid != new_hid:
+        execute(
+            "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": old_hid},
+                {"type": "text", "value": str(session["user_id"])}
+            ]
+        )
+
+    # Assign new helmet
+    execute(
+        "UPDATE workers SET helmet_id = ? WHERE worker_id = ? AND user_id = ?",
+        [
+            {"type": "text", "value": new_hid},
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+
+    if new_hid:
+        execute(
+            "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": new_hid},
+                {"type": "text", "value": str(session["user_id"])}
+            ]
+        )
+
+    action = f"Assigned helmet {new_hid} to worker {worker_id}" if new_hid else f"Unassigned helmet from worker {worker_id}"
+    return jsonify({"message": action})
 
 # ─────────────────────────────────────────
 # Helmets
