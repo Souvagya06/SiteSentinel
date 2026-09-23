@@ -6,6 +6,7 @@ import time
 import easyocr
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from stream_reader import PiStream
+from pi_controller import PiController
 from threading import Thread
 from ultralytics import YOLO
 import cv2
@@ -49,7 +50,7 @@ if PI is None or not PI.get("pi_ip"):
 
 PI_IP = PI["pi_ip"]
 stream = PiStream(PI_IP)
-from pi_controller import PiController
+
 
 pi = PiController(PI_IP)
 print("=" * 60)

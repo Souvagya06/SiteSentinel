@@ -29,3 +29,13 @@ violations/
 
 # Temporary Files
 temp/
+
+# ML Models
+*.pt
+*.pth
+*.onnx
+*.pb
+*.h5
+*.pkl
+*.bin
+models/

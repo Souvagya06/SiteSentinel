@@ -58,6 +58,11 @@ try:
 except: pass
 
 try:
+    execute("ALTER TABLE workers ADD COLUMN checkout_time TEXT DEFAULT ''")
+    print("Added checkout_time column")
+except: pass
+
+try:
     execute("ALTER TABLE workers ADD COLUMN ppe_score INTEGER DEFAULT 0")
     print("Added ppe_score column")
 except: pass

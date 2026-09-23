@@ -525,13 +525,24 @@ def worker_checkin():
     now       = datetime.now()
     date_str  = now.strftime("%Y-%m-%d")
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    time_str  = now.strftime("%I:%M %p")   # 12-hour with AM/PM for checkout
 
-    worker_update_sql = "UPDATE workers SET checkin_time = ?, ppe_score = ?, status = ?"
-    worker_update_args = [
-        {"type": "text", "value": checkin_time},
-        {"type": "text", "value": str(ppe_score)},
-        {"type": "text", "value": status},
-    ]
+    if event == "CHECK-IN":
+        # On check-in: update checkin_time, clear checkout_time
+        worker_update_sql = "UPDATE workers SET checkin_time = ?, checkout_time = '', ppe_score = ?, status = ?"
+        worker_update_args = [
+            {"type": "text", "value": checkin_time or time_str},
+            {"type": "text", "value": str(ppe_score)},
+            {"type": "text", "value": status},
+        ]
+    else:
+        # On check-out: update checkout_time and status, leave checkin_time unchanged
+        worker_update_sql = "UPDATE workers SET checkout_time = ?, ppe_score = ?, status = ?"
+        worker_update_args = [
+            {"type": "text", "value": time_str},
+            {"type": "text", "value": str(ppe_score)},
+            {"type": "text", "value": status},
+        ]
 
     if helmet_id:
         worker_update_sql += ", helmet_id = ?"
