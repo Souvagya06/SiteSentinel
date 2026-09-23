@@ -1,229 +1,616 @@
 <!DOCTYPE html>
-
-<html class="dark" lang="en"><head>
+<html lang="en">
+<head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>SiteSentinel | AI-Powered Construction Site Safety Monitoring</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<meta name="description" content="Monitor PPE compliance, worker attendance, and safety violations in real-time using advanced Computer Vision and IoT integration."/>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
-        }
-        .material-symbols-outlined.fill {
-            font-variation-settings: 'FILL' 1;
-        }
-    </style>
-<script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    "colors": {
-                        "tertiary": "#4edea3",
-                        "on-tertiary": "#003824",
-                        "on-primary-container": "#572000",
-                        "outline-variant": "#5a4136",
-                        "primary": "#ffb693",
-                        "on-tertiary-fixed": "#002113",
-                        "surface-container": "#201f20",
-                        "on-secondary": "#213145",
-                        "surface-container-lowest": "#0e0e0f",
-                        "on-secondary-fixed": "#0b1c30",
-                        "error-container": "#93000a",
-                        "on-background": "#e5e2e3",
-                        "on-surface": "#e5e2e3",
-                        "on-secondary-fixed-variant": "#38485d",
-                        "secondary-container": "#3a4a5f",
-                        "primary-fixed": "#ffdbcc",
-                        "inverse-surface": "#e5e2e3",
-                        "background": "#131314",
-                        "on-primary": "#561f00",
-                        "on-tertiary-fixed-variant": "#005236",
-                        "on-tertiary-container": "#003925",
-                        "surface-tint": "#ffb693",
-                        "secondary": "#b7c8e1",
-                        "on-secondary-container": "#a9bad3",
-                        "surface-bright": "#3a393a",
-                        "on-primary-fixed": "#351000",
-                        "primary-fixed-dim": "#ffb693",
-                        "surface": "#131314",
-                        "secondary-fixed-dim": "#b7c8e1",
-                        "outline": "#a98a7d",
-                        "inverse-on-surface": "#313031",
-                        "tertiary-container": "#00ae78",
-                        "secondary-fixed": "#d3e4fe",
-                        "on-error": "#690005",
-                        "on-error-container": "#ffdad6",
-                        "surface-container-low": "#1c1b1c",
-                        "inverse-primary": "#a04100",
-                        "surface-container-high": "#2a2a2b",
-                        "surface-dim": "#131314",
-                        "error": "#ffb4ab",
-                        "surface-variant": "#353436",
-                        "on-primary-fixed-variant": "#7a3000",
-                        "surface-container-highest": "#353436",
-                        "on-surface-variant": "#e2bfb0",
-                        "tertiary-fixed-dim": "#4edea3",
-                        "primary-container": "#ff6b00",
-                        "tertiary-fixed": "#6ffbbe"
-                    },
-                    "borderRadius": {
-                        "DEFAULT": "0.25rem",
-                        "lg": "0.5rem",
-                        "xl": "0.75rem",
-                        "full": "9999px"
-                    },
-                    "spacing": {
-                        "md": "24px",
-                        "xs": "4px",
-                        "xl": "64px",
-                        "lg": "40px",
-                        "gutter": "24px",
-                        "margin-mobile": "16px",
-                        "sm": "12px",
-                        "base": "8px",
-                        "margin-desktop": "48px"
-                    },
-                    "fontFamily": {
-                        "headline-lg-mobile": ["Geist"],
-                        "mono-data": ["Geist"],
-                        "headline-lg": ["Geist"],
-                        "headline-md": ["Geist"],
-                        "display-lg": ["Geist"],
-                        "body-md": ["Inter"],
-                        "body-lg": ["Inter"],
-                        "label-md": ["Geist"]
-                    },
-                    "fontSize": {
-                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
-                        "mono-data": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
-                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
-                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "500" }],
-                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
-                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
-                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
-                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }]
-                    }
-                }
-            }
-        }
-    </script>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #080810;
+    --bg-2: #0d0d1a;
+    --surface: rgba(255,255,255,0.03);
+    --surface-hover: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.08);
+    --border-bright: rgba(255,255,255,0.15);
+    --primary: #ff6b2b;
+    --primary-glow: rgba(255,107,43,0.3);
+    --primary-dim: rgba(255,107,43,0.12);
+    --accent: #00d4aa;
+    --accent-glow: rgba(0,212,170,0.25);
+    --accent-dim: rgba(0,212,170,0.1);
+    --error: #ff4757;
+    --text: #f0eeff;
+    --text-2: rgba(240,238,255,0.6);
+    --text-3: rgba(240,238,255,0.35);
+    --radius: 12px;
+    --radius-lg: 20px;
+    --radius-xl: 28px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Mesh background ── */
+  .mesh-bg {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,107,43,0.12) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 110%, rgba(0,212,170,0.09) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 60% at 50% 50%, rgba(80,50,200,0.05) 0%, transparent 70%);
+    animation: meshShift 12s ease-in-out infinite alternate;
+  }
+  @keyframes meshShift {
+    0%   { opacity: 1; transform: scale(1) rotate(0deg); }
+    100% { opacity: 0.85; transform: scale(1.04) rotate(1deg); }
+  }
+
+  /* ── Grid pattern ── */
+  .grid-pattern {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+  }
+
+  /* ── Floating orbs ── */
+  .orb {
+    position: fixed; border-radius: 50%; pointer-events: none; z-index: 0;
+    filter: blur(80px); animation: orbFloat 20s ease-in-out infinite alternate;
+  }
+  .orb-1 { width: 600px; height: 600px; top: -200px; left: -150px; background: radial-gradient(circle, rgba(255,107,43,0.08) 0%, transparent 70%); animation-duration: 18s; }
+  .orb-2 { width: 500px; height: 500px; bottom: -150px; right: -100px; background: radial-gradient(circle, rgba(0,212,170,0.07) 0%, transparent 70%); animation-duration: 24s; animation-delay: -5s; }
+  .orb-3 { width: 300px; height: 300px; top: 40%; left: 60%; background: radial-gradient(circle, rgba(130,80,255,0.06) 0%, transparent 70%); animation-duration: 15s; animation-delay: -10s; }
+  @keyframes orbFloat {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(30px, -20px) scale(1.05); }
+    100% { transform: translate(-20px, 30px) scale(0.95); }
+  }
+
+  /* ── Navbar ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    padding: 0 48px;
+    height: 68px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(8,8,16,0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.3s;
+  }
+  .nav-logo {
+    display: flex; align-items: center; gap: 10px;
+    text-decoration: none;
+  }
+  .nav-logo-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--primary), #ff8c42);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 20px var(--primary-glow);
+  }
+  .nav-logo-icon .material-symbols-outlined { font-size: 20px; color: white; font-variation-settings: 'FILL' 1; }
+  .nav-logo-text { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); }
+  .nav-logo-text span { color: var(--primary); }
+  .nav-links { display: flex; align-items: center; gap: 8px; }
+  .nav-link {
+    padding: 7px 16px; border-radius: 8px; text-decoration: none;
+    font-size: 14px; font-weight: 500; color: var(--text-2);
+    transition: all 0.2s;
+  }
+  .nav-link:hover { color: var(--text); background: var(--surface-hover); }
+  .nav-link.active { color: var(--primary); }
+  .nav-actions { display: flex; align-items: center; gap: 12px; }
+  .btn-ghost {
+    padding: 8px 20px; border-radius: 8px; text-decoration: none;
+    font-size: 14px; font-weight: 500; color: var(--text-2);
+    transition: all 0.2s; border: 1px solid transparent;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--border-bright); }
+  .btn-primary {
+    padding: 9px 22px; border-radius: 10px; text-decoration: none;
+    font-size: 14px; font-weight: 600; color: white;
+    background: linear-gradient(135deg, var(--primary), #ff8c42);
+    box-shadow: 0 4px 20px var(--primary-glow);
+    transition: all 0.25s; border: none; cursor: pointer;
+    position: relative; overflow: hidden;
+  }
+  .btn-primary::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+    opacity: 0; transition: opacity 0.25s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 30px var(--primary-glow); }
+  .btn-primary:hover::before { opacity: 1; }
+
+  /* ── Main ── */
+  main { position: relative; z-index: 10; }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: grid; grid-template-columns: 1fr 1fr;
+    align-items: center; gap: 80px;
+    padding: 120px 80px 80px;
+    max-width: 1400px; margin: 0 auto;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 100px;
+    background: var(--primary-dim); border: 1px solid rgba(255,107,43,0.25);
+    margin-bottom: 28px;
+  }
+  .badge-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 8px var(--primary);
+    animation: pulseDot 2s ease-in-out infinite;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--primary); }
+    50% { opacity: 0.7; box-shadow: 0 0 16px var(--primary); }
+  }
+  .badge-text { font-size: 11px; font-weight: 600; color: var(--primary); letter-spacing: 0.07em; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+
+  .hero-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(40px, 5vw, 64px);
+    font-weight: 700; line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--text); margin-bottom: 24px;
+  }
+  .hero-title .highlight {
+    background: linear-gradient(135deg, var(--primary), #ff8c42, #ffb347);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    position: relative;
+  }
+  .hero-desc {
+    font-size: 17px; line-height: 1.7;
+    color: var(--text-2); max-width: 540px; margin-bottom: 40px;
+  }
+  .hero-ctas { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 56px; }
+  .btn-secondary {
+    padding: 10px 24px; border-radius: 10px; text-decoration: none;
+    font-size: 14px; font-weight: 600; color: var(--text);
+    background: var(--surface); border: 1px solid var(--border-bright);
+    transition: all 0.25s; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-secondary:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.25); transform: translateY(-1px); }
+
+  .hero-social-proof { display: flex; align-items: center; gap: 16px; }
+  .hero-avatars { display: flex; }
+  .hero-avatars img {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 2px solid var(--bg); margin-left: -10px;
+    object-fit: cover;
+  }
+  .hero-avatars img:first-child { margin-left: 0; }
+  .hero-proof-text { font-size: 13px; color: var(--text-2); }
+  .hero-proof-text strong { color: var(--text); }
+
+  /* ── Hero Visual ── */
+  .hero-visual {
+    position: relative;
+  }
+  .hero-card-wrap {
+    position: relative;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--border), 0 40px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .hero-img {
+    width: 100%; aspect-ratio: 4/3; object-fit: cover;
+    display: block; opacity: 0.55;
+    filter: saturate(0.7) contrast(1.1);
+    transition: all 0.7s;
+  }
+  .hero-card-wrap:hover .hero-img { opacity: 0.65; transform: scale(1.02); }
+
+  /* bounding boxes */
+  .bb {
+    position: absolute; border-radius: 6px;
+    border: 1.5px dashed; animation: bbPulse 3s ease-in-out infinite;
+  }
+  .bb-ok { top: 25%; left: 15%; width: 110px; height: 170px; border-color: var(--accent); }
+  .bb-err { top: 45%; right: 25%; width: 85px; height: 130px; border-color: var(--error); }
+  .bb-label {
+    position: absolute; top: -1px; right: -1px;
+    font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    padding: 2px 6px; border-radius: 0 6px 0 4px;
+    letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap;
+  }
+  .bb-ok .bb-label { background: var(--accent); color: #002a22; }
+  .bb-err .bb-label { background: var(--error); color: white; }
+  @keyframes bbPulse {
+    0%, 100% { opacity: 0.85; }
+    50%       { opacity: 1; }
+  }
+
+  /* stats overlay */
+  .hero-stats-overlay {
+    position: absolute; bottom: 16px; left: 16px; right: 16px;
+    background: rgba(8,8,16,0.75);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-bright);
+    border-radius: 14px; padding: 16px 20px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .stat-item { display: block; }
+  .stat-label { font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 500; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; }
+  .stat-value.orange { color: var(--primary); }
+  .stat-value.green { color: var(--accent); }
+  .stat-value.red { color: var(--error); }
+  .live-dot { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+  .live-dot span.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulseDot 1.8s ease-in-out infinite; }
+  .live-dot span.txt { font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--accent); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  /* corner accents */
+  .corner-accent {
+    position: absolute; width: 20px; height: 20px;
+  }
+  .ca-tl { top: 12px; left: 12px; border-top: 2px solid var(--primary); border-left: 2px solid var(--primary); border-radius: 4px 0 0 0; }
+  .ca-tr { top: 12px; right: 12px; border-top: 2px solid var(--primary); border-right: 2px solid var(--primary); border-radius: 0 4px 0 0; }
+  .ca-bl { bottom: 12px; left: 12px; border-bottom: 2px solid var(--primary); border-left: 2px solid var(--primary); border-radius: 0 0 0 4px; }
+  .ca-br { bottom: 12px; right: 12px; border-bottom: 2px solid var(--primary); border-right: 2px solid var(--primary); border-radius: 0 0 4px 0; }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    position: relative; z-index: 10;
+    max-width: 1400px; margin: 0 auto;
+    padding: 0 80px 80px;
+  }
+  .stats-bar-inner {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .stat-block {
+    background: var(--bg);
+    padding: 32px 28px;
+    position: relative; overflow: hidden;
+    transition: background 0.2s;
+  }
+  .stat-block:hover { background: var(--surface-hover); }
+  .stat-block::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .stat-block:hover::before { opacity: 1; }
+  .stat-block-num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 36px; font-weight: 700; color: var(--text);
+    margin-bottom: 6px;
+  }
+  .stat-block-num span { color: var(--primary); }
+  .stat-block-label { font-size: 13px; color: var(--text-2); font-weight: 400; }
+
+  /* ── Features ── */
+  .features-section {
+    position: relative; z-index: 10;
+    max-width: 1400px; margin: 0 auto;
+    padding: 40px 80px 100px;
+  }
+  .section-eyebrow {
+    font-size: 11px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    color: var(--primary); letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(28px, 3vw, 40px); font-weight: 700;
+    letter-spacing: -0.02em; color: var(--text);
+    margin-bottom: 16px; max-width: 560px;
+  }
+  .section-desc { font-size: 16px; color: var(--text-2); max-width: 500px; margin-bottom: 56px; line-height: 1.7; }
+
+  .features-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .feature-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    transition: all 0.3s;
+    position: relative; overflow: hidden;
+  }
+  .feature-card::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit;
+    background: radial-gradient(circle at 30% 30%, rgba(255,107,43,0.07) 0%, transparent 60%);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .feature-card:hover { border-color: var(--border-bright); transform: translateY(-3px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+  .feature-card:hover::after { opacity: 1; }
+  .feature-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: var(--primary-dim); border: 1px solid rgba(255,107,43,0.2);
+    display: flex; align-items: center; justify-content: center; margin-bottom: 20px;
+  }
+  .feature-icon .material-symbols-outlined { font-size: 24px; color: var(--primary); font-variation-settings: 'FILL' 1; }
+  .feature-icon.teal { background: var(--accent-dim); border-color: rgba(0,212,170,0.2); }
+  .feature-icon.teal .material-symbols-outlined { color: var(--accent); }
+  .feature-title { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+  .feature-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+  /* ── Footer ── */
+  footer {
+    position: relative; z-index: 10;
+    border-top: 1px solid var(--border);
+    padding: 48px 80px;
+    max-width: 1400px; margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 24px;
+  }
+  .footer-logo { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; color: var(--text); }
+  .footer-logo span { color: var(--primary); }
+  .footer-copy { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+  .footer-links { display: flex; gap: 28px; flex-wrap: wrap; }
+  .footer-link { font-size: 13px; color: var(--text-2); text-decoration: none; transition: color 0.2s; }
+  .footer-link:hover { color: var(--primary); }
+
+  /* ── Animations ── */
+  .fade-up { opacity: 0; transform: translateY(24px); animation: fadeUp 0.7s ease forwards; }
+  .fade-up:nth-child(1) { animation-delay: 0.1s; }
+  .fade-up:nth-child(2) { animation-delay: 0.2s; }
+  .fade-up:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide-in { opacity: 0; transform: translateX(30px); animation: slideIn 0.8s ease 0.3s forwards; }
+  @keyframes slideIn {
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+  /* ── Responsive ── */
+  @media (max-width: 1024px) {
+    .hero { grid-template-columns: 1fr; gap: 60px; padding: 100px 32px 60px; }
+    .hero-title { font-size: 42px; }
+    .stats-bar { padding: 0 32px 60px; }
+    .stats-bar-inner { grid-template-columns: repeat(2, 1fr); }
+    .features-section { padding: 40px 32px 80px; }
+    .features-grid { grid-template-columns: repeat(2, 1fr); }
+    nav { padding: 0 24px; }
+    .nav-links { display: none; }
+    footer { padding: 40px 32px; }
+  }
+  @media (max-width: 640px) {
+    .features-grid { grid-template-columns: 1fr; }
+    .stats-bar-inner { grid-template-columns: repeat(2, 1fr); }
+    .hero-ctas { flex-direction: column; align-items: flex-start; }
+    .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+  }
+</style>
 </head>
-<body class="bg-background text-on-background antialiased min-h-screen flex flex-col font-body-md overflow-x-hidden">
-<!-- TopNavBar -->
-<header class="bg-background/80 backdrop-blur-xl border-b border-surface-variant/10 fixed top-0 w-full z-50">
-<div class="flex justify-between items-center px-margin-mobile md:px-margin-desktop py-4 max-w-[1600px] mx-auto w-full">
-<div class="font-headline-md text-headline-md font-bold text-primary tracking-tight">
-                SiteSentinel
-            </div>
-<nav class="hidden md:flex items-center gap-md">
-<a class="font-body-lg text-body-lg text-primary font-bold border-b-2 border-primary pb-1 transition-all duration-200 ease-in-out" href="#">Platform</a>
-<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/20 px-3 py-2 rounded-lg transition-all duration-200 ease-in-out" href="#">Solutions</a>
-<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/20 px-3 py-2 rounded-lg transition-all duration-200 ease-in-out" href="#">Enterprise</a>
-<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/20 px-3 py-2 rounded-lg transition-all duration-200 ease-in-out" href="#">Pricing</a>
+<body>
+
+<!-- Background layers -->
+<div class="mesh-bg"></div>
+<div class="grid-pattern"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<!-- Navbar -->
+<nav>
+  <a class="nav-logo" href="#">
+    <div class="nav-logo-icon">
+      <span class="material-symbols-outlined">precision_manufacturing</span>
+    </div>
+    <span class="nav-logo-text">Site<span>Sentinel</span></span>
+  </a>
+  <div class="nav-links">
+    <a class="nav-link active" href="#">Platform</a>
+    <a class="nav-link" href="#">Solutions</a>
+    <a class="nav-link" href="#">Enterprise</a>
+    <a class="nav-link" href="#">Pricing</a>
+  </div>
+  <div class="nav-actions">
+    <a class="btn-ghost" href="./login.html">Login</a>
+    <button class="btn-primary" id="nav-demo-btn">Request Demo</button>
+  </div>
 </nav>
-<div class="flex items-center gap-sm">
-<a class="hidden md:inline-flex font-body-lg text-body-lg text-on-surface-variant hover:text-on-surface transition-colors duration-200" href="./login.html">Login</a>
-<button class="bg-primary-container text-background font-label-md text-label-md uppercase px-4 py-2 rounded-lg hover:opacity-90 transition-opacity">Request Demo</button>
-</div>
-</div>
-</header>
-<!-- Main Content -->
-<main class="flex-grow pt-[80px]">
-<!-- Hero Section -->
-<section class="relative px-margin-mobile md:px-margin-desktop py-xl lg:py-[120px] max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-xl items-center">
-<!-- Hero Text -->
-<div class="z-10 flex flex-col gap-lg">
-<div class="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-full w-fit">
-<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-<span class="font-label-md text-label-md text-primary uppercase">v2.4 Deployed Globally</span>
-</div>
-<h1 class="font-display-lg text-display-lg md:text-[64px] md:leading-[72px] text-on-surface">
-                    AI-Powered Construction Site <br class="hidden lg:block"/> <span class="text-primary">Safety Monitoring</span>
-</h1>
-<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
-                    Monitor PPE compliance, worker attendance, safety violations, and site risks in real-time using advanced Computer Vision and IoT integration. Achieve zero-incident sites with predictive analytics.
-                </p>
-<div class="flex flex-col sm:flex-row gap-sm pt-sm">
-<a class="bg-primary-container text-background font-label-md text-label-md uppercase px-6 py-3 rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2" href="./login.html">
-                        Get Started
-                        <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
-</a>
-<button class="border border-outline-variant bg-surface-container-low hover:bg-surface-variant/30 text-on-surface font-label-md text-label-md uppercase px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
-<span class="material-symbols-outlined text-[18px]">play_circle</span>
-                        Watch Demo
-                    </button>
-</div>
-<div class="flex items-center gap-md pt-lg border-t border-surface-variant/20 mt-sm">
-<div class="flex -space-x-3">
-<img alt="User avatar" class="w-10 h-10 rounded-full border-2 border-background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDonJfIEE0zBhTJW9lsZtqRdtYSA3t_ftyjc1_DJXS7t8zQavArxoy0ZzL3nZlQge-5eiPkMOwlPhBOh4dh93VX7arq3-k4uFiQQUHpr5Q1PoYHIFyOFnBlCSuii_E9IF9_jbL_PykKJDr613tQ_SNfcA5UaUApzyScQsQar1CiBUVV8kVd-kivtP-E67H9MUIjSugHrtP1D7sy-MjuTzZgS7I8VVkU58DvGdIFkgcrC9IJAb9d8Z3UMQ-ZmaE1ZY5bAwVKwKGGgeo"/>
-<img alt="User avatar" class="w-10 h-10 rounded-full border-2 border-background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2b5JCcwdxDyMakZ6E2YstQ_RMZjnadWilhnbVv4SsIyOBZjLyspA6LO6XqsNrKkFK70XmWNMnvXQBdAbYEI1-7Og3b2bS7IoUwE_d5743HzMPESRtaIasKmt1SI1xuxPfIYoXuNDQWvxwGMOzFahWzsLtrp5lAticC2BMIkqlP7x2zxy1tZbXJf6zQe5K1eNwDcxYNf5GEEfYi-9JyDt3SehvMkzs1FIPSp4_1I8D3Q78cyAe5X8FYU72FwUzOMDkcu1c9ugTW4w"/>
-<img alt="User avatar" class="w-10 h-10 rounded-full border-2 border-background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDB-iuDnZHx-ufR4eraywl9ySAAiFKh3a2D_NCn_Fq12SNSin42dgSXFlt3jZdBNNPHYapybKrU1aPkF-onQ62Noz-VohYk2yM3npMQG-r3I79gMPJRu8_-e-0Ayzmjzc2MDdRUruNwuenxKuVMAv4o_LHLXQTP0G9uDBGGNBUwngf4clu9A53e5cjUlqMHfz8ck3Kmrr_BvH1PsrWZigc84sG80tx71o_JB-XLSAbJISBIDYnE8246fIx-z_5Bozf1kiqxONtCTkI"/>
-</div>
-<div class="font-body-md text-body-md text-on-surface-variant">
-                        Trusted by 500+ site managers globally.
-                    </div>
-</div>
-</div>
-<!-- Hero Illustration (Glassmorphism Concept) -->
-<div class="relative w-full h-[400px] md:h-[600px] rounded-xl border border-surface-variant/30 bg-surface-container-low overflow-hidden group">
-<img class="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity group-hover:scale-105 transition-transform duration-700" data-alt="A highly detailed industrial construction site with massive steel girders and cranes silhouetted against a moody sky. Several workers in high-visibility safety orange vests and hard hats are visible. Overlaying the scene are glowing neon orange AI bounding boxes tracking the workers, with sleek, dark-mode glassmorphic data panels floating in the foreground displaying real-time metrics. The aesthetic is high-tech, cinematic, and authoritative, matching a dark-themed modern UI." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQYO27I8unP3DKZLIOlvhDU2nI9sWC1MJr_m-DqmmyoszZ-RH0i4-M5SBCtaq4QmjWqUl1i4Mis2vqFIJVHGD84LX9TXMOiFXyNKwZQ6H3gBb-6J3qBqNrZDbHHFnUt039Q87cJrbAYN-pWTMiUXDUPOBZRKtRsKkqoG_9PpsovVg4DCOqA7PtByeAXMruTSrIpxcPHysa7yeqEAmmMwmEY3UZd5FHM5XybIW25szN6uAymkGWZ60f9r36N5HHXIZIwu1hnKZFUcA"/>
-<!-- Bounding Box Overlay 1 -->
-<div class="absolute top-[30%] left-[20%] w-[120px] h-[200px] border-2 border-primary border-dashed rounded-lg flex items-start justify-end p-1">
-<span class="bg-primary text-background font-mono-data text-mono-data px-1 rounded-sm text-[10px]">PPE: OK (98%)</span>
-</div>
-<!-- Bounding Box Overlay 2 (Alert) -->
-<div class="absolute top-[50%] right-[30%] w-[90px] h-[150px] border-2 border-error border-dashed rounded-lg flex items-start justify-end p-1">
-<span class="bg-error text-background font-mono-data text-mono-data px-1 rounded-sm text-[10px]">NO HELMET</span>
-</div>
-<!-- Dashboard Glass Overlay -->
-<div class="absolute bottom-md right-md left-md bg-background/70 backdrop-blur-xl border border-surface-variant/50 rounded-lg p-md flex flex-col gap-sm shadow-2xl">
-<div class="flex justify-between items-center border-b border-surface-variant/30 pb-2">
-<span class="font-label-md text-label-md text-on-surface uppercase">Live Feed Alpha</span>
-<span class="flex items-center gap-1 text-tertiary font-mono-data text-[11px]"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span> LIVE</span>
-</div>
-<div class="grid grid-cols-3 gap-sm">
-<div>
-<div class="text-on-surface-variant font-label-md text-[10px] uppercase">Active Workers</div>
-<div class="text-primary font-headline-md text-headline-md">142</div>
-</div>
-<div>
-<div class="text-on-surface-variant font-label-md text-[10px] uppercase">Safety Score</div>
-<div class="text-tertiary font-headline-md text-headline-md">94%</div>
-</div>
-<div>
-<div class="text-on-surface-variant font-label-md text-[10px] uppercase">Alerts (1H)</div>
-<div class="text-error font-headline-md text-headline-md">3</div>
-</div>
-</div>
-</div>
-</div>
-</section>
-<!-- Background subtle glow -->
-<div class="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-primary/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+
+<main>
+  <!-- Hero Section -->
+  <section class="hero">
+    <!-- Left: Text -->
+    <div class="hero-text">
+      <div class="hero-badge fade-up">
+        <span class="badge-dot"></span>
+        <span class="badge-text">v2.4 &nbsp;·&nbsp; Deployed Globally</span>
+      </div>
+      <h1 class="hero-title fade-up">
+        AI-Powered Construction<br/>
+        Site <span class="highlight">Safety Monitoring</span>
+      </h1>
+      <p class="hero-desc fade-up">
+        Monitor PPE compliance, worker attendance, safety violations, and site risks in real-time using advanced Computer Vision and IoT integration. Achieve zero-incident sites with predictive analytics.
+      </p>
+      <div class="hero-ctas fade-up">
+        <a class="btn-primary" href="./login.html" id="hero-getstarted-btn">
+          Get Started &nbsp;<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">arrow_forward</span>
+        </a>
+        <button class="btn-secondary" id="hero-demo-btn">
+          <span class="material-symbols-outlined" style="font-size:16px;">play_circle</span>
+          Watch Demo
+        </button>
+      </div>
+      <div class="hero-social-proof fade-up">
+        <div class="hero-avatars">
+          <img alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDonJfIEE0zBhTJW9lsZtqRdtYSA3t_ftyjc1_DJXS7t8zQavArxoy0ZzL3nZlQge-5eiPkMOwlPhBOh4dh93VX7arq3-k4uFiQQUHpr5Q1PoYHIFyOFnBlCSuii_E9IF9_jbL_PykKJDr613tQ_SNfcA5UaUApzyScQsQar1CiBUVV8kVd-kivtP-E67H9MUIjSugHrtP1D7sy-MjuTzZgS7I8VVkU58DvGdIFkgcrC9IJAb9d8Z3UMQ-ZmaE1ZY5bAwVKwKGGgeo"/>
+          <img alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2b5JCcwdxDyMakZ6E2YstQ_RMZjnadWilhnbVv4SsIyOBZjLyspA6LO6XqsNrKkFK70XmWNMnvXQBdAbYEI1-7Og3b2bS7IoUwE_d5743HzMPESRtaIasKmt1SI1xuxPfIYoXuNDQWvxwGMOzFahWzsLtrp5lAticC2BMIkqlP7x2zxy1tZbXJf6zQe5K1eNwDcxYNf5GEEfYi-9JyDt3SehvMkzs1FIPSp4_1I8D3Q78cyAe5X8FYU72FwUzOMDkcu1c9ugTW4w"/>
+          <img alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDB-iuDnZHx-ufR4eraywl9ySAAiFKh3a2D_NCn_Fq12SNSin42dgSXFlt3jZdBNNPHYapybKrU1aPkF-onQ62Noz-VohYk2yM3npMQG-r3I79gMPJRu8_-e-0Ayzmjzc2MDdRUruNwuenxKuVMAv4o_LHLXQTP0G9uDBGGNBUwngf4clu9A53e5cjUlqMHfz8ck3Kmrr_BvH1PsrWZigc84sG80tx71o_JB-XLSAbJISBIDYnE8246fIx-z_5Bozf1kiqxONtCTkI"/>
+        </div>
+        <p class="hero-proof-text">Trusted by <strong>500+</strong> site managers globally.</p>
+      </div>
+    </div>
+
+    <!-- Right: Visual -->
+    <div class="hero-visual slide-in">
+      <div class="hero-card-wrap">
+        <div class="corner-accent ca-tl"></div>
+        <div class="corner-accent ca-tr"></div>
+        <div class="corner-accent ca-bl"></div>
+        <div class="corner-accent ca-br"></div>
+        <img alt="AI-monitored construction site with real-time tracking overlays" class="hero-img"
+          src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQYO27I8unP3DKZLIOlvhDU2nI9sWC1MJr_m-DqmmyoszZ-RH0i4-M5SBCtaq4QmjWqUl1i4Mis2vqFIJVHGD84LX9TXMOiFXyNKwZQ6H3gBb-6J3qBqNrZDbHHFnUt039Q87cJrbAYN-pWTMiUXDUPOBZRKtRsKkqoG_9PpsovVg4DCOqA7PtByeAXMruTSrIpxcPHysa7yeqEAmmMwmEY3UZd5FHM5XybIW25szN6uAymkGWZ60f9r36N5HHXIZIwu1hnKZFUcA"/>
+        <!-- Bounding boxes -->
+        <div class="bb bb-ok">
+          <span class="bb-label">PPE: OK 98%</span>
+        </div>
+        <div class="bb bb-err">
+          <span class="bb-label">No Helmet</span>
+        </div>
+        <!-- Stats overlay -->
+        <div class="hero-stats-overlay">
+          <div>
+            <div class="live-dot"><span class="dot"></span><span class="txt">Live</span></div>
+            <div class="stat-label">Feed Alpha</div>
+          </div>
+          <div>
+            <div class="stat-label">Active Workers</div>
+            <div class="stat-value orange">142</div>
+          </div>
+          <div>
+            <div class="stat-label">Safety Score</div>
+            <div class="stat-value green">94%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats Bar -->
+  <div class="stats-bar">
+    <div class="stats-bar-inner">
+      <div class="stat-block">
+        <div class="stat-block-num">500<span>+</span></div>
+        <div class="stat-block-label">Site Managers Worldwide</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-block-num">99.9<span>%</span></div>
+        <div class="stat-block-label">System Uptime SLA</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-block-num">12.4<span>k</span></div>
+        <div class="stat-block-label">Hazards Prevented</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-block-num">&lt;50<span>ms</span></div>
+        <div class="stat-block-label">Real-time Alert Latency</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Features Section -->
+  <section class="features-section">
+    <p class="section-eyebrow">Core Platform</p>
+    <h2 class="section-title">Everything your site needs to stay safe</h2>
+    <p class="section-desc">Comprehensive AI-driven monitoring for modern construction sites, from PPE compliance to real-time attendance logging.</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <span class="material-symbols-outlined">videocam</span>
+        </div>
+        <h3 class="feature-title">Real-time Computer Vision</h3>
+        <p class="feature-desc">Advanced AI detects PPE violations, unauthorized entries, and safety hazards across all camera feeds simultaneously.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon teal">
+          <span class="material-symbols-outlined">face</span>
+        </div>
+        <h3 class="feature-title">Biometric Attendance</h3>
+        <p class="feature-desc">Facial recognition-based check-in and check-out with helmet OCR verification for accurate, tamper-proof records.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <span class="material-symbols-outlined">analytics</span>
+        </div>
+        <h3 class="feature-title">Predictive Analytics</h3>
+        <p class="feature-desc">Spot safety trends before incidents happen. Generate compliance reports with a single click for audit readiness.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon teal">
+          <span class="material-symbols-outlined">memory</span>
+        </div>
+        <h3 class="feature-title">IoT Edge Integration</h3>
+        <p class="feature-desc">Seamlessly connect Raspberry Pi and ESP32-CAM devices for distributed, low-latency site monitoring at scale.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <span class="material-symbols-outlined">construction</span>
+        </div>
+        <h3 class="feature-title">Smart Helmet Tracking</h3>
+        <p class="feature-desc">Each helmet is registered and tracked via OCR. Know which worker is wearing which helmet in real-time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon teal">
+          <span class="material-symbols-outlined">notifications_active</span>
+        </div>
+        <h3 class="feature-title">Instant Violation Alerts</h3>
+        <p class="feature-desc">Managers receive immediate alerts on PPE non-compliance, restricted zone breaches, and unsafe behaviors.</p>
+      </div>
+    </div>
+  </section>
 </main>
+
 <!-- Footer -->
-<footer class="bg-surface-container-lowest w-full py-xl border-t border-outline-variant/10 mt-xl">
-<div class="flex flex-col md:flex-row justify-between items-center px-margin-mobile md:px-margin-desktop max-w-[1600px] mx-auto gap-lg">
-<div class="flex flex-col gap-sm items-center md:items-start">
-<div class="font-headline-md text-headline-md text-primary">
-                    SiteSentinel AI
-                </div>
-<div class="font-label-md text-label-md text-on-surface-variant">
-                    © 2024 SiteSentinel AI. Industrial Safety Redefined.
-                </div>
-</div>
-<nav class="flex flex-wrap justify-center gap-md font-label-md text-label-md">
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Privacy Policy</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Terms of Service</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Compliance</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Security</a>
-</nav>
-</div>
+<footer>
+  <div>
+    <div class="footer-logo">Site<span>Sentinel</span> AI</div>
+    <div class="footer-copy">© 2024 SiteSentinel AI. Industrial Safety Redefined.</div>
+  </div>
+  <nav class="footer-links">
+    <a class="footer-link" href="#">Privacy Policy</a>
+    <a class="footer-link" href="#">Terms of Service</a>
+    <a class="footer-link" href="#">Compliance</a>
+    <a class="footer-link" href="#">Security</a>
+  </nav>
 </footer>
-</body></html>
+
+<script>
+  // Animate stat block numbers on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.stat-block, .feature-card').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
