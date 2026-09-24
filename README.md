@@ -466,9 +466,6 @@ SiteSentinel
 │   ├── stream_reader.py
 │   └── test_images
 │
-├── iot
-│   └── Raspberry Pi
-│
 ├── models
 │   ├── best.pt
 │   └── last.pt
@@ -477,6 +474,7 @@ SiteSentinel
 │
 ├── .env
 ├── .gitignore
+├── raspberry_Pi_Code.txt   ← Upload this file to your Raspberry Pi
 ├── requirements.txt
 └── README.md
 ```
@@ -559,37 +557,123 @@ http://127.0.0.1:5000
 
 ---
 
-# 📷 Run the Raspberry Pi Camera Server
+# 📷 Raspberry Pi Setup & Camera Server
 
-On the Raspberry Pi:
+The file **`raspberry_Pi_Code.txt`** in the root of this repository contains the complete Raspberry Pi server script. You need to copy this file to your Raspberry Pi and run it there.
+
+> ⚠️ **Do NOT run this script on your main computer.** It uses hardware-specific libraries (`picamera2`, `RPi.GPIO`, `luma.led_matrix`) that are only available on a Raspberry Pi.
+
+---
+
+## 🔌 Hardware Requirements
+
+| Component | Details |
+|---|---|
+| Raspberry Pi | Model 4 (recommended) |
+| Pi Camera Module | Connected via CSI ribbon cable |
+| Green LED | GPIO pin **17** (BCM) |
+| Red LED | GPIO pin **27** (BCM) |
+| Buzzer | GPIO pin **18** (BCM) |
+| LED Matrix (MAX7219) | Connected via **SPI0** (CE0) |
+
+---
+
+## 🛠️ Pi-Side Dependencies
+
+Install the following on your Raspberry Pi before running the server:
+
+```bash
+# Update system packages
+sudo apt-get update && sudo apt-get upgrade -y
+
+# Install picamera2 (comes pre-installed on Raspberry Pi OS Bullseye+)
+# If missing:
+sudo apt-get install -y python3-picamera2
+
+# Install RPi.GPIO
+sudo apt-get install -y python3-rpi.gpio
+
+# Install luma LED matrix driver
+pip3 install luma.led_matrix
+```
+
+> **Note:** `picamera2` requires **Raspberry Pi OS Bullseye** or later. Make sure the camera interface is enabled via `sudo raspi-config` → Interface Options → Camera.
+
+---
+
+## 🚀 Deploying the Script
+
+**Step 1 — Copy the file to your Pi**
+
+From your main computer, use `scp` to transfer the file:
+
+```bash
+scp raspberry_Pi_Code.txt pi@<PI_IP>:/home/pi/Pi_Camera.py
+```
+
+Or manually copy the contents of `raspberry_Pi_Code.txt` into a new file called `Pi_Camera.py` on your Pi.
+
+**Step 2 — SSH into your Raspberry Pi**
+
+```bash
+ssh pi@<PI_IP>
+```
+
+**Step 3 — Run the server**
 
 ```bash
 python3 Pi_Camera.py
 ```
 
-The Pi server provides endpoints such as:
+On successful startup you will see:
 
 ```text
-/stream
-/health
-/checkin
-/checkout
-/on
-/off
-/ppe?score=N
+==================================================
+SiteSentinel Pi Server
+Stream  → http://<PI_IP>:8080/stream
+Health  → http://<PI_IP>:8080/health
+GPIO    → /checkin /checkout /on /off /ppe?score=N
+==================================================
 ```
 
-Example stream:
+---
+
+## 📡 API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/stream` | GET | MJPEG live camera stream |
+| `/health` | GET | Server health check |
+| `/checkin` | GET | Green LED ON for 3 s (worker check-in) |
+| `/checkout` | GET | Red LED ON for 3 s (worker check-out) |
+| `/on` | GET | Buzzer ON |
+| `/off` | GET | Buzzer OFF |
+| `/ppe?score=N` | GET | Scroll PPE score on LED matrix |
+
+Example URLs (replace `<PI_IP>` with your Pi's local IP address):
 
 ```text
 http://<PI_IP>:8080/stream
-```
-
-Health check:
-
-```text
 http://<PI_IP>:8080/health
+http://<PI_IP>:8080/ppe?score=100
 ```
+
+**Tip:** Find your Pi's IP address by running `hostname -I` on the Pi.
+
+---
+
+## ⚙️ Configuration
+
+The following constants at the top of the script can be adjusted to match your wiring:
+
+```python
+GREEN_PIN  = 17   # BCM pin for green LED
+RED_PIN    = 27   # BCM pin for red LED
+BUZZER_PIN = 18   # BCM pin for buzzer
+PORT       = 8080 # HTTP server port
+```
+
+The LED matrix is expected on **SPI0, CE0**. Change `spi(port=0, device=0, ...)` if you wired it differently.
 
 ---
 
