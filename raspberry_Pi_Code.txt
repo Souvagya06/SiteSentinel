@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+"""
+SiteSentinel — Raspberry Pi Camera + GPIO Server
+Streams MJPEG video and handles LED/buzzer/matrix via HTTP.
+Run this ONLY on the Raspberry Pi.
+"""
+
+import io
+import time
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+from urllib.parse import urlparse, parse_qs
+import socket
+
+# ── GPIO ──────────────────────────────────────────────
+try:
+    import RPi.GPIO as GPIO
+    GPIO_AVAILABLE = True
+except ImportError:
+    GPIO_AVAILABLE = False
+    print("WARNING: RPi.GPIO not available")
+
+# ── Pi Camera ─────────────────────────────────────────
+try:
+    from picamera2 import Picamera2
+    from picamera2.encoders import JpegEncoder
+    from picamera2.outputs import FileOutput
+    PICAMERA_AVAILABLE = True
+except ImportError:
+    PICAMERA_AVAILABLE = False
+    print("ERROR: picamera2 not available")
+    exit(1)
+
+# ── LED Matrix ────────────────────────────────────────
+try:
+    from luma.led_matrix.device import max7219
+    from luma.core.interface.serial import spi, noop
+    from luma.core.render import canvas
+    from luma.core.legacy import text
+    from luma.core.legacy.font import proportional, CP437_FONT
+    MATRIX_AVAILABLE = True
+    print("LED Matrix library loaded")
+except ImportError:
+    MATRIX_AVAILABLE = False
+    print("WARNING: luma.led_matrix not available — matrix disabled")
+
+# ── GPIO Pin config ───────────────────────────────────
+GREEN_PIN  = 17
+RED_PIN    = 27
+BUZZER_PIN = 18
+
+if GPIO_AVAILABLE:
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(GREEN_PIN,  GPIO.OUT, initial=GPIO.LOW)
+    GPIO.setup(RED_PIN,    GPIO.OUT, initial=GPIO.LOW)
+    GPIO.setup(BUZZER_PIN, GPIO.OUT, initial=GPIO.LOW)
+    print(f"GPIO initialized — Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}")
+
+# ── LED Matrix init ───────────────────────────────────
+matrix_device = None
+if MATRIX_AVAILABLE:
+    try:
+        serial        = spi(port=0, device=0, gpio=noop())
+        matrix_device = max7219(serial, cascaded=1,
+                                 block_orientation=90,
+                                 rotate=0)
+        matrix_device.contrast(128)
+        matrix_device.clear()
+        print("LED Matrix initialized on SPI0")
+    except Exception as e:
+        print(f"Matrix init failed: {e}")
+        matrix_device = None
+
+# ── Non-blocking timers ───────────────────────────────
+green_off_at  = 0
+red_off_at    = 0
+matrix_off_at = 0
+gpio_lock     = threading.Lock()
+
+def gpio_timer():
+    global green_off_at, red_off_at, matrix_off_at
+    while True:
+        now = time.time()
+        with gpio_lock:
+            if green_off_at and now > green_off_at:
+                if GPIO_AVAILABLE: GPIO.output(GREEN_PIN, GPIO.LOW)
+                green_off_at = 0
+
+            if red_off_at and now > red_off_at:
+                if GPIO_AVAILABLE: GPIO.output(RED_PIN, GPIO.LOW)
+                red_off_at = 0
+
+            if matrix_off_at and now > matrix_off_at:
+                if matrix_device:
+                    matrix_device.clear()
+                matrix_off_at = 0
+        time.sleep(0.05)
+
+threading.Thread(target=gpio_timer, daemon=True).start()
+
+# ── Camera streaming output ───────────────────────────
+class StreamOutput(io.BufferedIOBase):
+    def __init__(self):
+        self.frame     = None
+        self.condition = threading.Condition()
+
+    def write(self, buf):
+        with self.condition:
+            self.frame = buf
+            self.condition.notify_all()
+
+output = StreamOutput()
+picam2 = Picamera2()
+config = picam2.create_video_configuration(
+    main={"size": (640, 480), "format": "RGB888"},
+    controls={"FrameRate": 30}
+)
+picam2.configure(config)
+picam2.start_recording(JpegEncoder(), FileOutput(output))
+print("Pi Camera started (640x480 @ 30fps)")
+
+# ── HTTP Handler ──────────────────────────────────────
+class Handler(BaseHTTPRequestHandler):
+
+    def log_message(self, format, *args):
+        pass  # suppress logs
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path   = parsed.path
+        params = parse_qs(parsed.query)
+
+        # ── MJPEG stream ──────────────────────────────
+        if path == "/stream":
+            self.send_response(200)
+            self.send_header("Age", "0")
+            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Type",
+                "multipart/x-mixed-replace; boundary=FRAME")
+            self.end_headers()
+            try:
+                while True:
+                    with output.condition:
+                        output.condition.wait()
+                        frame = output.frame
+                    self.wfile.write(b"--FRAME\r\n")
+                    self.send_header("Content-Type",   "image/jpeg")
+                    self.send_header("Content-Length", len(frame))
+                    self.end_headers()
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+            except:
+                pass
+
+        # ── Green LED — check-in ──────────────────────
+        elif path == "/checkin":
+            global green_off_at
+            with gpio_lock:
+                if GPIO_AVAILABLE:
+                    GPIO.output(GREEN_PIN, GPIO.HIGH)
+                    GPIO.output(RED_PIN,   GPIO.LOW)
+                green_off_at = time.time() + 3
+            self._ok("Green ON")
+
+        # ── Red LED — check-out ───────────────────────
+        elif path == "/checkout":
+            global red_off_at
+            with gpio_lock:
+                if GPIO_AVAILABLE:
+                    GPIO.output(RED_PIN,   GPIO.HIGH)
+                    GPIO.output(GREEN_PIN, GPIO.LOW)
+                red_off_at = time.time() + 3
+            self._ok("Red ON")
+
+        # ── Buzzer ON ─────────────────────────────────
+        elif path == "/on":
+            if GPIO_AVAILABLE:
+                GPIO.output(BUZZER_PIN, GPIO.HIGH)
+            self._ok("Buzzer ON")
+
+        # ── Buzzer OFF ────────────────────────────────
+        elif path == "/off":
+            if GPIO_AVAILABLE:
+                GPIO.output(BUZZER_PIN, GPIO.LOW)
+            self._ok("Buzzer OFF")
+
+        # ── LED Matrix — PPE score ─────────────────────
+        elif path == "/ppe":
+            try:
+                score = int(params.get("score", ["0"])[0])
+            except:
+                score = 0
+            if matrix_device:
+                try:
+                    brightness = 200 if score == 100 else 200 if score == 50 else 200
+                    matrix_device.contrast(brightness)
+                    #Scorll the score text accross the matrix
+                    def scroll_score(s):
+                        msg = f"PPE:{s} "
+                        show_until = time.time() + 4
+                        #Each character is ~6px wide, scroll accross 8px display
+                        max_pos = len(msg) * 8
+                        pos = 8
+                        while time.time() < show_until:
+                            with canvas(matrix_device) as draw:
+                                text(draw, (pos, 0), msg,
+                                    fill="White",
+                                    font =proportional(CP437_FONT))
+                            pos -= 1
+                            if pos < -max_pos:
+                                pos = 8
+                            time.sleep(0.08)
+                        matrix_device.clear()
+                    threading.Thread(
+                        target=scroll_score,
+                        args=(score,),
+                        daemon=True
+                    ).start()
+                    print (f"Matrixscrolling: {score}")
+                except Exception as e:
+                    print (f"Matrix draw error: {e}")
+            else:
+                print (f"Matrix not available - score={score}")
+            self._ok(f"Score {score}")
+
+
+        # ── Health check ──────────────────────────────
+        elif path == "/health":
+            self._ok("SiteSentinel Pi OK")
+
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def _ok(self, msg="OK"):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        try:
+            self.wfile.write(msg.encode())
+        except:
+            pass
+
+# ── Multi-threaded server ─────────────────────────────
+class ThreadedServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+# ── Start ─────────────────────────────────────────────
+PORT     = 8080
+server   = ThreadedServer(("0.0.0.0", PORT), Handler)
+hostname = socket.gethostname()
+try:
+    local_ip = socket.gethostbyname(hostname)
+except:
+    local_ip = "check with: hostname -I"
+
+print(f"\n{'='*50}")
+print(f"SiteSentinel Pi Server")
+print(f"Stream  → http://{local_ip}:{PORT}/stream")
+print(f"Health  → http://{local_ip}:{PORT}/health")
+print(f"GPIO    → /checkin /checkout /on /off /ppe?score=N")
+print(f"{'='*50}\n")
+
+try:
+    server.serve_forever()
+except KeyboardInterrupt:
+    print("\nStopping...")
+finally:
+    picam2.stop_recording()
+    if GPIO_AVAILABLE:
+        GPIO.output(GREEN_PIN,  GPIO.LOW)
+        GPIO.output(RED_PIN,    GPIO.LOW)
+        GPIO.output(BUZZER_PIN, GPIO.LOW)
+        GPIO.cleanup()
+    if matrix_device:
+        matrix_device.clear()
+    print("Stopped")
