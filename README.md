@@ -748,11 +748,9 @@ The PPE detection and scoring logic is currently being refined to ensure accurat
 ### Team Members
 
 * **Souvagya Karmakar**
-* **Anirban Pal**
 * **Sushmita Roy**
+* **Anirban Pal**
 * **Ronit Mishra**
-
-> Replace the placeholders above with the names of the remaining SiteSentinel team members.
 
 ---
 
