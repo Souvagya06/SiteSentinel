@@ -10,6 +10,7 @@ import secrets
 import cloudinary
 import cloudinary.uploader
 import json
+import time
 from face__utils import get_embedding_from_url
 from dotenv import load_dotenv
 from pathlib import Path
@@ -67,7 +68,11 @@ def me():
     )
     if not user:
         return jsonify({"error": "User not found"}), 404
-    return jsonify({"name": user["name"], "email": user["email"]})
+    return jsonify({
+        "name": user["name"],
+        "email": user["email"],
+        "login_time": session.get("login_time", time.time())
+    })
 
 @app.route("/api/session-user-id")
 def session_user_id():
@@ -125,14 +130,8 @@ def login_api():
 
     session["user_id"] = user["id"]
     session["email"]   = user["email"]
-    from threading import Thread
-
-    Thread(
-        target=start_webcam_detection,
-        args=(user["id"],),
-        daemon=True
-    ).start()
-    return jsonify({"message": "Login successful."}), 200
+    session["login_time"] = time.time()
+    return jsonify({"message": "Login successful.", "login_time": session["login_time"]}), 200
 
 @app.route("/api/logout")
 def logout():
@@ -643,7 +642,7 @@ def save_pi_ip():
         "message": "Pi IP saved successfully"
     })
 # ─────────────────────────────────────────
-# Auto-start webcam_detection.py
+# Raspberry Pi webcam detection process
 # ─────────────────────────────────────────
 webcam_process = None
 
@@ -654,16 +653,56 @@ def start_webcam_detection(user_id):
     script = Path(__file__).resolve().parent.parent / "interface" / "webcam_detection.py"
     if not script.exists():
         print(f"WARNING: webcam_detection.py not found at {script}")
-        return
+        return False
 
     if webcam_process and webcam_process.poll() is None:
         webcam_process.kill()
 
     webcam_process = subprocess.Popen(
         [sys.executable, str(script), "--user-id", user_id],
+        cwd=str(script.parent),
         creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
     )
     print(f"webcam_detection.py started for user_id={user_id}")
+    return True
+
+@app.route("/api/pi/start", methods=["POST"])
+def api_start_pi():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    user = query_one(
+        "SELECT pi_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}]
+    )
+    if not user or not user.get("pi_ip"):
+        return jsonify({"error": "Raspberry Pi IP address is not configured. Please set your Pi IP first."}), 400
+
+    success = start_webcam_detection(session["user_id"])
+    if not success:
+        return jsonify({"error": "Failed to start webcam detection script."}), 500
+
+    return jsonify({"message": "Raspberry Pi stream and detection started.", "running": True})
+
+@app.route("/api/pi/status", methods=["GET"])
+def api_pi_status():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    is_running = webcam_process is not None and webcam_process.poll() is None
+    return jsonify({"running": is_running})
+
+@app.route("/api/pi/stop", methods=["POST"])
+def api_pi_stop():
+    global webcam_process
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    if webcam_process and webcam_process.poll() is None:
+        webcam_process.kill()
+        webcam_process = None
+        return jsonify({"message": "Pi stream stopped.", "running": False})
+    return jsonify({"message": "Pi stream is not currently running.", "running": False})
 
 # ─────────────────────────────────────────
 # Login hook — start webcam after login

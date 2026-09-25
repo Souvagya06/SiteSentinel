@@ -150,6 +150,55 @@
   .sidebar-footer .nav-item { color: var(--text-3); font-size: 12px; }
   .sidebar-footer .nav-item:hover { color: var(--text-2); }
 
+  .nav-btn {
+    width: 100%;
+    background: none;
+    border: 1px solid transparent;
+    text-align: left;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .nav-btn.pi-stream-btn {
+    color: var(--secondary);
+    background: var(--secondary-dim);
+    border: 1px solid rgba(124,143,245,0.25);
+    margin-bottom: 6px;
+    box-shadow: 0 0 10px rgba(124,143,245,0.08);
+  }
+  .nav-btn.pi-stream-btn:hover {
+    background: rgba(124,143,245,0.22);
+    border-color: rgba(124,143,245,0.45);
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(124,143,245,0.3);
+  }
+  .nav-btn.pi-stream-btn.running {
+    color: var(--accent);
+    background: var(--accent-dim);
+    border-color: rgba(0,212,170,0.35);
+    box-shadow: 0 0 14px var(--accent-glow);
+  }
+  .nav-btn.pi-stream-btn.running:hover {
+    background: rgba(0,212,170,0.2);
+    border-color: rgba(0,212,170,0.5);
+  }
+  .nav-btn.pi-stream-btn.running .material-symbols-outlined {
+    color: var(--accent);
+    animation: pulseLive 2s ease-in-out infinite;
+  }
+  .nav-btn.pi-stream-btn.loading {
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .nav-btn.pi-stream-btn.loading .material-symbols-outlined {
+    animation: spinPi 1s linear infinite;
+  }
+  @keyframes spinPi {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
   /* ─── Main ─── */
   .main-area {
     margin-left: var(--sidebar-w);
@@ -763,10 +812,6 @@
         Dashboard
       </a>
       <a class="nav-item" href="#">
-        <span class="material-symbols-outlined">videocam</span>
-        Live Feed
-      </a>
-      <a class="nav-item" href="#">
         <span class="material-symbols-outlined">analytics</span>
         Analytics
       </a>
@@ -777,11 +822,15 @@
     </div>
 
     <div class="sidebar-footer">
+      <button class="nav-item nav-btn pi-stream-btn" id="start-pi-btn" onclick="togglePiStream()" title="Start Raspberry Pi stream and AI safety detection">
+        <span class="material-symbols-outlined fill" id="start-pi-icon">videocam</span>
+        <span id="start-pi-label">Start Pi Stream</span>
+      </button>
       <a class="nav-item" href="#">
         <span class="material-symbols-outlined">help_outline</span>
         Support
       </a>
-      <a class="nav-item" href="/api/logout">
+      <a class="nav-item" href="/api/logout" onclick="sessionStorage.removeItem('ss_login_time');">
         <span class="material-symbols-outlined">logout</span>
         Sign Out
       </a>
@@ -819,7 +868,7 @@
       <div class="page-header">
         <div class="page-header-left">
           <h1>Daily Overview</h1>
-          <p>Real-time monitoring &nbsp;·&nbsp; <span id="live-clock">--:--:--</span></p>
+          <p>Real-time monitoring &nbsp;·&nbsp; <span id="live-clock">00:00:00</span></p>
         </div>
         <button class="btn-export">
           <span class="material-symbols-outlined">download</span>
@@ -1256,19 +1305,38 @@
 
 
 <script>
-  // ── Live clock ──
-  function updateClock() {
-    const now = new Date();
-    const t = now.toLocaleTimeString('en-IN', { hour12: false });
-    document.getElementById('live-clock').textContent = t;
+  // ── Real-time Monitoring Session Timer (starts from 0 at login) ──
+  let loginTimestamp = parseInt(sessionStorage.getItem('ss_login_time'), 10);
+  if (!loginTimestamp || isNaN(loginTimestamp)) {
+    loginTimestamp = Date.now();
+    sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
   }
-  updateClock();
-  setInterval(updateClock, 1000);
+
+  function updateMonitoringTimer() {
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - loginTimestamp) / 1000));
+    const hours   = Math.floor(elapsedSeconds / 3600);
+    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+    const seconds = elapsedSeconds % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    const formatted = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+
+    const clockEl = document.getElementById('live-clock');
+    if (clockEl) {
+      clockEl.textContent = formatted;
+    }
+  }
+  updateMonitoringTimer();
+  setInterval(updateMonitoringTimer, 1000);
 
   // ── Load user info ──
   fetch('/api/me')
     .then(res => { if (!res.ok) window.location.href = '/login.html'; return res.json(); })
     .then(data => {
+      if (data.login_time && !sessionStorage.getItem('ss_login_time')) {
+        loginTimestamp = Math.floor(data.login_time * 1000);
+        sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
+        updateMonitoringTimer();
+      }
       const name = data.name || data.email || 'User';
       document.getElementById('user-name').textContent = name;
       const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -1672,6 +1740,80 @@
       }, 1500);
     }
   }
+
+  // ── Start / Stop Pi Stream ──
+  let isPiRunning = false;
+
+  async function checkPiStatus() {
+    try {
+      const res = await fetch('/api/pi/status');
+      if (res.ok) {
+        const data = await res.json();
+        updatePiBtnState(data.running);
+      }
+    } catch(e) {}
+  }
+
+  function updatePiBtnState(running) {
+    isPiRunning = running;
+    const btn   = document.getElementById('start-pi-btn');
+    const icon  = document.getElementById('start-pi-icon');
+    const label = document.getElementById('start-pi-label');
+    if (!btn || !icon || !label) return;
+
+    btn.classList.remove('loading');
+    if (running) {
+      btn.classList.add('running');
+      icon.textContent = 'sensors';
+      label.textContent = 'Pi Stream Active';
+      btn.title = 'Pi detection is active. Click to stop.';
+    } else {
+      btn.classList.remove('running');
+      icon.textContent = 'videocam';
+      label.textContent = 'Start Pi Stream';
+      btn.title = 'Start Raspberry Pi stream and AI safety detection';
+    }
+  }
+
+  async function togglePiStream() {
+    const btn   = document.getElementById('start-pi-btn');
+    const icon  = document.getElementById('start-pi-icon');
+    const label = document.getElementById('start-pi-label');
+    if (!btn) return;
+
+    btn.classList.add('loading');
+    icon.textContent = 'sync';
+    label.textContent = isPiRunning ? 'Stopping Pi…' : 'Starting Pi…';
+
+    try {
+      if (isPiRunning) {
+        const res = await fetch('/api/pi/stop', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        updatePiBtnState(false);
+      } else {
+        const res = await fetch('/api/pi/start', { method: 'POST' });
+        const data = await res.json().catch(() => ({ error: `Server returned status ${res.status}` }));
+        if (res.ok) {
+          updatePiBtnState(true);
+        } else {
+          updatePiBtnState(false);
+          if (data.error && (data.error.includes('IP') || data.error.includes('configured'))) {
+            alert(data.error);
+            document.getElementById('piModal').classList.add('open');
+          } else {
+            alert(data.error || 'Failed to start Pi stream.');
+          }
+        }
+      }
+    } catch(err) {
+      console.error('Error toggling Pi stream:', err);
+      updatePiBtnState(isPiRunning);
+      alert('Could not connect to backend server. Please make sure the Flask backend (python main.py) is running.');
+    }
+  }
+
+  checkPiStatus();
+  setInterval(checkPiStatus, 4000);
 
   // ── Close modals on backdrop click ──
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
