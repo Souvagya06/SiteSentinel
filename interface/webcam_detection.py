@@ -4,6 +4,7 @@ import argparse
 import re
 import time
 import easyocr
+sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from stream_reader import PiStream
 from pi_controller import PiController
