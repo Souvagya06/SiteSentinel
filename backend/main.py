@@ -283,6 +283,52 @@ def delete_worker(worker_db_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/workers/<int:worker_db_id>", methods=["PUT"])
+def update_worker(worker_db_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    data = request.get_json()
+    first_name = (data.get("first_name") or "").strip()
+    last_name  = (data.get("last_name")  or "").strip()
+    worker_id  = (data.get("worker_id")  or "").strip()
+    if not first_name or not last_name or not worker_id:
+        return jsonify({"error": "First name, last name and worker ID are required."}), 400
+    try:
+        # Check worker exists and belongs to this user
+        existing = query_one(
+            "SELECT id, worker_id FROM workers WHERE id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": str(worker_db_id)},
+                {"type": "text", "value": str(session["user_id"])}
+            ]
+        )
+        if not existing:
+            return jsonify({"error": "Worker not found."}), 404
+        # Check if new worker_id conflicts with another worker
+        conflict = query_one(
+            "SELECT id FROM workers WHERE worker_id = ? AND user_id = ? AND id != ?",
+            [
+                {"type": "text", "value": worker_id},
+                {"type": "text", "value": str(session["user_id"])},
+                {"type": "text", "value": str(worker_db_id)}
+            ]
+        )
+        if conflict:
+            return jsonify({"error": "Worker ID already in use by another worker."}), 409
+        execute(
+            "UPDATE workers SET first_name = ?, last_name = ?, worker_id = ? WHERE id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": first_name},
+                {"type": "text", "value": last_name},
+                {"type": "text", "value": worker_id},
+                {"type": "text", "value": str(worker_db_id)},
+                {"type": "text", "value": str(session["user_id"])}
+            ]
+        )
+        return jsonify({"message": "Worker updated."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/workers/<worker_id>/images", methods=["GET"])
 def get_worker_images(worker_id):
     if "user_id" not in session:
