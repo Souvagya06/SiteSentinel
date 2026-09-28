@@ -501,6 +501,7 @@
   .action-btn:hover { background: var(--surface-hover); border-color: var(--border); color: var(--text-2); }
   .action-btn.danger:hover { background: var(--error-dim); border-color: rgba(255,71,87,0.2); color: var(--error); }
   .action-btn.teal:hover { background: var(--accent-dim); border-color: rgba(0,212,170,0.2); color: var(--accent); }
+  .action-btn.edit:hover { background: var(--secondary-dim); border-color: rgba(124,143,245,0.25); color: var(--secondary); }
   .action-btn .material-symbols-outlined { font-size: 16px; }
 
   /* Empty state */
@@ -1304,6 +1305,49 @@
   </div>
 
 
+  <!-- ═══ MODAL: Edit Worker ═══ -->
+  <div class="modal-overlay" id="editWorkerModal">
+    <div class="modal wide">
+      <div class="modal-header" style="background: linear-gradient(135deg, rgba(124,143,245,0.06), rgba(0,0,0,0));">
+        <div class="modal-header-icon">
+          <div class="modal-icon secondary"><span class="material-symbols-outlined">edit</span></div>
+          <div>
+            <div class="modal-title">Edit Worker Details</div>
+            <div class="modal-subtitle">Update name or worker ID</div>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeEditWorkerModal()">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="grid-2-modal">
+          <div class="field">
+            <label class="field-label" for="edit-w-first">First Name</label>
+            <input class="field-input" id="edit-w-first" placeholder="John" type="text"/>
+          </div>
+          <div class="field">
+            <label class="field-label" for="edit-w-last">Last Name</label>
+            <input class="field-input" id="edit-w-last" placeholder="Doe" type="text"/>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="edit-w-workerid">Worker ID</label>
+          <input class="field-input mono" id="edit-w-workerid" placeholder="e.g. #4115" type="text"/>
+        </div>
+        <p class="field-error" id="edit-w-error"></p>
+        <p class="field-success" id="edit-w-success"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-modal-cancel" onclick="closeEditWorkerModal()">Cancel</button>
+        <button class="btn-modal-primary" id="edit-save-btn" onclick="saveEditWorker()" style="background:linear-gradient(135deg,var(--secondary),#a0b0ff);box-shadow:0 4px 18px rgba(124,143,245,0.3);">
+          <span class="material-symbols-outlined">save</span>
+          Save Changes
+        </button>
+      </div>
+    </div>
+  </div>
+
 <script>
   // ── Real-time Monitoring Session Timer (starts from 0 at login) ──
   let loginTimestamp = parseInt(sessionStorage.getItem('ss_login_time'), 10);
@@ -1443,6 +1487,9 @@
                 <button class="action-btn teal" onclick="openAssignHelmetModal('${w.worker_id}', '${w.first_name} ${w.last_name}', '${w.helmet_id || ''}')" title="Assign Helmet">
                   <span class="material-symbols-outlined">construction</span>
                 </button>
+                <button class="action-btn edit" onclick="openEditWorkerModal(${w.id}, '${w.first_name}', '${w.last_name}', '${w.worker_id}')" title="Edit worker details">
+                  <span class="material-symbols-outlined">edit</span>
+                </button>
                 <button class="action-btn danger" onclick="deleteWorker(${w.id})" title="Remove worker">
                   <span class="material-symbols-outlined">delete</span>
                 </button>
@@ -1540,6 +1587,69 @@
     }
     btn.disabled = false;
     btn.innerHTML = '<span class="material-symbols-outlined">how_to_reg</span> Register Worker';
+  }
+
+  // ── Edit worker ──
+  let _editWorkerDbId = null;
+
+  function openEditWorkerModal(dbId, firstName, lastName, workerId) {
+    _editWorkerDbId = dbId;
+    document.getElementById('edit-w-first').value    = firstName;
+    document.getElementById('edit-w-last').value     = lastName;
+    document.getElementById('edit-w-workerid').value = workerId;
+    document.getElementById('edit-w-error').style.display   = 'none';
+    document.getElementById('edit-w-success').style.display = 'none';
+    document.getElementById('editWorkerModal').classList.add('open');
+  }
+
+  function closeEditWorkerModal() {
+    document.getElementById('editWorkerModal').classList.remove('open');
+    _editWorkerDbId = null;
+  }
+
+  async function saveEditWorker() {
+    if (!_editWorkerDbId) return;
+    const btn      = document.getElementById('edit-save-btn');
+    const errEl    = document.getElementById('edit-w-error');
+    const successEl = document.getElementById('edit-w-success');
+    errEl.style.display = successEl.style.display = 'none';
+
+    const first_name = document.getElementById('edit-w-first').value.trim();
+    const last_name  = document.getElementById('edit-w-last').value.trim();
+    const worker_id  = document.getElementById('edit-w-workerid').value.trim();
+
+    if (!first_name || !last_name || !worker_id) {
+      errEl.textContent = 'All fields are required.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> Saving…';
+
+    try {
+      const res  = await fetch(`/api/workers/${_editWorkerDbId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ first_name, last_name, worker_id })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        successEl.textContent = '✓ Worker updated successfully!';
+        successEl.style.display = 'block';
+        loadWorkers();
+        setTimeout(() => closeEditWorkerModal(), 1400);
+      } else {
+        errEl.textContent = data.error || 'Update failed.';
+        errEl.style.display = 'block';
+      }
+    } catch(e) {
+      errEl.textContent = 'Connection error.';
+      errEl.style.display = 'block';
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
   }
 
   // ── Delete worker ──
