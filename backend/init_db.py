@@ -100,3 +100,30 @@ try:
     execute("ALTER TABLE users ADD COLUMN pi_ip TEXT DEFAULT ''")
     print("Added pi_ip column")
 except: pass
+
+try:
+    execute("ALTER TABLE users ADD COLUMN face_data_version INTEGER DEFAULT 1")
+    print("Added face_data_version column")
+except: pass
+
+execute("""
+CREATE TABLE IF NOT EXISTS safety_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manager_id INTEGER NOT NULL,
+    worker_id TEXT,
+    event_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    ppe_score INTEGER,
+    helmet_id TEXT,
+    camera_id TEXT,
+    evidence_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    acknowledged INTEGER DEFAULT 0
+)
+""")
+print("Safety events table created successfully")
+
+try:
+    execute("CREATE INDEX IF NOT EXISTS idx_safety_events_manager ON safety_events(manager_id, created_at DESC)")
+    print("Safety events index created")
+except: pass

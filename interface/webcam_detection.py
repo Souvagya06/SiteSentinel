@@ -1,15 +1,20 @@
+"""
+SiteSentinel — Advanced AI Computer Vision Gate Monitoring Engine
+Features:
+- Single-worker evaluation state machine & Gate Occupancy Lock
+- Spatial PPE anatomical attribution (Head -> Hardhat, Torso -> Vest)
+- 8-frame temporal smoothing & locked PPE evaluation (0, 50, 100)
+- Face data hot-reloading in background without restarts
+- Real-time structured safety events & attendance logging
+- Raspberry Pi GPIO hardware integration (LEDs, Buzzer, Matrix)
+- Rich annotated monitoring HUD
+"""
 import sys
 import os
 import argparse
 import re
 import time
-import easyocr
-sys.path.append(os.path.dirname(__file__))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
-from stream_reader import PiStream
-from pi_controller import PiController
 from threading import Thread
-from ultralytics import YOLO
 import cv2
 import requests
 import json
@@ -18,516 +23,461 @@ import numpy as np
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
-from database import execute, query_all, query_one
-from face__utils import get_embedding_from_frame, match_face
 
+# Add backend and interface to path
+sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
+
+from stream_reader import PiStream
+from pi_controller import PiController
+from face_data_manager import FaceDataManager
+from event_client import EventClient
+from worker_session import WorkerSessionManager, SessionState
+from database import query_one, execute
+from face__utils import get_embedding_from_frame
+from ultralytics import YOLO
+
+try:
+    import easyocr
+    OCR_AVAILABLE = True
+except ImportError:
+    easyocr = None
+    OCR_AVAILABLE = False
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(env_path)
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
 
-last_buzzer_state = None
-last_ppe_score = -1
-ppe_score_buffer = []
-PPE_SMOOTH_FRAMES = 8
-
-# ── Args ──────────────────────────────────────────────
+# ── Parse Command Line Arguments ───────────────────────
 parser = argparse.ArgumentParser()
-parser.add_argument("--user-id", required=True)
+parser.add_argument("--user-id", required=True, help="Manager User ID")
+parser.add_argument("--camera-id", default="Pi Camera 01", help="Camera identifier")
 args = parser.parse_args()
 MANAGER_USER_ID = str(args.user_id)
-print(f"Running as manager user_id={MANAGER_USER_ID}")
+CAMERA_ID = str(args.camera_id)
 
-PI = query_one(
+print("=" * 65)
+print(f"  SiteSentinel CV Engine | Manager ID: {MANAGER_USER_ID} | Camera: {CAMERA_ID}")
+print("=" * 65)
+
+# ── Verify Raspberry Pi Configuration ───────────────────
+user_row = query_one(
     "SELECT pi_ip FROM users WHERE id = ?",
     [{"type": "text", "value": MANAGER_USER_ID}]
 )
 
-if PI is None or not PI.get("pi_ip"):
-    raise RuntimeError(
-        f"No Raspberry Pi IP configured for manager {MANAGER_USER_ID}"
-    )
+if not user_row or not user_row.get("pi_ip"):
+    raise RuntimeError(f"No Raspberry Pi IP configured for manager {MANAGER_USER_ID}")
 
-PI_IP = PI["pi_ip"]
+PI_IP = user_row["pi_ip"]
+print(f"[Init] Connecting to Raspberry Pi at: {PI_IP}")
+
+# Initialize Subsystems
 stream = PiStream(PI_IP)
-
-
 pi = PiController(PI_IP)
-print("=" * 60)
-print(f"Connected Raspberry Pi : {PI_IP}")
-print("=" * 60)
+event_client = EventClient(BACKEND_URL, MANAGER_USER_ID)
+face_manager = FaceDataManager(BACKEND_URL, MANAGER_USER_ID, poll_interval=8.0)
+face_manager.start_hot_reload()
 
-# ── Load PPE model ────────────────────────────────────
+session_mgr = WorkerSessionManager(required_ppe_frames=8, grace_period_sec=2.0)
+
+# ── Load YOLO PPE Model ────────────────────────────────
 MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "best.pt"
+if not MODEL_PATH.exists():
+    raise FileNotFoundError(f"YOLO model weights not found at: {MODEL_PATH}")
+
 model = YOLO(str(MODEL_PATH))
-if torch.cuda.is_available():
-    model.to("cuda")
-    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-else:
-    print("Using CPU")
-print("Loaded Model Classes:", model.names)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model.to(device)
+print(f"[Init] YOLO PPE Model loaded on device: {device.upper()}")
 
-# ── Load known faces ──────────────────────────────────
-def load_known_faces():
-    rows = query_all("""
-        SELECT w.worker_id, w.first_name, w.last_name, wi.face_embedding
-        FROM workers w
-        JOIN worker_images wi ON w.worker_id = wi.worker_db_id
-        WHERE wi.face_embedding IS NOT NULL
-          AND wi.face_embedding != ''
-          AND w.user_id = ?
-    """, [{"type": "text", "value": MANAGER_USER_ID}])
+# ── Initialize OCR ────────────────────────────────────
+ocr_reader = None
+if easyocr is not None:
+    try:
+        ocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available(), verbose=False)
+        print("[Init] EasyOCR initialized for helmet ID verification")
+    except Exception as e:
+        print(f"[Init] EasyOCR init warning: {e}")
 
-    known = []
-    for row in rows:
-        try:
-            emb = json.loads(row["face_embedding"])
-            known.append({
-                "worker_id": row["worker_id"],
-                "name":      f"{row['first_name']} {row['last_name']}",
-                "embedding": emb
-            })
-        except:
-            pass
-    print(f"Loaded {len(known)} known face(s)")
-    return known
-
-known_faces = load_known_faces()
-
-# ── OCR for helmet IDs ────────────────────────────────
-ocr_reader        = easyocr.Reader(['en'], gpu=False, verbose=False)
-matched_helmet_ids = set()
 HELMET_ID_PATTERN = re.compile(r'[A-Za-z]{1,6}[_\-]?\d{1,6}', re.IGNORECASE)
 
+# ── State Tracking & Metrics ───────────────────────────
+last_buzzer_state = False
+fps_counter = 0
+fps_start_time = time.time()
+current_fps = 0.0
+last_ocr_time = 0
+ocr_cached_helmet = ""
 
-def normalize_helmet_id(helmet_id):
-    return re.sub(r'[^A-Z0-9]', '', (helmet_id or '').upper())
+# Track simple centroids across frames for person track IDs
+class SimpleCentroidTracker:
+    def __init__(self, max_disappeared=30):
+        self.next_object_id = 1
+        self.objects = {}       # object_id -> centroid (cx, cy)
+        self.bboxes = {}        # object_id -> [x1, y1, x2, y2]
+        self.disappeared = {}   # object_id -> count
+        self.max_disappeared = max_disappeared
+
+    def update(self, rects):
+        """rects: list of [x1, y1, x2, y2]"""
+        if len(rects) == 0:
+            for object_id in list(self.disappeared.keys()):
+                self.disappeared[object_id] += 1
+                if self.disappeared[object_id] > self.max_disappeared:
+                    self._deregister(object_id)
+            return []
+
+        input_centroids = np.zeros((len(rects), 2), dtype="int")
+        for i, (x1, y1, x2, y2) in enumerate(rects):
+            input_centroids[i] = (int((x1 + x2) / 2.0), int((y1 + y2) / 2.0))
+
+        if len(self.objects) == 0:
+            results = []
+            for i in range(len(rects)):
+                obj_id = self._register(input_centroids[i], rects[i])
+                results.append({"track_id": obj_id, "bbox": rects[i], "centroid": input_centroids[i]})
+            return results
+
+        object_ids = list(self.objects.keys())
+        object_centroids = list(self.objects.values())
+
+        # Distance matrix
+        D = np.linalg.norm(np.array(object_centroids)[:, np.newaxis] - input_centroids, axis=2)
+        rows = D.min(axis=1).argsort()
+        cols = D.argmin(axis=1)[rows]
+
+        used_rows = set()
+        used_cols = set()
+
+        results = []
+        for (row, col) in zip(rows, cols):
+            if row in used_rows or col in used_cols:
+                continue
+            if D[row, col] > 150:  # Max distance threshold
+                continue
+
+            obj_id = object_ids[row]
+            self.objects[obj_id] = input_centroids[col]
+            self.bboxes[obj_id] = rects[col]
+            self.disappeared[obj_id] = 0
+
+            used_rows.add(row)
+            used_cols.add(col)
+            results.append({"track_id": obj_id, "bbox": rects[col], "centroid": input_centroids[col]})
+
+        unused_cols = set(range(len(input_centroids))).difference(used_cols)
+        for col in unused_cols:
+            obj_id = self._register(input_centroids[col], rects[col])
+            results.append({"track_id": obj_id, "bbox": rects[col], "centroid": input_centroids[col]})
+
+        unused_rows = set(range(len(object_centroids))).difference(used_rows)
+        for row in unused_rows:
+            obj_id = object_ids[row]
+            self.disappeared[obj_id] += 1
+            if self.disappeared[obj_id] > self.max_disappeared:
+                self._deregister(obj_id)
+
+        return results
+
+    def _register(self, centroid, bbox):
+        obj_id = self.next_object_id
+        self.objects[obj_id] = centroid
+        self.bboxes[obj_id] = bbox
+        self.disappeared[obj_id] = 0
+        self.next_object_id += 1
+        return obj_id
+
+    def _deregister(self, object_id):
+        if object_id in self.objects:
+            del self.objects[object_id]
+            del self.bboxes[object_id]
+            del self.disappeared[object_id]
+
+tracker = SimpleCentroidTracker(max_disappeared=20)
 
 
-def load_available_helmets():
+def extract_helmet_id_from_crop(head_crop_bgr):
+    """Runs OCR on the head crop to detect stenciled/printed helmet IDs."""
+    if ocr_reader is None or head_crop_bgr is None or head_crop_bgr.size == 0:
+        return ""
     try:
-        rows = query_all(
-            """
-            SELECT helmet_id
-            FROM helmets
-            WHERE user_id = ? AND status = 'Available'
-            """,
-            [{"type": "text", "value": MANAGER_USER_ID}]
-        )
+        # Preprocess for contrast
+        gray = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, (0, 0), fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC)
+        results = ocr_reader.readtext(gray, detail=0)
+        for text in results:
+            clean = re.sub(r'[^A-Za-z0-9]', '', text).upper()
+            match = HELMET_ID_PATTERN.search(clean)
+            if match:
+                return match.group(0)
     except Exception as e:
-        print(f"Available helmet lookup error: {e}")
-        return {}
-
-    return {
-        normalize_helmet_id(row.get("helmet_id")): row.get("helmet_id")
-        for row in rows
-        if row.get("helmet_id")
-    }
-
-# ── State ─────────────────────────────────────────────
-checked_in_today = set()
-face_last_seen   = {}
-frame_counter    = 0
-current_detected_worker_id = None
-current_worker_ppe_score = None
-
-# ── Backend notify (non-blocking) ─────────────────────
-def notify(wid, score_to_save, checkin_time, new_status):
-    helmet_id = ""
-    try:
-        worker    = query_one(
-            "SELECT helmet_id FROM workers WHERE worker_id = ?",
-            [{"type": "text", "value": wid}]
-        )
-        helmet_id = (worker.get("helmet_id") or "") if worker else ""
-    except:
         pass
+    return ""
 
-    try:
-        requests.post(f"{BACKEND_URL}/api/workers/checkin",
-            json={"worker_id": wid, "ppe_score": score_to_save,
-                  "checkin_time": checkin_time, "status": new_status,
-                  "helmet_id": helmet_id},
-            timeout=5)
-        print(f"Backend updated: {wid} → {new_status} | PPE: {score_to_save}")
-    except Exception as e:
-        print("Check-in API error:", e)
 
-    # Release helmet on checkout
-    if new_status == "Active" and helmet_id:
-        # Mark helmet as Occupied on check-in
-        try:
-            requests.post(f"{BACKEND_URL}/api/helmets/assign",
-                json={"helmet_id": helmet_id, "worker_id": wid},
-                timeout=3)
-            print(f"Helmet {helmet_id} marked Occupied for worker {wid}")
-        except Exception as e:
-            print(f"Helmet occupy error: {e}")
+# ── Finalize Session Action ────────────────────────────
+def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str):
+    """
+    Submits finalized attendance and validation to Flask backend and actuates Pi hardware.
+    """
+    worker_id = worker_dict.get("worker_id", "")
+    worker_name = worker_dict.get("name", worker_id)
+    assigned_helmet = worker_dict.get("helmet_id", "")
+    current_status = worker_dict.get("status", "Off-Site")
 
-    elif new_status == "Off-Site" and helmet_id:
-        # Release helmet on check-out
-        try:
-            requests.post(f"{BACKEND_URL}/api/helmets/release",
-                json={"helmet_id": helmet_id}, timeout=3)
-            print(f"Helmet {helmet_id} released")
-            execute(
-                "UPDATE workers SET helmet_id = '' WHERE worker_id = ?",
-                [{"type": "text", "value": wid}]
-            )
-        except Exception as e:
-            print(f"Helmet release error: {e}")            
+    print(f"\n[Session Finalized] Worker: {worker_name} ({worker_id}) | PPE: {final_ppe_score}% | Assigned Helmet: {assigned_helmet or 'None'} | Scanned: {scanned_helmet_id or 'None'}")
 
-def sync_active_workers_ppe_score(score):
-    """Persist the latest stable PPE score for every worker currently on site."""
-    for wid in list(checked_in_today):
-        try:
-            execute(
-                "UPDATE workers SET ppe_score = ? WHERE worker_id = ?",
-                [
-                    {"type": "text", "value": str(score)},
-                    {"type": "text", "value": wid}
-                ]
-            )
-        except Exception as e:
-            print(f"PPE score sync error for {wid}: {e}")
+    # Determine attendance transition
+    new_status = "Off-Site" if current_status in ["Active", "On-Site"] else "Active"
+    action_type = "Check-in" if new_status == "Active" else "Check-out"
 
-def store_helmet_for_worker(worker_id, helmet_id, ppe_score_at_checkin=0):
-    """Assign helmet only if registered AND Available. Then show PPE score on matrix."""
-    if not worker_id or not helmet_id:
-        return
-
-    try:
-        helmet = query_one(
-            "SELECT helmet_id, status FROM helmets WHERE helmet_id = ? AND user_id = ?",
-            [
-                {"type": "text", "value": helmet_id},
-                {"type": "text", "value": MANAGER_USER_ID}
-            ]
+    # Validate helmet assignment
+    if assigned_helmet and scanned_helmet_id and assigned_helmet.upper() != scanned_helmet_id.upper():
+        event_client.log_safety_event(
+            event_type="HELMET_MISMATCH",
+            message=f"Helmet mismatch for {worker_name}: Assigned {assigned_helmet}, scanned {scanned_helmet_id}",
+            worker_id=worker_id,
+            ppe_score=final_ppe_score,
+            helmet_id=scanned_helmet_id,
+            camera_id=CAMERA_ID
         )
-    except Exception as e:
-        print(f"Helmet lookup error: {e}")
-        return
 
-    if not helmet:
-        print(f"Helmet {helmet_id} not in registered inventory — ignoring")
-        return
+    # Record attendance in database
+    resp = event_client.record_attendance(
+        worker_id=worker_id,
+        ppe_score=final_ppe_score,
+        helmet_id=scanned_helmet_id or assigned_helmet
+    )
 
-    if helmet.get("status") == "Occupied":
-        # Check if already assigned to THIS worker
-        current_worker = query_one(
-            "SELECT helmet_id FROM workers WHERE worker_id = ?",
-            [{"type": "text", "value": worker_id}]
-        )
-        if current_worker and current_worker.get("helmet_id") == helmet_id:
-            print(f"Helmet {helmet_id} already assigned to this worker")
-            return
-        print(f"Helmet {helmet_id} already occupied by another worker — ignoring")
-        return
-
-    # Helmet is Available — assign it
-    try:
-        resp = requests.post(
-            f"{BACKEND_URL}/api/helmets/assign",
-            json={"helmet_id": helmet_id, "worker_id": worker_id},
-            timeout=5
-        )
-        if resp.ok:
-            matched_helmet_ids.add(helmet_id)
-            print(f"Helmet {helmet_id} assigned to worker {worker_id}")
-            # Show PPE score on matrix now that helmet is confirmed
-            Thread(
-                target=pi.show_score,
-                args=(ppe_score_at_checkin,),
-                daemon=True
-            ).start()
-            print(f"Matrix showing check-in PPE score: {ppe_score_at_checkin}")
+    # Hardware Feedback
+    if final_ppe_score >= 100:
+        if action_type == "Check-in":
+            pi.checkin()
         else:
-            print(f"Helmet assign failed: {resp.text}")
-    except Exception as e:
-        print(f"Helmet store error: {e}")
+            pi.checkout()
+        pi.show_score(final_ppe_score)
+    else:
+        # PPE Violation feedback
+        pi.show_score(final_ppe_score)
+        # Pulse buzzer
+        def _warn_buzzer():
+            pi.buzzer_on()
+            time.sleep(1.2)
+            pi.buzzer_off()
+        Thread(target=_warn_buzzer, daemon=True).start()
 
-def register_helmet(worker_id, helmet_id):
-    """Assign helmet to worker via backend — only if helmet is registered."""
-    try:
-        available_helmets = load_available_helmets()
-        resolved_helmet_id = available_helmets.get(normalize_helmet_id(helmet_id))
-        if not resolved_helmet_id:
-            print(f"Helmet {helmet_id} NOT available — ignoring")
-            return
+    # Trigger hot-reload check to refresh worker on-site statuses
+    Thread(target=face_manager.check_and_reload_if_stale, daemon=True).start()
 
-        # Assign helmet
-        resp = requests.post(
-            f"{BACKEND_URL}/api/helmets/assign",
-            json={"helmet_id": resolved_helmet_id, "worker_id": worker_id},
-            timeout=5
-        )
-        if resp.ok:
-            print(f"Helmet {resolved_helmet_id} assigned to worker {worker_id}")
-        else:
-            print(f"Helmet assign failed: {resp.text}")
-    except Exception as e:
-        print(f"Helmet register error: {e}")
 
-# ── Main loop ─────────────────────────────────────────
-cam_label = "Pi Camera Stream"
-print(f"SiteSentinel Started [{cam_label}] — Press Q to quit")
+# ── Main Video Processing Loop ──────────────────────────
+print("\n[SiteSentinel] Starting live camera processing loop. Press 'q' to exit.\n")
 
 try:
     while True:
-        ret, frame = stream.read()
-        if not ret:
-            print ("Pi stream lost. Reconnecting...")
-            stream.close()
-            time.sleep(2)
-            stream = PiStream(PI_IP)
-            continue
-        if frame is None:
-            time.sleep(0.1)
+        loop_start = time.time()
+        success, frame = stream.read()
+
+        if not success or frame is None:
+            # Reconnecting or waiting for stream
+            time.sleep(0.05)
             continue
 
-        frame_counter += 1
-        annotated       = frame.copy()
-        detected_labels = []
+        frame_h, frame_w = frame.shape[:2]
+        fps_counter += 1
+        if time.time() - fps_start_time >= 1.0:
+            current_fps = fps_counter / (time.time() - fps_start_time)
+            fps_counter = 0
+            fps_start_time = time.time()
 
-        # ── PPE Detection ──────────────────────────────
-        results = model(frame, conf=0.5, verbose=False)
-        if results[0].boxes is not None:
-            for box in results[0].boxes:
-                cls_id     = int(box.cls[0])
-                conf       = float(box.conf[0])
-                class_name = model.names[cls_id]
-                if class_name in ["Mask", "NO-Mask"]:
-                    continue
-                detected_labels.append(class_name)
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                color = (0, 0, 255) if class_name in ["NO-Hardhat", "NO-Safety Vest"] else (0, 255, 0)
-                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(annotated, f"{class_name} {conf:.2f}", (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        # 1. Run YOLO PPE Detection & Person Detection
+        results = model(frame, conf=0.35, verbose=False)[0]
+        
+        person_rects = []
+        ppe_detections = []
 
-# ── PPE Score ──────────────────────────────────
-        any_ppe = any(l in detected_labels for l in [
-            "Hardhat", "NO-Hardhat", "Safety Vest", "NO-Safety Vest"
-        ])
+        for box in results.boxes:
+            cls_id = int(box.cls[0])
+            label = model.names[cls_id]
+            conf = float(box.conf[0])
+            x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
 
-        if not any_ppe:
-            ppe_score = -1
-        else:
-            helmet_ok = (
-                "Hardhat" in detected_labels
-                and "NO-Hardhat" not in detected_labels
-            )
-            vest_ok = (
-                "Safety Vest" in detected_labels
-                and "NO-Safety Vest" not in detected_labels
-            )
-            ppe_score = (50 if helmet_ok else 0) + (50 if vest_ok else 0)
-
-        # Smooth score — only update after PPE_SMOOTH_FRAMES consistent readings
-        if ppe_score >= 0:
-            ppe_score_buffer.append(ppe_score)
-            if len(ppe_score_buffer) > PPE_SMOOTH_FRAMES:
-                ppe_score_buffer.pop(0)
-
-            # Only trigger if all recent frames agree on same score
-            if (len(ppe_score_buffer) == PPE_SMOOTH_FRAMES
-                    and len(set(ppe_score_buffer)) == 1
-                    and ppe_score_buffer[0] != last_ppe_score):
-
-                stable_score   = ppe_score_buffer[0]
-                last_ppe_score = stable_score
-                
-                sync_active_workers_ppe_score(stable_score)
-                print(f"PPE Score Stable: {stable_score}")
-        else:
-            # No person — clear buffer
-            ppe_score_buffer.clear()
-
-        effective_ppe_score = ppe_score if ppe_score > 0 else 0
-
-        # ── Face Recognition (every 15 frames) ─────────
-        if frame_counter % 15 == 0 and known_faces:
-            rgb             = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            live_embeddings = get_embedding_from_frame(rgb)
-
-            for live_emb in live_embeddings:
-                best_match = None
-                best_dist  = 1.0
-                for kf in known_faces:
-                    matched, dist = match_face(live_emb, json.dumps(kf["embedding"]))
-                    if matched and dist < best_dist:
-                        best_dist  = dist
-                        best_match = kf
-
-                if not best_match:
-                    continue
-
-                wid = best_match["worker_id"]
-                current_detected_worker_id = wid
-                now = datetime.now()
-
-                if (now.timestamp() - face_last_seen.get(wid, 0)) < 10:
-                    cv2.putText(annotated, best_match["name"], (20, 120),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
-                    continue
-
-                face_last_seen[wid] = now.timestamp()
-
-                if wid not in checked_in_today:
-                    checked_in_today.add(wid)
-                    checkin_time  = now.strftime("%I:%M %p")
-                    new_status    = "Active"
-                    score_to_save = ppe_score if ppe_score >= 0 else last_ppe_score if last_ppe_score >= 0 else None
-                    current_worker_ppe_score = score_to_save
-                    current_detected_worker_id = wid
-                    print(f"Checked IN:  {best_match['name']} | PPE: {ppe_score}")
-                else:
-                    checked_in_today.discard(wid)
-                    worker_row = query_one(
-                        "SELECT helmet_id FROM workers WHERE worker_id = ?",
-                        [{"type": "text", "value": wid}]
-                    )
-                    if worker_row and worker_row.get("helmet_id"):
-                        matched_helmet_ids.discard(worker_row["helmet_id"])
-                    if current_detected_worker_id == wid:
-                        current_detected_worker_id = None
-                    current_worker_ppe_score = None
-                    checkin_time  = "--:--"
-                    new_status    = "Off-Site"
-                    score_to_save = 0
-                    print(f"Checked OUT: {best_match['name']}")
-
-                Thread(
-                    target=notify,
-                    args=(wid, score_to_save, checkin_time, new_status),
-                    daemon=True
-                ).start()   
-
-                if new_status == "Active":
-                    Thread(
-                        target=pi.checkin,
-                        daemon=True
-                    ).start()
-                else:
-                    Thread(
-                        target=pi.checkout,
-                        daemon=True
-                    ).start()
-
-                cv2.putText(annotated,
-                            f"{best_match['name']} ({new_status})", (20, 120),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
-
-        # ── Helmet OCR (every 10 frames, always scan) ──
-        if current_detected_worker_id and frame_counter % 10 == 0:
-            ocr_results = ocr_reader.readtext(frame, detail=1, paragraph=False)
-            for (bbox, text_ocr, conf) in ocr_results:
-                text_clean = text_ocr.strip().upper().replace(' ', '_')
-                if float(conf) < 0.4:
-                    continue
-                m = HELMET_ID_PATTERN.search(text_clean)
-                if not m:
-                    continue
-
-                helmet_id_found = m.group(0)
-                pts = [tuple(map(int, pt)) for pt in bbox]
-                for i in range(4):
-                    cv2.line(annotated, pts[i], pts[(i+1)%4], (255, 165, 0), 2)
-                cv2.putText(annotated, f"HELMET: {helmet_id_found}", (20, 200),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0), 2)
-
-                if helmet_id_found in matched_helmet_ids:
-                    continue
-
-                # ── Verification against pre-assigned helmet ──
-                try:
-                    worker_row = query_one(
-                        "SELECT helmet_id FROM workers WHERE worker_id = ?",
-                        [{"type": "text", "value": current_detected_worker_id}]
-                    )
-                    pre_assigned = (worker_row.get("helmet_id") or "").strip().upper() if worker_row else ""
-                except Exception as e:
-                    print(f"Pre-assigned helmet lookup error: {e}")
-                    pre_assigned = ""
-
-                scanned_norm  = normalize_helmet_id(helmet_id_found)
-                assigned_norm = normalize_helmet_id(pre_assigned)
-
-                if pre_assigned:
-                    if scanned_norm == assigned_norm:
-                        # ✅ Correct helmet — confirm on-screen
-                        cv2.putText(annotated, f"HELMET OK: {pre_assigned}", (20, 230),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 100), 2)
-                        print(f"Helmet MATCH: scanned={helmet_id_found}, assigned={pre_assigned}")
-                        # Mark as matched and update DB / matrix
-                        score_for_matrix = ppe_score if ppe_score >= 0 else last_ppe_score if last_ppe_score >= 0 else 0
-                        Thread(
-                            target=store_helmet_for_worker,
-                            args=(current_detected_worker_id, pre_assigned, score_for_matrix),
-                            daemon=True
-                        ).start()
-                        matched_helmet_ids.add(helmet_id_found)
-                    else:
-                        # ❌ Mismatch — do NOT assign, show warning
-                        cv2.putText(annotated, f"HELMET MISMATCH! Expected: {pre_assigned}", (20, 230),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
-                        print(f"Helmet MISMATCH: scanned={helmet_id_found}, expected={pre_assigned} — ignoring")
-                else:
-                    # No pre-assigned helmet — fallback: auto-assign any available helmet
-                    score_for_matrix = ppe_score if ppe_score >= 0 else last_ppe_score if last_ppe_score >= 0 else 0
-                    Thread(
-                        target=store_helmet_for_worker,
-                        args=(current_detected_worker_id, helmet_id_found, score_for_matrix),
-                        daemon=True
-                    ).start()
-
-        # ── HUD ────────────────────────────────────────
-        person_count = detected_labels.count("Person")
-        violation    = "NO-Hardhat" in detected_labels or "NO-Safety Vest" in detected_labels
-        if violation != last_buzzer_state:
-            if violation:
-                Thread(
-                    target=pi.buzzer_on,
-                    daemon=True
-                ).start()
+            if label == "Person":
+                person_rects.append([x1, y1, x2, y2])
             else:
-                Thread(
-                    target=pi.buzzer_off,
-                    daemon=True
-                ).start()
+                ppe_detections.append({
+                    "label": label,
+                    "bbox": [x1, y1, x2, y2],
+                    "conf": conf
+                })
 
-            last_buzzer_state = violation
-        cv2.putText(annotated, f"Persons: {person_count}", (20, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-        display_score = current_worker_ppe_score if current_worker_ppe_score is not None else (ppe_score if ppe_score >= 0 else "--")
-        cv2.putText(annotated, f"PPE Score: {display_score}", (20, 150),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+        # 2. Update Person Tracking
+        tracked_persons = tracker.update(person_rects)
 
-        if violation:
-            cv2.putText(annotated, "PPE VIOLATION DETECTED", (20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+        # 3. Update Single-Worker Evaluation State Machine
+        session_mgr.update_frame(tracked_persons, frame_w, frame_h)
 
-        # Camera source label bottom-left
-        cv2.putText(annotated, cam_label,
-                    (10, annotated.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+        # 4. State-Specific Operations
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        cv2.imshow("SiteSentinel PPE Detection", annotated)
+        # ── State: IDENTIFYING ──
+        if session_mgr.state == SessionState.IDENTIFYING and session_mgr.active_worker is None:
+            # Crop locked worker area to run face recognition
+            if session_mgr.active_bbox is not None:
+                bx1, by1, bx2, by2 = session_mgr.active_bbox
+                # Add margin
+                px1 = max(0, bx1)
+                py1 = max(0, by1)
+                px2 = min(frame_w, bx2)
+                py2 = min(frame_h, by2)
+                
+                person_crop_rgb = frame_rgb[py1:py2, px1:px2]
+                if person_crop_rgb.size > 0:
+                    live_embeddings = get_embedding_from_frame(person_crop_rgb)
+                    if live_embeddings:
+                        for emb in live_embeddings:
+                            matched, matched_worker, dist = face_manager.match_face(emb, threshold=0.52)
+                            if matched and matched_worker:
+                                session_mgr.set_identified_worker(matched_worker)
+                                print(f"[Face Matched] {matched_worker['name']} (Dist: {dist:.3f})")
+                                break
+
+        # ── State: EVALUATING_PPE ──
+        if session_mgr.state == SessionState.EVALUATING_PPE:
+            # Calculate strict spatial PPE attribution
+            ppe_obs = session_mgr.attribute_ppe_detections(ppe_detections)
+
+            # Try helmet OCR once during evaluation if head crop available
+            if (time.time() - last_ocr_time) > 2.0 and session_mgr.active_bbox:
+                bx1, by1, bx2, by2 = session_mgr.active_bbox
+                bh = by2 - by1
+                head_crop = frame[max(0, by1):min(frame_h, int(by1 + bh * 0.35)), max(0, bx1):min(frame_w, bx2)]
+                if head_crop.size > 0:
+                    detected_hid = extract_helmet_id_from_crop(head_crop)
+                    if detected_hid:
+                        ocr_cached_helmet = detected_hid
+                        session_mgr.finalized_helmet_id = detected_hid
+                last_ocr_time = time.time()
+
+        # ── State: FINALIZED (Trigger backend & GPIO once) ──
+        if session_mgr.state == SessionState.FINALIZED and session_mgr.finalized_action is None:
+            if session_mgr.active_worker is not None:
+                final_score = session_mgr.finalized_ppe_score if session_mgr.finalized_ppe_score is not None else 0
+                session_mgr.finalized_action = "DONE"
+                commit_evaluation_session(
+                    worker_dict=session_mgr.active_worker,
+                    final_ppe_score=final_score,
+                    scanned_helmet_id=session_mgr.finalized_helmet_id or ocr_cached_helmet
+                )
+
+        # ── Handle Violation Buzzer ──
+        current_score = session_mgr.get_smoothed_ppe_score()
+        has_active_violation = (session_mgr.state == SessionState.EVALUATING_PPE and current_score is not None and current_score < 100)
+        if has_active_violation != last_buzzer_state:
+            if has_active_violation:
+                Thread(target=pi.buzzer_on, daemon=True).start()
+            else:
+                Thread(target=pi.buzzer_off, daemon=True).start()
+            last_buzzer_state = has_active_violation
+
+        # ───────────────────────────────────────────────────
+        # 5. Render Rich HUD Annotations
+        # ───────────────────────────────────────────────────
+        annotated = frame.copy()
+        gx1, gy1, gx2, gy2 = session_mgr.get_gate_roi(frame_w, frame_h)
+
+        # Draw Gate Zone ROI
+        roi_overlay = annotated.copy()
+        cv2.rectangle(roi_overlay, (gx1, 0), (gx2, frame_h), (255, 107, 43), -1)
+        cv2.addWeighted(roi_overlay, 0.08, annotated, 0.92, 0, annotated)
+        cv2.rectangle(annotated, (gx1, 0), (gx2, frame_h), (255, 107, 43), 1, cv2.LINE_AA)
+        cv2.putText(annotated, "GATE ZONE", (gx1 + 10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 107, 43), 1, cv2.LINE_AA)
+
+        # Draw Person Bounding Boxes
+        for p in tracked_persons:
+            tid = p["track_id"]
+            bx1, by1, bx2, by2 = p["bbox"]
+            is_active = (tid == session_mgr.active_track_id)
+            box_color = (0, 212, 170) if is_active else (180, 180, 180)
+            thickness = 2 if is_active else 1
+            cv2.rectangle(annotated, (bx1, by1), (bx2, by2), box_color, thickness, cv2.LINE_AA)
+
+            tag = f"Track #{tid}" + (" [LOCKED]" if is_active else "")
+            cv2.putText(annotated, tag, (bx1, max(15, by1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, box_color, 1, cv2.LINE_AA)
+
+        # Draw PPE Detection Boxes
+        for det in ppe_detections:
+            lbl = det["label"]
+            dx1, dy1, dx2, dy2 = det["bbox"]
+            is_safe = lbl in ["Hardhat", "Safety Vest"]
+            d_color = (0, 220, 100) if is_safe else (50, 50, 240)
+            cv2.rectangle(annotated, (dx1, dy1), (dx2, dy2), d_color, 1, cv2.LINE_AA)
+            cv2.putText(annotated, lbl, (dx1, max(12, dy1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, d_color, 1, cv2.LINE_AA)
+
+        # Top Header Bar Overlay
+        cv2.rectangle(annotated, (0, 0), (frame_w, 48), (12, 12, 20), -1)
+        cv2.line(annotated, (0, 48), (frame_w, 48), (50, 50, 70), 1)
+
+        cv2.putText(annotated, "SiteSentinel AI", (14, 30), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 107, 43), 2, cv2.LINE_AA)
+        
+        status_text = f"FPS: {current_fps:.1f}  |  Pi: {PI_IP} [CONNECTED]"
+        cv2.putText(annotated, status_text, (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+
+        # Evaluation State Badge (Top Right)
+        state_colors = {
+            SessionState.IDLE: (140, 140, 140),
+            SessionState.CROWDED: (50, 50, 240),
+            SessionState.IDENTIFYING: (0, 200, 255),
+            SessionState.EVALUATING_PPE: (255, 170, 0),
+            SessionState.FINALIZED: (0, 220, 100),
+            SessionState.COOLDOWN: (200, 140, 255)
+        }
+        st_color = state_colors.get(session_mgr.state, (200, 200, 200))
+        st_label = f"[{session_mgr.state}]"
+        cv2.putText(annotated, st_label, (frame_w - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.52, st_color, 2, cv2.LINE_AA)
+
+        # Bottom Information Card Overlay
+        cv2.rectangle(annotated, (0, frame_h - 75), (frame_w, frame_h), (12, 12, 20), -1)
+        cv2.line(annotated, (0, frame_h - 75), (frame_w, frame_h - 75), (50, 50, 70), 1)
+
+        # HUD Message
+        cv2.putText(annotated, session_mgr.hud_message, (16, frame_h - 45), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # Worker Details (Bottom Left)
+        if session_mgr.active_worker:
+            w_info = f"Worker: {session_mgr.active_worker['name']} ({session_mgr.active_worker['worker_id']})"
+            h_info = f"Helmet: {session_mgr.finalized_helmet_id or session_mgr.active_worker.get('helmet_id') or 'N/A'}"
+            cv2.putText(annotated, f"{w_info}  |  {h_info}", (16, frame_h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 212, 170), 1, cv2.LINE_AA)
+
+        # PPE Score Gauge (Bottom Right)
+        score_val = session_mgr.get_smoothed_ppe_score()
+        if score_val is not None:
+            score_color = (0, 220, 100) if score_val >= 100 else ((0, 200, 255) if score_val >= 50 else (50, 50, 240))
+            cv2.putText(annotated, f"PPE SCORE: {score_val}%", (frame_w - 220, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, score_color, 2, cv2.LINE_AA)
+        else:
+            cv2.putText(annotated, "PPE SCORE: --", (frame_w - 220, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, (140, 140, 140), 1, cv2.LINE_AA)
+
+        # Crowding warning overlay banner
+        if session_mgr.crowding_warning:
+            cv2.rectangle(annotated, (gx1, 60), (gx2, 100), (0, 0, 180), -1)
+            cv2.putText(annotated, "! CROWDING: ONE WORKER AT A TIME !", (gx1 + 20, 88), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+
+        # Display window
+        cv2.imshow("SiteSentinel — Live Gate Inspection", annotated)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
 except KeyboardInterrupt:
-    print("\nStopped by user")
+    print("\n[SiteSentinel] Interrupted by user.")
 finally:
+    print("[SiteSentinel] Shutting down CV engine...")
     try:
         pi.buzzer_off()
     except:
         pass
-    try:
-        pi.checkout()
-    except:
-        pass
+    face_manager.stop()
     stream.close()
     cv2.destroyAllWindows()
-    print("System safely closed")
+    print("[SiteSentinel] Shutdown clean and complete.")
