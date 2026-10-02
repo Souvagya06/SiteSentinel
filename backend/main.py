@@ -1,9 +1,14 @@
-from database import execute, query_one, query_all
-from flask import Flask, send_from_directory, request, jsonify, session, redirect
-from threading import Thread, Timer
-import webbrowser
 import os
 import sys
+from pathlib import Path
+
+# Ensure backend folder is in sys.path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from database import execute, query_one, query_all
+from flask import Flask, send_from_directory, request, jsonify, session, redirect, Response
+from threading import Thread, Timer
+import webbrowser
 import subprocess
 import bcrypt
 import secrets
@@ -11,9 +16,10 @@ import cloudinary
 import cloudinary.uploader
 import json
 import time
+from datetime import datetime
 from face__utils import get_embedding_from_url
+from report_service import generate_csv_report, generate_pdf_report
 from dotenv import load_dotenv
-from pathlib import Path
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(env_path)
@@ -30,6 +36,16 @@ cloudinary.config(
 FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../frontend/pages")
 )
+
+def bump_face_data_version(user_id):
+    """Increments the face_data_version for the user so live CV processes hot-reload embeddings."""
+    try:
+        execute(
+            "UPDATE users SET face_data_version = COALESCE(face_data_version, 1) + 1 WHERE id = ?",
+            [{"type": "text", "value": str(user_id)}]
+        )
+    except Exception as e:
+        print(f"Error bumping face data version: {e}")
 
 # ─────────────────────────────────────────
 # Pages
@@ -102,7 +118,7 @@ def signup():
 
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     execute(
-        "INSERT INTO users (email, password, name, company) VALUES (?, ?, ?, ?)",
+        "INSERT INTO users (email, password, name, company, face_data_version) VALUES (?, ?, ?, ?, 1)",
         [
             {"type": "text", "value": email},
             {"type": "text", "value": hashed},
@@ -135,18 +151,15 @@ def login_api():
 
 @app.route("/api/logout")
 def logout():
-
     global webcam_process
-
     if webcam_process and webcam_process.poll() is None:
         webcam_process.kill()
-
+        webcam_process = None
     session.clear()
-
     return redirect("/login.html")
 
 # ─────────────────────────────────────────
-# Workers
+# Workers CRUD
 # ─────────────────────────────────────────
 @app.route("/api/workers", methods=["GET"])
 def get_workers():
@@ -189,7 +202,7 @@ def add_worker():
     if existing:
         return jsonify({"error": "A worker with this ID already exists."}), 409
 
-    # Validate pre-assigned helmet (optional)
+    # Validate pre-assigned helmet
     if helmet_id:
         helmet_row = query_one(
             "SELECT status FROM helmets WHERE helmet_id = ? AND user_id = ?",
@@ -230,7 +243,6 @@ def add_worker():
         ]
     )
 
-    # Mark helmet as Occupied if pre-assigned
     if helmet_id:
         execute(
             "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
@@ -252,6 +264,9 @@ def add_worker():
             ]
         )
 
+    # Hot reload trigger
+    bump_face_data_version(session["user_id"])
+
     return jsonify({"message": "Worker registered successfully.", "image_url": image_url}), 201
 
 @app.route("/api/workers/<int:worker_db_id>", methods=["DELETE"])
@@ -260,7 +275,7 @@ def delete_worker(worker_db_id):
         return jsonify({"error": "Not logged in"}), 401
     try:
         worker = query_one(
-            "SELECT worker_id FROM workers WHERE id = ? AND user_id = ?",
+            "SELECT worker_id, helmet_id FROM workers WHERE id = ? AND user_id = ?",
             [
                 {"type": "text", "value": str(worker_db_id)},
                 {"type": "text", "value": str(session["user_id"])}
@@ -268,6 +283,17 @@ def delete_worker(worker_db_id):
         )
         if not worker:
             return jsonify({"error": "Worker not found."}), 404
+        
+        # Release helmet if assigned
+        if worker.get("helmet_id"):
+            execute(
+                "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+                [
+                    {"type": "text", "value": worker["helmet_id"]},
+                    {"type": "text", "value": str(session["user_id"])}
+                ]
+            )
+
         execute(
             "DELETE FROM worker_images WHERE worker_db_id = ?",
             [{"type": "text", "value": worker["worker_id"]}]
@@ -279,6 +305,8 @@ def delete_worker(worker_db_id):
                 {"type": "text", "value": str(session["user_id"])}
             ]
         )
+
+        bump_face_data_version(session["user_id"])
         return jsonify({"message": "Worker deleted."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -294,7 +322,6 @@ def update_worker(worker_db_id):
     if not first_name or not last_name or not worker_id:
         return jsonify({"error": "First name, last name and worker ID are required."}), 400
     try:
-        # Check worker exists and belongs to this user
         existing = query_one(
             "SELECT id, worker_id FROM workers WHERE id = ? AND user_id = ?",
             [
@@ -304,7 +331,7 @@ def update_worker(worker_db_id):
         )
         if not existing:
             return jsonify({"error": "Worker not found."}), 404
-        # Check if new worker_id conflicts with another worker
+
         conflict = query_one(
             "SELECT id FROM workers WHERE worker_id = ? AND user_id = ? AND id != ?",
             [
@@ -315,6 +342,7 @@ def update_worker(worker_db_id):
         )
         if conflict:
             return jsonify({"error": "Worker ID already in use by another worker."}), 409
+
         execute(
             "UPDATE workers SET first_name = ?, last_name = ?, worker_id = ? WHERE id = ? AND user_id = ?",
             [
@@ -325,6 +353,7 @@ def update_worker(worker_db_id):
                 {"type": "text", "value": str(session["user_id"])}
             ]
         )
+        bump_face_data_version(session["user_id"])
         return jsonify({"message": "Worker updated."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -345,18 +374,113 @@ def get_worker_images(worker_id):
     return jsonify({"images": urls})
 
 # ─────────────────────────────────────────
+# Worker Details & Deep History
+# ─────────────────────────────────────────
+@app.route("/api/workers/<int:worker_db_id>/details", methods=["GET"])
+def get_worker_full_details(worker_db_id):
+    """Returns comprehensive worker profile, current status, attendance, and safety history."""
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    worker = query_one(
+        "SELECT * FROM workers WHERE id = ? AND user_id = ?",
+        [
+            {"type": "text", "value": str(worker_db_id)},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+    if not worker:
+        return jsonify({"error": "Worker not found"}), 404
+
+    worker_id = worker["worker_id"]
+
+    # Face embeddings status
+    face_rows = query_all(
+        "SELECT image_url, face_embedding FROM worker_images WHERE worker_db_id = ?",
+        [{"type": "text", "value": worker_id}]
+    )
+    has_embeddings = any(bool(r.get("face_embedding")) for r in face_rows)
+    face_status = "Registered" if has_embeddings else ("Pending" if face_rows else "Needs photo")
+
+    # Recent attendance
+    att_logs = query_all(
+        "SELECT * FROM attendance_log WHERE worker_id = ? AND user_id = ? ORDER BY timestamp DESC LIMIT 20",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+
+    # Recent safety events
+    events = query_all(
+        "SELECT * FROM safety_events WHERE worker_id = ? AND manager_id = ? ORDER BY created_at DESC LIMIT 20",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+
+    return jsonify({
+        "worker": worker,
+        "face_status": face_status,
+        "image_count": len(face_rows),
+        "recent_attendance": att_logs,
+        "recent_events": events
+    })
+
+@app.route("/api/workers/<worker_id>/attendance", methods=["GET"])
+def get_worker_attendance_history(worker_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    rows = query_all(
+        "SELECT * FROM attendance_log WHERE worker_id = ? AND user_id = ? ORDER BY timestamp DESC LIMIT 50",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+    return jsonify({"attendance": rows})
+
+@app.route("/api/workers/<worker_id>/events", methods=["GET"])
+def get_worker_safety_events(worker_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    rows = query_all(
+        "SELECT * FROM safety_events WHERE worker_id = ? AND manager_id = ? ORDER BY created_at DESC LIMIT 50",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+    return jsonify({"events": rows})
+
+@app.route("/api/workers/<worker_id>/ppe-history", methods=["GET"])
+def get_worker_ppe_history(worker_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    rows = query_all(
+        "SELECT id, timestamp, event, ppe_score, helmet_id FROM attendance_log WHERE worker_id = ? AND user_id = ? ORDER BY timestamp ASC LIMIT 100",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+    return jsonify({"history": rows})
+
+# ─────────────────────────────────────────
 # Assign / Unassign Helmet per Worker
 # ─────────────────────────────────────────
 @app.route("/api/workers/<worker_id>/helmet", methods=["PUT"])
 def update_worker_helmet(worker_id):
-    """Assign or unassign a helmet for a specific worker."""
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
 
     data      = request.get_json()
     new_hid   = (data.get("helmet_id") or "").strip().upper()
 
-    # Fetch the worker
     worker = query_one(
         "SELECT helmet_id FROM workers WHERE worker_id = ? AND user_id = ?",
         [
@@ -369,7 +493,6 @@ def update_worker_helmet(worker_id):
 
     old_hid = (worker.get("helmet_id") or "").strip().upper()
 
-    # Validate the new helmet if assigning
     if new_hid:
         helmet_row = query_one(
             "SELECT status FROM helmets WHERE helmet_id = ? AND user_id = ?",
@@ -383,7 +506,6 @@ def update_worker_helmet(worker_id):
         if helmet_row["status"] == "Occupied" and new_hid != old_hid:
             return jsonify({"error": f"Helmet {new_hid} is already assigned to another worker."}), 409
 
-    # Release old helmet if different
     if old_hid and old_hid != new_hid:
         execute(
             "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
@@ -393,7 +515,6 @@ def update_worker_helmet(worker_id):
             ]
         )
 
-    # Assign new helmet
     execute(
         "UPDATE workers SET helmet_id = ? WHERE worker_id = ? AND user_id = ?",
         [
@@ -412,6 +533,7 @@ def update_worker_helmet(worker_id):
             ]
         )
 
+    bump_face_data_version(session["user_id"])
     action = f"Assigned helmet {new_hid} to worker {worker_id}" if new_hid else f"Unassigned helmet from worker {worker_id}"
     return jsonify({"message": action})
 
@@ -468,7 +590,6 @@ def delete_helmet(helmet_id):
 
 @app.route("/api/helmets/assign", methods=["POST"])
 def assign_helmet():
-    """Called by webcam_detection when OCR reads a helmet ID."""
     data       = request.get_json()
     helmet_id  = data.get("helmet_id", "").strip().upper()
     worker_id  = data.get("worker_id", "").strip()
@@ -483,7 +604,6 @@ def assign_helmet():
     if not worker:
         return jsonify({"error": "Worker not found"}), 404
 
-    # Check helmet is registered for the same manager
     helmet = query_one(
         "SELECT * FROM helmets WHERE helmet_id = ? AND user_id = ?",
         [
@@ -502,7 +622,6 @@ def assign_helmet():
         if not current_owner or current_owner.get("worker_id") != worker_id:
             return jsonify({"error": "Helmet already occupied"}), 409
 
-    # Mark helmet as Occupied
     execute(
         "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
         [
@@ -510,8 +629,6 @@ def assign_helmet():
             {"type": "text", "value": str(worker["user_id"])}
         ]
     )
-
-    # Assign to worker
     execute(
         "UPDATE workers SET helmet_id = ? WHERE worker_id = ? AND user_id = ?",
         [
@@ -520,11 +637,11 @@ def assign_helmet():
             {"type": "text", "value": str(worker["user_id"])}
         ]
     )
+    bump_face_data_version(worker["user_id"])
     return jsonify({"message": f"Helmet {helmet_id} assigned to worker {worker_id}"})
 
 @app.route("/api/helmets/release", methods=["POST"])
 def release_helmet():
-    """Called when worker checks out."""
     helmet_id = request.get_json().get("helmet_id", "").strip().upper()
     if not helmet_id:
         return jsonify({"error": "helmet_id required"}), 400
@@ -534,75 +651,225 @@ def release_helmet():
     )
     return jsonify({"message": f"Helmet {helmet_id} released"})
 
-@app.route("/api/helmets/check/<helmet_id>")
-def check_helmet(helmet_id):
-    """Check if helmet is registered and available."""
-    helmet = query_one(
-        "SELECT * FROM helmets WHERE helmet_id = ?",
-        [{"type": "text", "value": helmet_id.upper()}]
-    )
-    if not helmet:
-        return jsonify({"registered": False})
-    return jsonify({"registered": True, "status": helmet["status"],
-                    "helmet_id": helmet["helmet_id"]})
 # ─────────────────────────────────────────
-# Check-in / Attendance
+# Face Data Hot Reload Endpoints
+# ─────────────────────────────────────────
+@app.route("/api/face-data/version", methods=["GET"])
+def get_face_data_version():
+    manager_id = request.args.get("manager_id") or session.get("user_id")
+    if not manager_id:
+        return jsonify({"error": "manager_id required"}), 400
+
+    user = query_one(
+        "SELECT face_data_version FROM users WHERE id = ?",
+        [{"type": "text", "value": str(manager_id)}]
+    )
+    version = user.get("face_data_version", 1) if user else 1
+    return jsonify({"version": version, "manager_id": str(manager_id)})
+
+@app.route("/api/face-data", methods=["GET"])
+def get_face_data():
+    manager_id = request.args.get("manager_id") or session.get("user_id")
+    if not manager_id:
+        return jsonify({"error": "manager_id required"}), 400
+
+    user = query_one(
+        "SELECT face_data_version FROM users WHERE id = ?",
+        [{"type": "text", "value": str(manager_id)}]
+    )
+    version = user.get("face_data_version", 1) if user else 1
+
+    # Fetch all workers and their face embeddings for this manager
+    rows = query_all(
+        """
+        SELECT w.id, w.worker_id, w.first_name, w.last_name, w.helmet_id, w.status, wi.face_embedding
+        FROM workers w
+        JOIN worker_images wi ON w.worker_id = wi.worker_db_id
+        WHERE w.user_id = ? AND wi.face_embedding IS NOT NULL AND wi.face_embedding != ''
+        """,
+        [{"type": "text", "value": str(manager_id)}]
+    )
+
+    return jsonify({
+        "version": version,
+        "manager_id": str(manager_id),
+        "faces": rows
+    })
+
+@app.route("/api/face-data/refresh", methods=["POST"])
+def refresh_face_data():
+    manager_id = request.args.get("manager_id") or session.get("user_id")
+    if not manager_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    bump_face_data_version(manager_id)
+    return jsonify({"message": "Face data reload signaled successfully.", "reloaded": True})
+
+# ─────────────────────────────────────────
+# Structured Safety Events & Real-time Alerts
+# ─────────────────────────────────────────
+@app.route("/api/events", methods=["POST"])
+def create_event():
+    data = request.get_json() or {}
+    manager_id = str(data.get("manager_id") or session.get("user_id") or "")
+    if not manager_id:
+        return jsonify({"error": "manager_id required"}), 400
+
+    worker_id    = data.get("worker_id", "")
+    event_type   = data.get("event_type", "INFO")
+    message      = data.get("message", "")
+    ppe_score    = data.get("ppe_score")
+    helmet_id    = data.get("helmet_id", "")
+    camera_id    = data.get("camera_id", "Pi Camera 01")
+    evidence_url = data.get("evidence_url", "")
+
+    ppe_score_val = str(ppe_score) if ppe_score is not None else None
+
+    execute(
+        """
+        INSERT INTO safety_events (manager_id, worker_id, event_type, message, ppe_score, helmet_id, camera_id, evidence_url, acknowledged)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+        """,
+        [
+            {"type": "text", "value": manager_id},
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": event_type},
+            {"type": "text", "value": message},
+            {"type": "text", "value": ppe_score_val or ""},
+            {"type": "text", "value": helmet_id},
+            {"type": "text", "value": camera_id},
+            {"type": "text", "value": evidence_url},
+        ]
+    )
+
+    return jsonify({"message": "Event recorded", "event_type": event_type}), 201
+
+@app.route("/api/events", methods=["GET"])
+def get_events():
+    manager_id = request.args.get("manager_id") or session.get("user_id")
+    if not manager_id:
+        return jsonify({"error": "Not logged in"}), 401
+
+    after_id = request.args.get("after_id", type=int)
+    worker_id = request.args.get("worker_id", "")
+    limit = request.args.get("limit", default=50, type=int)
+
+    if after_id is not None:
+        rows = query_all(
+            "SELECT * FROM safety_events WHERE manager_id = ? AND id > ? ORDER BY id ASC LIMIT ?",
+            [
+                {"type": "text", "value": str(manager_id)},
+                {"type": "text", "value": str(after_id)},
+                {"type": "text", "value": str(limit)}
+            ]
+        )
+    elif worker_id:
+        rows = query_all(
+            "SELECT * FROM safety_events WHERE manager_id = ? AND worker_id = ? ORDER BY created_at DESC LIMIT ?",
+            [
+                {"type": "text", "value": str(manager_id)},
+                {"type": "text", "value": worker_id},
+                {"type": "text", "value": str(limit)}
+            ]
+        )
+    else:
+        rows = query_all(
+            "SELECT * FROM safety_events WHERE manager_id = ? ORDER BY id DESC LIMIT ?",
+            [
+                {"type": "text", "value": str(manager_id)},
+                {"type": "text", "value": str(limit)}
+            ]
+        )
+
+    return jsonify({"events": rows})
+
+@app.route("/api/events/<int:event_id>/acknowledge", methods=["POST"])
+def acknowledge_event(event_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    execute(
+        "UPDATE safety_events SET acknowledged = 1 WHERE id = ? AND manager_id = ?",
+        [
+            {"type": "text", "value": str(event_id)},
+            {"type": "text", "value": str(session["user_id"])}
+        ]
+    )
+    return jsonify({"message": "Event acknowledged."})
+
+# ─────────────────────────────────────────
+# Check-in / Attendance Evaluation Commit
 # ─────────────────────────────────────────
 @app.route("/api/workers/checkin", methods=["POST"])
+@app.route("/api/attendance", methods=["POST"])
 def worker_checkin():
-    data         = request.get_json()
-    worker_id    = data.get("worker_id")
+    data         = request.get_json() or {}
+    worker_id    = data.get("worker_id", "").strip()
     checkin_time = data.get("checkin_time")
-    status       = data.get("status", "Active")
+    status_req   = data.get("status")
     helmet_id    = data.get("helmet_id", "")
+    user_id_req  = data.get("user_id") or session.get("user_id")
 
-    current_worker = query_one(
-        "SELECT ppe_score FROM workers WHERE worker_id = ?",
-        [{"type": "text", "value": worker_id}]
+    if not worker_id:
+        return jsonify({"error": "worker_id required"}), 400
+
+    worker = query_one(
+        "SELECT * FROM workers WHERE worker_id = ? AND (user_id = ? OR ? IS NULL)",
+        [
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": str(user_id_req) if user_id_req else ""},
+            {"type": "text", "value": str(user_id_req) if user_id_req else None}
+        ]
     )
-    ppe_score    = data.get("ppe_score")
-    if ppe_score in [None, ""]:
-        ppe_score = current_worker["ppe_score"] if current_worker and current_worker.get("ppe_score") is not None else 0
+    if not worker:
+        return jsonify({"error": f"Worker {worker_id} not found."}), 404
 
-    event = "CHECK-IN" if status == "Active" else "CHECK-OUT"
+    manager_id = str(worker["user_id"])
+    current_status = worker.get("status", "Off-Site")
 
-    from datetime import datetime
+    # Determine event (Check-in or Check-out)
+    if status_req:
+        new_status = "Active" if status_req in ["Active", "On-Site"] else "Off-Site"
+    else:
+        new_status = "Off-Site" if current_status in ["Active", "On-Site"] else "Active"
+
+    event = "CHECK-IN" if new_status == "Active" else "CHECK-OUT"
+
+    # Score handling: preserve 0, 50, 100 explicitly
+    raw_ppe = data.get("ppe_score")
+    if raw_ppe is not None and str(raw_ppe).isdigit():
+        ppe_score = int(raw_ppe)
+    else:
+        ppe_score = int(worker.get("ppe_score") or 0)
+
     now       = datetime.now()
     date_str  = now.strftime("%Y-%m-%d")
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-    time_str  = now.strftime("%I:%M %p")   # 12-hour with AM/PM for checkout
+    time_str  = now.strftime("%I:%M %p")
 
     if event == "CHECK-IN":
-        # On check-in: update checkin_time, clear checkout_time
         worker_update_sql = "UPDATE workers SET checkin_time = ?, checkout_time = '', ppe_score = ?, status = ?"
         worker_update_args = [
             {"type": "text", "value": checkin_time or time_str},
             {"type": "text", "value": str(ppe_score)},
-            {"type": "text", "value": status},
+            {"type": "text", "value": new_status},
         ]
     else:
-        # On check-out: update checkout_time and status, leave checkin_time unchanged
         worker_update_sql = "UPDATE workers SET checkout_time = ?, ppe_score = ?, status = ?"
         worker_update_args = [
             {"type": "text", "value": time_str},
             {"type": "text", "value": str(ppe_score)},
-            {"type": "text", "value": status},
+            {"type": "text", "value": new_status},
         ]
 
     if helmet_id:
         worker_update_sql += ", helmet_id = ?"
         worker_update_args.append({"type": "text", "value": helmet_id})
 
-    worker_update_sql += " WHERE worker_id = ?"
-    worker_update_args.append({"type": "text", "value": worker_id})
+    worker_update_sql += " WHERE id = ?"
+    worker_update_args.append({"type": "text", "value": str(worker["id"])})
 
     execute(worker_update_sql, worker_update_args)
-
-    worker      = query_one(
-        "SELECT user_id FROM workers WHERE worker_id = ?",
-        [{"type": "text", "value": worker_id}]
-    )
-    user_id_val = str(worker["user_id"]) if worker else ""
 
     execute(
         """INSERT INTO attendance_log
@@ -610,15 +877,46 @@ def worker_checkin():
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         [
             {"type": "text", "value": worker_id},
-            {"type": "text", "value": user_id_val},
+            {"type": "text", "value": manager_id},
             {"type": "text", "value": event},
             {"type": "text", "value": str(ppe_score)},
             {"type": "text", "value": timestamp},
             {"type": "text", "value": date_str},
-            {"type": "text", "value": helmet_id},
+            {"type": "text", "value": helmet_id or worker.get("helmet_id", "")},
         ]
     )
-    return jsonify({"message": f"{event} logged for worker {worker_id}."})
+
+    # Automatically generate structured safety event
+    worker_full_name = f"{worker.get('first_name', '')} {worker.get('last_name', '')}".strip()
+    if ppe_score < 100:
+        event_type = "PPE_VIOLATION"
+        msg = f"{worker_full_name} ({worker_id}) {event.lower()} with non-compliant PPE score {ppe_score}%"
+    else:
+        event_type = "CHECK_IN" if event == "CHECK-IN" else "CHECK_OUT"
+        msg = f"{worker_full_name} ({worker_id}) completed {event.lower()} · PPE: {ppe_score}%"
+
+    execute(
+        """INSERT INTO safety_events (manager_id, worker_id, event_type, message, ppe_score, helmet_id, camera_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        [
+            {"type": "text", "value": manager_id},
+            {"type": "text", "value": worker_id},
+            {"type": "text", "value": event_type},
+            {"type": "text", "value": msg},
+            {"type": "text", "value": str(ppe_score)},
+            {"type": "text", "value": helmet_id or worker.get("helmet_id", "")},
+            {"type": "text", "value": "Pi Camera 01"},
+        ]
+    )
+
+    return jsonify({
+        "message": f"{event} logged for {worker_full_name}.",
+        "worker_id": worker_id,
+        "event": event,
+        "status": new_status,
+        "ppe_score": ppe_score,
+        "helmet_id": helmet_id or worker.get("helmet_id", "")
+    })
 
 @app.route("/api/attendance", methods=["GET"])
 def get_attendance():
@@ -641,6 +939,143 @@ def get_attendance():
         )
     return jsonify({"logs": rows})
 
+# ─────────────────────────────────────────
+# Exportable Dashboard Reports (CSV & PDF)
+# ─────────────────────────────────────────
+@app.route("/api/reports/export.csv", methods=["GET"])
+def export_csv_report():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    manager_id = str(session["user_id"])
+    user = query_one("SELECT name FROM users WHERE id = ?", [{"type": "text", "value": manager_id}])
+    manager_name = user.get("name") if user else "Site Manager"
+
+    from_date = request.args.get("from", "").strip()
+    to_date = request.args.get("to", "").strip()
+    worker_filter = request.args.get("worker_id", "").strip()
+
+    # Query Workers
+    if worker_filter:
+        workers = query_all("SELECT * FROM workers WHERE user_id = ? AND worker_id = ?",
+                            [{"type": "text", "value": manager_id}, {"type": "text", "value": worker_filter}])
+    else:
+        workers = query_all("SELECT * FROM workers WHERE user_id = ? ORDER BY worker_id ASC",
+                            [{"type": "text", "value": manager_id}])
+
+    # Query Attendance Logs with Date Filtering
+    att_sql = "SELECT * FROM attendance_log WHERE user_id = ?"
+    att_args = [{"type": "text", "value": manager_id}]
+    if worker_filter:
+        att_sql += " AND worker_id = ?"
+        att_args.append({"type": "text", "value": worker_filter})
+    if from_date:
+        att_sql += " AND date >= ?"
+        att_args.append({"type": "text", "value": from_date})
+    if to_date:
+        att_sql += " AND date <= ?"
+        att_args.append({"type": "text", "value": to_date})
+    att_sql += " ORDER BY timestamp DESC"
+    attendance_logs = query_all(att_sql, att_args)
+
+    # Query Safety Events
+    ev_sql = "SELECT * FROM safety_events WHERE manager_id = ?"
+    ev_args = [{"type": "text", "value": manager_id}]
+    if worker_filter:
+        ev_sql += " AND worker_id = ?"
+        ev_args.append({"type": "text", "value": worker_filter})
+    if from_date:
+        ev_sql += " AND created_at >= ?"
+        ev_args.append({"type": "text", "value": f"{from_date} 00:00:00"})
+    if to_date:
+        ev_sql += " AND created_at <= ?"
+        ev_args.append({"type": "text", "value": f"{to_date} 23:59:59"})
+    ev_sql += " ORDER BY created_at DESC"
+    safety_events = query_all(ev_sql, ev_args)
+
+    csv_content = generate_csv_report(
+        manager_name=manager_name,
+        workers=workers,
+        attendance_logs=attendance_logs,
+        safety_events=safety_events,
+        from_date=from_date,
+        to_date=to_date
+    )
+
+    filename = f"SiteSentinel_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.route("/api/reports/export.pdf", methods=["GET"])
+def export_pdf_report():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    manager_id = str(session["user_id"])
+    user = query_one("SELECT name FROM users WHERE id = ?", [{"type": "text", "value": manager_id}])
+    manager_name = user.get("name") if user else "Site Manager"
+
+    from_date = request.args.get("from", "").strip()
+    to_date = request.args.get("to", "").strip()
+    worker_filter = request.args.get("worker_id", "").strip()
+
+    if worker_filter:
+        workers = query_all("SELECT * FROM workers WHERE user_id = ? AND worker_id = ?",
+                            [{"type": "text", "value": manager_id}, {"type": "text", "value": worker_filter}])
+    else:
+        workers = query_all("SELECT * FROM workers WHERE user_id = ? ORDER BY worker_id ASC",
+                            [{"type": "text", "value": manager_id}])
+
+    att_sql = "SELECT * FROM attendance_log WHERE user_id = ?"
+    att_args = [{"type": "text", "value": manager_id}]
+    if worker_filter:
+        att_sql += " AND worker_id = ?"
+        att_args.append({"type": "text", "value": worker_filter})
+    if from_date:
+        att_sql += " AND date >= ?"
+        att_args.append({"type": "text", "value": from_date})
+    if to_date:
+        att_sql += " AND date <= ?"
+        att_args.append({"type": "text", "value": to_date})
+    att_sql += " ORDER BY timestamp DESC"
+    attendance_logs = query_all(att_sql, att_args)
+
+    ev_sql = "SELECT * FROM safety_events WHERE manager_id = ?"
+    ev_args = [{"type": "text", "value": manager_id}]
+    if worker_filter:
+        ev_sql += " AND worker_id = ?"
+        ev_args.append({"type": "text", "value": worker_filter})
+    if from_date:
+        ev_sql += " AND created_at >= ?"
+        ev_args.append({"type": "text", "value": f"{from_date} 00:00:00"})
+    if to_date:
+        ev_sql += " AND created_at <= ?"
+        ev_args.append({"type": "text", "value": f"{to_date} 23:59:59"})
+    ev_sql += " ORDER BY created_at DESC"
+    safety_events = query_all(ev_sql, ev_args)
+
+    pdf_bytes = generate_pdf_report(
+        manager_name=manager_name,
+        workers=workers,
+        attendance_logs=attendance_logs,
+        safety_events=safety_events,
+        from_date=from_date,
+        to_date=to_date
+    )
+
+    filename = f"SiteSentinel_Audit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+# ─────────────────────────────────────────
+# Raspberry Pi Configuration & Controller
+# ─────────────────────────────────────────
 @app.route("/api/pi-ip", methods=["GET"])
 def get_pi_ip():
     if "user_id" not in session:
@@ -648,48 +1083,27 @@ def get_pi_ip():
 
     user = query_one(
         "SELECT pi_ip FROM users WHERE id = ?",
-        [
-            {
-                "type": "text",
-                "value": str(session["user_id"])
-            }
-        ]
+        [{"type": "text", "value": str(session["user_id"])}]
     )
-
-    return jsonify({
-        "pi_ip": user["pi_ip"] if user else ""
-    })
+    return jsonify({"pi_ip": user["pi_ip"] if user else ""})
 
 @app.route("/api/pi-ip", methods=["POST"])
 def save_pi_ip():
-
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
 
     data = request.get_json()
-
     pi_ip = data.get("pi_ip", "").strip()
 
     execute(
         "UPDATE users SET pi_ip = ? WHERE id = ?",
         [
-            {
-                "type": "text",
-                "value": pi_ip
-            },
-            {
-                "type": "text",
-                "value": str(session["user_id"])
-            }
+            {"type": "text", "value": pi_ip},
+            {"type": "text", "value": str(session["user_id"])}
         ]
     )
+    return jsonify({"message": "Pi IP saved successfully"})
 
-    return jsonify({
-        "message": "Pi IP saved successfully"
-    })
-# ─────────────────────────────────────────
-# Raspberry Pi webcam detection process
-# ─────────────────────────────────────────
 webcam_process = None
 
 def start_webcam_detection(user_id):
@@ -750,9 +1164,6 @@ def api_pi_stop():
         return jsonify({"message": "Pi stream stopped.", "running": False})
     return jsonify({"message": "Pi stream is not currently running.", "running": False})
 
-# ─────────────────────────────────────────
-# Login hook — start webcam after login
-# ─────────────────────────────────────────
 def open_browser():
     webbrowser.open("http://127.0.0.1:5000")
 

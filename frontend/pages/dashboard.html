@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>SiteSentinel — Manager Dashboard</title>
-  <meta name="description" content="SiteSentinel AI real-time construction site safety monitoring dashboard."/>
+  <title>SiteSentinel — AI Safety &amp; Gate Monitoring Dashboard</title>
+  <meta name="description" content="SiteSentinel AI real-time construction site safety monitoring and gate compliance dashboard."/>
   <link href="https://fonts.googleapis.com" rel="preconnect"/>
   <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -15,811 +15,565 @@
   :root {
     --bg: #080810;
     --surface: rgba(255,255,255,0.03);
-    --surface-hover: rgba(255,255,255,0.055);
-    --surface-elevated: rgba(255,255,255,0.06);
+    --surface-hover: rgba(255,255,255,0.06);
+    --surface-elevated: rgba(255,255,255,0.08);
     --border: rgba(255,255,255,0.07);
-    --border-bright: rgba(255,255,255,0.13);
+    --border-bright: rgba(255,255,255,0.14);
     --primary: #ff6b2b;
-    --primary-glow: rgba(255,107,43,0.28);
+    --primary-glow: rgba(255,107,43,0.30);
     --primary-dim: rgba(255,107,43,0.10);
     --accent: #00d4aa;
-    --accent-glow: rgba(0,212,170,0.22);
-    --accent-dim: rgba(0,212,170,0.09);
+    --accent-glow: rgba(0,212,170,0.25);
+    --accent-dim: rgba(0,212,170,0.10);
     --secondary: #7c8ff5;
-    --secondary-dim: rgba(124,143,245,0.10);
+    --secondary-dim: rgba(124,143,245,0.12);
+    --warning: #f59e0b;
+    --warning-dim: rgba(245,158,11,0.12);
     --error: #ff4757;
-    --error-glow: rgba(255,71,87,0.22);
-    --error-dim: rgba(255,71,87,0.09);
-    --warning: #ffc947;
-    --warning-dim: rgba(255,201,71,0.10);
-    --text: #f0eeff;
-    --text-2: rgba(240,238,255,0.56);
-    --text-3: rgba(240,238,255,0.30);
+    --error-glow: rgba(255,71,87,0.28);
+    --error-dim: rgba(255,71,87,0.12);
+    --text: #f0f0f8;
+    --text-2: #a0a0b8;
+    --text-3: #5a5a72;
+    --radius: 14px;
     --sidebar-w: 240px;
-    --topbar-h: 64px;
-    --radius: 12px;
-    --radius-lg: 18px;
   }
 
-  html, body { height: 100%; }
-
   body {
+    font-family: 'Inter', sans-serif;
     background: var(--bg);
     color: var(--text);
-    font-family: 'Inter', sans-serif;
     min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
     display: flex;
     overflow-x: hidden;
   }
 
-  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
-  .material-symbols-outlined.fill { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-
-  /* ─── Scrollbar ─── */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
   /* ─── Sidebar ─── */
   .sidebar {
     width: var(--sidebar-w);
     height: 100vh; position: fixed; left: 0; top: 0; z-index: 50;
     display: flex; flex-direction: column;
-    background: rgba(8,8,16,0.9);
+    background: rgba(8,8,16,0.92);
     backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
     border-right: 1px solid var(--border);
-    padding: 0;
-    transition: transform 0.3s;
   }
 
-  /* sidebar top gradient accent */
   .sidebar::before {
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 120px;
-    background: radial-gradient(ellipse 100% 100% at 50% 0%, rgba(255,107,43,0.08) 0%, transparent 70%);
+    background: radial-gradient(ellipse 100% 100% at 50% 0%, rgba(255,107,43,0.12) 0%, transparent 70%);
     pointer-events: none;
   }
 
   .sidebar-header {
     padding: 24px 20px 20px;
     border-bottom: 1px solid var(--border);
-    position: relative; z-index: 1;
   }
-  .sidebar-logo {
-    display: flex; align-items: center; gap: 10px;
-  }
+  .sidebar-logo { display: flex; align-items: center; gap: 10px; }
   .logo-icon {
-    width: 34px; height: 34px; border-radius: 9px;
+    width: 36px; height: 36px; border-radius: 10px;
     background: linear-gradient(135deg, var(--primary), #ff8c42);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 0 16px var(--primary-glow);
     flex-shrink: 0;
   }
-  .logo-icon .material-symbols-outlined { font-size: 18px; color: white; font-variation-settings: 'FILL' 1; }
-  .logo-text { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; }
+  .logo-icon .material-symbols-outlined { font-size: 20px; color: white; }
+  .logo-text { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; }
   .logo-text span { color: var(--primary); }
 
   .sidebar-body {
     flex: 1; overflow-y: auto; padding: 16px 12px;
-    display: flex; flex-direction: column; gap: 4px;
+    display: flex; flex-direction: column; gap: 6px;
   }
 
   .sidebar-new-btn {
-    width: 100%; padding: 10px 14px; border-radius: 10px;
-    background: var(--primary-dim); border: 1px solid rgba(255,107,43,0.2);
+    width: 100%; padding: 11px 14px; border-radius: 10px;
+    background: var(--primary-dim); border: 1px solid rgba(255,107,43,0.25);
     color: var(--primary); font-size: 12px; font-weight: 600;
-    font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.06em;
+    font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.05em;
     cursor: pointer; transition: all 0.25s;
     display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
   }
-  .sidebar-new-btn:hover { background: rgba(255,107,43,0.18); box-shadow: 0 0 20px var(--primary-glow); }
-  .sidebar-new-btn .material-symbols-outlined { font-size: 18px; font-variation-settings: 'FILL' 1; }
+  .sidebar-new-btn:hover { background: rgba(255,107,43,0.20); box-shadow: 0 0 20px var(--primary-glow); }
 
   .nav-section-label {
     font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-3);
-    padding: 14px 8px 6px; margin-bottom: 2px;
+    padding: 12px 8px 4px;
   }
 
   .nav-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; border-radius: 10px;
+    padding: 10px 12px; border-radius: 10px;
     font-size: 13px; font-weight: 500; color: var(--text-2);
     text-decoration: none; transition: all 0.2s; cursor: pointer;
-    border: 1px solid transparent;
-    position: relative; overflow: hidden;
+    border: 1px solid transparent; background: none; width: 100%; text-align: left;
   }
-  .nav-item::before {
-    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
-    background: var(--primary); border-radius: 0 2px 2px 0;
-    opacity: 0; transition: opacity 0.2s;
-  }
-  .nav-item:hover { color: var(--text); background: var(--surface-hover); }
+  .nav-item:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border); }
   .nav-item.active {
-    color: var(--primary); background: var(--primary-dim);
-    border-color: rgba(255,107,43,0.15);
+    background: var(--surface-elevated); color: var(--text);
+    border-color: var(--border-bright);
   }
-  .nav-item.active::before { opacity: 1; }
-  .nav-item .material-symbols-outlined { font-size: 20px; flex-shrink: 0; }
-  .nav-item.active .material-symbols-outlined { font-variation-settings: 'FILL' 1; }
+  .nav-item.active .material-symbols-outlined { color: var(--primary); }
 
   .sidebar-footer {
-    padding: 12px; border-top: 1px solid var(--border);
-  }
-  .sidebar-footer .nav-item { color: var(--text-3); font-size: 12px; }
-  .sidebar-footer .nav-item:hover { color: var(--text-2); }
-
-  .nav-btn {
-    width: 100%;
-    background: none;
-    border: 1px solid transparent;
-    text-align: left;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-  }
-  .nav-btn.pi-stream-btn {
-    color: var(--secondary);
-    background: var(--secondary-dim);
-    border: 1px solid rgba(124,143,245,0.25);
-    margin-bottom: 6px;
-    box-shadow: 0 0 10px rgba(124,143,245,0.08);
-  }
-  .nav-btn.pi-stream-btn:hover {
-    background: rgba(124,143,245,0.22);
-    border-color: rgba(124,143,245,0.45);
-    color: #ffffff;
-    box-shadow: 0 0 16px rgba(124,143,245,0.3);
-  }
-  .nav-btn.pi-stream-btn.running {
-    color: var(--accent);
-    background: var(--accent-dim);
-    border-color: rgba(0,212,170,0.35);
-    box-shadow: 0 0 14px var(--accent-glow);
-  }
-  .nav-btn.pi-stream-btn.running:hover {
-    background: rgba(0,212,170,0.2);
-    border-color: rgba(0,212,170,0.5);
-  }
-  .nav-btn.pi-stream-btn.running .material-symbols-outlined {
-    color: var(--accent);
-    animation: pulseLive 2s ease-in-out infinite;
-  }
-  .nav-btn.pi-stream-btn.loading {
-    opacity: 0.7;
-    pointer-events: none;
-  }
-  .nav-btn.pi-stream-btn.loading .material-symbols-outlined {
-    animation: spinPi 1s linear infinite;
-  }
-  @keyframes spinPi {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    padding: 16px 12px; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 4px;
   }
 
-  /* ─── Main ─── */
+  .pi-stream-btn {
+    border: 1px solid rgba(255,107,43,0.3) !important;
+    background: var(--primary-dim) !important;
+    color: var(--primary) !important;
+  }
+  .pi-stream-btn.running {
+    border-color: rgba(0,212,170,0.35) !important;
+    background: var(--accent-dim) !important;
+    color: var(--accent) !important;
+  }
+
+  /* ─── Main Area ─── */
   .main-area {
     margin-left: var(--sidebar-w);
     flex: 1; min-height: 100vh;
     display: flex; flex-direction: column;
+    background: radial-gradient(circle at 50% -20%, rgba(255,107,43,0.04) 0%, transparent 60%);
   }
 
-  /* ─── Topbar ─── */
   .topbar {
-    height: var(--topbar-h); position: sticky; top: 0; z-index: 40;
-    background: rgba(8,8,16,0.8);
-    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    height: 64px; padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid var(--border);
-    padding: 0 32px;
-    display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    background: rgba(8,8,16,0.65); backdrop-filter: blur(16px);
+    position: sticky; top: 0; z-index: 40;
   }
 
   .topbar-search {
-    flex: 1; max-width: 380px; position: relative;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 14px; width: 340px;
+    transition: border-color 0.2s;
   }
-  .topbar-search .material-symbols-outlined {
-    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-    font-size: 18px; color: var(--text-3);
-  }
+  .topbar-search:focus-within { border-color: var(--border-bright); }
   .search-input {
-    width: 100%; padding: 9px 12px 9px 40px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    font-size: 13px; color: var(--text); font-family: 'Inter', sans-serif;
-    outline: none; transition: all 0.25s;
+    background: none; border: none; outline: none;
+    color: var(--text); font-size: 13px; width: 100%;
   }
-  .search-input::placeholder { color: var(--text-3); }
-  .search-input:focus { border-color: rgba(255,107,43,0.4); background: rgba(255,107,43,0.04); box-shadow: 0 0 0 3px rgba(255,107,43,0.1); }
 
   .topbar-right { display: flex; align-items: center; gap: 16px; }
 
   .topbar-live {
-    display: flex; align-items: center; gap: 7px;
-    padding: 5px 12px; border-radius: 100px;
-    background: rgba(0,212,170,0.08); border: 1px solid rgba(0,212,170,0.2);
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px;
+    background: var(--accent-dim); border: 1px solid rgba(0,212,170,0.25);
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    font-family: 'JetBrains Mono', monospace; text-transform: uppercase;
   }
   .live-dot {
-    width: 6px; height: 6px; border-radius: 50%;
+    width: 7px; height: 7px; border-radius: 50%;
     background: var(--accent); box-shadow: 0 0 8px var(--accent);
-    animation: pulseLive 2s ease-in-out infinite;
+    animation: pulseDot 1.8s infinite;
   }
-  @keyframes pulseLive {
-    0%, 100% { box-shadow: 0 0 8px var(--accent); }
-    50%       { box-shadow: 0 0 14px var(--accent); }
-  }
-  .live-label { font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+  @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
   .user-pill {
-    display: flex; align-items: center; gap: 10px; cursor: pointer;
-    padding: 5px 12px 5px 5px; border-radius: 100px;
-    border: 1px solid var(--border); background: var(--surface);
-    transition: all 0.2s;
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 12px 4px 4px; border-radius: 30px;
+    background: var(--surface); border: 1px solid var(--border);
   }
-  .user-pill:hover { border-color: var(--border-bright); background: var(--surface-hover); }
   .user-avatar {
     width: 32px; height: 32px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--primary-dim), var(--secondary-dim));
-    border: 1px solid rgba(255,107,43,0.3);
+    background: linear-gradient(135deg, var(--secondary), #4f5fd8);
     display: flex; align-items: center; justify-content: center;
-    font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 700;
-    color: var(--primary);
-    overflow: hidden;
+    font-weight: 700; font-size: 12px; color: white;
   }
   .user-info { display: flex; flex-direction: column; }
-  .user-name-text { font-size: 13px; font-weight: 600; color: var(--text); }
-  .user-role { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .user-name-text { font-size: 13px; font-weight: 600; }
+  .user-role { font-size: 10px; color: var(--text-3); }
 
-  /* ─── Page content ─── */
-  .page-content {
-    flex: 1; padding: 28px 32px; max-width: 1600px; width: 100%;
-    display: flex; flex-direction: column; gap: 24px;
-  }
+  /* ─── Page Content ─── */
+  .page-content { padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; }
 
-  /* ─── Page header ─── */
   .page-header {
-    display: flex; justify-content: space-between; align-items: flex-end;
-    flex-wrap: wrap; gap: 16px;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  .page-header-left h1 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--text);
-    margin-bottom: 4px;
-  }
-  .page-header-left p { font-size: 13px; color: var(--text-2); }
-  .page-header-left p span { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .page-header h1 { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; }
+  .page-header p { font-size: 13px; color: var(--text-2); margin-top: 2px; }
 
   .btn-export {
     display: flex; align-items: center; gap: 8px;
     padding: 9px 18px; border-radius: 10px;
-    font-size: 12px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--text-2); background: var(--surface); border: 1px solid var(--border-bright);
+    background: var(--surface); border: 1px solid var(--border-bright);
+    color: var(--text); font-size: 12px; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace; text-transform: uppercase;
     cursor: pointer; transition: all 0.2s;
   }
-  .btn-export:hover { color: var(--text); background: var(--surface-hover); transform: translateY(-1px); }
-  .btn-export .material-symbols-outlined { font-size: 16px; }
+  .btn-export:hover { background: var(--surface-hover); border-color: var(--text-2); }
+
+  /* ─── Live Camera & Monitoring HUD ─── */
+  .monitoring-grid {
+    display: grid; grid-template-columns: 1.8fr 1fr; gap: 20px;
+  }
+
+  .cam-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .cam-header {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(0,0,0,0.25);
+  }
+  .cam-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+  .cam-meta {
+    display: flex; align-items: center; gap: 14px;
+    font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text-2);
+  }
+  .cam-preview-box {
+    position: relative; aspect-ratio: 16/9; background: #040408;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .cam-watermark {
+    text-align: center; color: var(--text-3); font-size: 13px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .cam-watermark .material-symbols-outlined { font-size: 48px; opacity: 0.6; }
+
+  .cam-hud-footer {
+    padding: 14px 18px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(0,0,0,0.2);
+  }
+  .eval-status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 8px;
+    font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+    background: var(--surface-elevated); border: 1px solid var(--border-bright);
+  }
+  .eval-status-badge.idle { color: var(--text-2); }
+  .eval-status-badge.evaluating { color: var(--warning); border-color: rgba(245,158,11,0.3); background: var(--warning-dim); }
+  .eval-status-badge.approved { color: var(--accent); border-color: rgba(0,212,170,0.3); background: var(--accent-dim); }
+  .eval-status-badge.violation { color: var(--error); border-color: rgba(255,71,87,0.3); background: var(--error-dim); }
+  .eval-status-badge.crowded { color: var(--error); border-color: rgba(255,71,87,0.4); background: var(--error-dim); }
+
+  .cam-controls { display: flex; align-items: center; gap: 8px; }
+  .cam-btn {
+    padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace; cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px; border: 1px solid;
+  }
+  .cam-btn.primary { background: var(--primary-dim); border-color: rgba(255,107,43,0.3); color: var(--primary); }
+  .cam-btn.primary:hover { background: rgba(255,107,43,0.2); }
+  .cam-btn.accent { background: var(--accent-dim); border-color: rgba(0,212,170,0.3); color: var(--accent); }
+  .cam-btn.accent:hover { background: rgba(0,212,170,0.2); }
+
+  /* Active session card */
+  .session-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .session-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  .session-title { font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+  .session-body { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .session-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  .session-label { color: var(--text-3); }
+  .session-val { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+
+  .score-gauge {
+    display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
+    padding: 12px; border-radius: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--border);
+  }
+  .gauge-bar { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
 
   /* ─── KPI Cards ─── */
   .kpi-grid {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
   }
-
   .kpi-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 24px; position: relative; overflow: hidden;
-    transition: all 0.3s;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+    display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden;
   }
-  .kpi-card:hover { border-color: var(--border-bright); transform: translateY(-2px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
-
-  /* accent glow blobs */
-  .kpi-card.card-workers::after { content: ''; position: absolute; top: -30px; right: -30px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(124,143,245,0.12) 0%, transparent 70%); pointer-events: none; }
-  .kpi-card.card-safety::after  { content: ''; position: absolute; top: -30px; right: -30px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(0,212,170,0.12) 0%, transparent 70%); pointer-events: none; }
-  .kpi-card.card-violations::after { content: ''; position: absolute; top: -30px; right: -30px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(255,71,87,0.12) 0%, transparent 70%); pointer-events: none; }
-
-  .kpi-header {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: 20px; position: relative; z-index: 1;
-  }
-  .kpi-label {
-    font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-3);
-  }
+  .kpi-header { display: flex; align-items: center; justify-content: space-between; }
+  .kpi-label { font-size: 12px; font-weight: 500; color: var(--text-2); text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
   .kpi-icon-wrap {
-    width: 38px; height: 38px; border-radius: 10px;
+    width: 34px; height: 34px; border-radius: 9px;
     display: flex; align-items: center; justify-content: center;
   }
-  .kpi-icon-wrap.blue { background: var(--secondary-dim); }
-  .kpi-icon-wrap.blue .material-symbols-outlined { color: var(--secondary); font-size: 20px; }
-  .kpi-icon-wrap.green { background: var(--accent-dim); }
-  .kpi-icon-wrap.green .material-symbols-outlined { color: var(--accent); font-size: 20px; }
-  .kpi-icon-wrap.red { background: var(--error-dim); }
-  .kpi-icon-wrap.red .material-symbols-outlined { color: var(--error); font-size: 20px; }
+  .kpi-icon-wrap.blue { background: var(--secondary-dim); color: var(--secondary); }
+  .kpi-icon-wrap.green { background: var(--accent-dim); color: var(--accent); }
+  .kpi-icon-wrap.red { background: var(--error-dim); color: var(--error); }
+  .kpi-value { font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; }
+  .kpi-sub { font-size: 12px; color: var(--text-3); }
+  .kpi-bar-track { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  .kpi-bar-fill { height: 100%; border-radius: 2px; }
+  .kpi-bar-fill.blue { background: var(--secondary); }
+  .kpi-bar-fill.green { background: var(--accent); }
+  .kpi-bar-fill.red { background: var(--error); }
 
-  .kpi-value {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 42px; font-weight: 700; letter-spacing: -0.03em;
-    color: var(--text); line-height: 1;
-    margin-bottom: 6px; position: relative; z-index: 1;
-  }
-  .kpi-sub {
-    font-size: 11px; font-family: 'JetBrains Mono', monospace;
-    color: var(--text-3); margin-bottom: 16px; position: relative; z-index: 1;
-  }
-  .kpi-bar-track {
-    height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px;
-    overflow: hidden; position: relative; z-index: 1;
-  }
-  .kpi-bar-fill {
-    height: 100%; border-radius: 2px; transition: width 0.8s ease;
-    position: relative;
-  }
-  .kpi-bar-fill.blue { background: linear-gradient(90deg, var(--secondary), #a0b0ff); }
-  .kpi-bar-fill.green { background: linear-gradient(90deg, var(--accent), #00ffcc); }
-  .kpi-bar-fill.red { background: linear-gradient(90deg, var(--error), #ff8a96); }
-  .kpi-bar-fill::after {
-    content: ''; position: absolute; right: 0; top: -2px; bottom: -2px;
-    width: 6px; border-radius: 50%; background: inherit;
-    box-shadow: 0 0 6px currentColor; filter: brightness(1.5);
-  }
-
-  /* ─── Main Grid ─── */
+  /* ─── Main Grid Layout ─── */
   .main-grid {
-    display: grid; grid-template-columns: 1fr 320px; gap: 20px;
-    align-items: start;
+    display: grid; grid-template-columns: 2fr 1fr; gap: 20px;
   }
 
-  /* ─── Panel (glass card) ─── */
   .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); display: flex; flex-direction: column;
   }
   .panel-header {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex; justify-content: space-between; align-items: center;
-    background: rgba(255,255,255,0.015);
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
   }
-  .panel-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 16px; font-weight: 600; color: var(--text);
-  }
-  .panel-title-sub { font-size: 12px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
-  .panel-action {
-    display: flex; align-items: center; gap: 5px;
-    font-size: 11px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--primary); background: none; border: none; cursor: pointer; padding: 0;
-    transition: opacity 0.2s;
-  }
-  .panel-action:hover { opacity: 0.75; }
-  .panel-action .material-symbols-outlined { font-size: 14px; }
+  .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; }
+  .panel-title-sub { font-size: 11px; color: var(--text-3); margin-top: 1px; }
 
-  /* ─── Attendance Table ─── */
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; white-space: nowrap; }
-
-  thead tr {
-    background: rgba(255,255,255,0.02);
-    border-bottom: 1px solid var(--border);
-  }
+  .table-wrap { overflow-x: auto; max-height: 520px; }
+  table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
   th {
-    padding: 12px 16px;
-    font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-3);
-    text-align: left;
+    padding: 12px 16px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3);
+    font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.15); position: sticky; top: 0; z-index: 10;
   }
-  th:first-child { padding-left: 20px; }
-  th:last-child { padding-right: 20px; text-align: right; }
-  th.center { text-align: center; }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:hover td { background: var(--surface-hover); }
 
-  tbody tr {
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-    transition: background 0.15s;
-  }
-  tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: rgba(255,255,255,0.025); }
-
-  td {
-    padding: 13px 16px;
-    font-size: 12px; font-family: 'JetBrains Mono', monospace; color: var(--text);
-    vertical-align: middle;
-  }
-  td:first-child { padding-left: 20px; color: var(--text-3); font-size: 11px; }
-  td:last-child { padding-right: 20px; }
-  td.center { text-align: center; }
-
-  /* Worker cell */
-  .worker-cell { display: flex; align-items: center; gap: 10px; }
+  .worker-cell { display: flex; align-items: center; gap: 10px; cursor: pointer; }
   .worker-avatar {
-    width: 32px; height: 32px; border-radius: 50%;
+    width: 32px; height: 32px; border-radius: 8px; object-fit: cover;
     background: var(--surface-elevated); border: 1px solid var(--border-bright);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: var(--text-2);
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
     overflow: hidden; flex-shrink: 0;
-    font-family: 'Space Grotesk', sans-serif;
   }
   .worker-avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .worker-name { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; color: var(--text); }
+  .worker-name { font-weight: 500; transition: color 0.2s; }
+  .worker-cell:hover .worker-name { color: var(--primary); }
 
-  /* Status badge */
   .status-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 10px; border-radius: 100px;
-    font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap;
-  }
-  .status-badge .dot { width: 5px; height: 5px; border-radius: 50%; }
-  .status-badge.active { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,212,170,0.2); }
-  .status-badge.active .dot { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
-  .status-badge.offsite { background: rgba(255,255,255,0.05); color: var(--text-3); border: 1px solid var(--border); }
-  .status-badge.offsite .dot { background: var(--text-3); }
-
-  /* Time cell */
-  .time-cell { color: var(--text-2); font-size: 12px; }
-  .time-cell.dash { color: var(--text-3); }
-
-  /* PPE cell */
-  .ppe-icons { display: flex; align-items: center; gap: 4px; justify-content: center; }
-  .ppe-icons .material-symbols-outlined { font-size: 17px; }
-  .ppe-icons .active-icon { color: var(--accent); }
-  .ppe-icons .inactive-icon { color: rgba(255,255,255,0.12); }
-
-  /* Score cell */
-  .score-cell { display: flex; align-items: center; gap: 8px; }
-  .score-bar {
-    width: 50px; height: 3px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden;
-  }
-  .score-fill { height: 100%; border-radius: 2px; }
-  .score-fill.high { background: linear-gradient(90deg, var(--accent), #00ffcc); }
-  .score-fill.mid  { background: linear-gradient(90deg, var(--warning), #ffd97a); }
-  .score-fill.low  { background: linear-gradient(90deg, var(--error), #ff8a96); }
-
-  /* Helmet badge */
-  .helmet-badge {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 3px 8px; border-radius: 6px;
     font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
-  .helmet-badge.scanned { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,212,170,0.18); }
-  .helmet-badge.assigned { background: rgba(255,255,255,0.05); color: var(--text-3); border: 1px solid var(--border); }
-  .helmet-badge .material-symbols-outlined { font-size: 13px; }
+  .status-badge.active { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,212,170,0.2); }
+  .status-badge.offsite { background: rgba(255,255,255,0.04); color: var(--text-3); border: 1px solid var(--border); }
+  .status-badge .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
-  /* Action buttons */
-  .action-group { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .ppe-icons { display: flex; align-items: center; gap: 6px; justify-content: center; }
+  .ppe-icons .material-symbols-outlined { font-size: 17px; }
+  .ppe-icons .active-icon { color: var(--accent); }
+  .ppe-icons .inactive-icon { color: rgba(255,255,255,0.15); }
+
+  .score-cell { display: flex; align-items: center; gap: 8px; }
+  .score-bar { width: 44px; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 2px; }
+  .score-fill.high { background: var(--accent); }
+  .score-fill.mid { background: var(--warning); }
+  .score-fill.low { background: var(--error); }
+
+  .helmet-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 7px; border-radius: 6px; font-size: 10px;
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+  }
+  .helmet-badge.scanned { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,212,170,0.2); }
+  .helmet-badge.assigned { background: rgba(255,255,255,0.04); color: var(--text-2); border: 1px solid var(--border); }
+
+  .action-group { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
   .action-btn {
-    width: 30px; height: 30px; border-radius: 8px;
-    background: none; border: 1px solid transparent;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; transition: all 0.2s; color: var(--text-3);
+    width: 28px; height: 28px; border-radius: 7px; background: none; border: 1px solid transparent;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-3);
+    transition: all 0.2s;
   }
-  .action-btn:hover { background: var(--surface-hover); border-color: var(--border); color: var(--text-2); }
-  .action-btn.danger:hover { background: var(--error-dim); border-color: rgba(255,71,87,0.2); color: var(--error); }
-  .action-btn.teal:hover { background: var(--accent-dim); border-color: rgba(0,212,170,0.2); color: var(--accent); }
-  .action-btn.edit:hover { background: var(--secondary-dim); border-color: rgba(124,143,245,0.25); color: var(--secondary); }
-  .action-btn .material-symbols-outlined { font-size: 16px; }
+  .action-btn:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border); }
+  .action-btn.teal:hover { color: var(--accent); background: var(--accent-dim); border-color: rgba(0,212,170,0.2); }
+  .action-btn.edit:hover { color: var(--secondary); background: var(--secondary-dim); border-color: rgba(124,143,245,0.2); }
+  .action-btn.danger:hover { color: var(--error); background: var(--error-dim); border-color: rgba(255,71,87,0.2); }
+  .action-btn .material-symbols-outlined { font-size: 15px; }
 
-  /* Empty state */
-  .empty-state {
-    padding: 60px 24px; text-align: center;
-  }
-  .empty-state .material-symbols-outlined { font-size: 40px; color: var(--text-3); display: block; margin-bottom: 12px; }
-  .empty-state p { font-size: 14px; color: var(--text-3); }
-
-  /* ─── Right column ─── */
+  /* ─── Alerts & Quick Actions Column ─── */
   .right-col { display: flex; flex-direction: column; gap: 20px; }
 
-  /* Quick actions */
-  .quick-actions-body { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .quick-actions-body { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
   .qa-btn {
-    width: 100%; padding: 11px 16px; border-radius: 10px;
+    width: 100%; padding: 11px 14px; border-radius: 10px;
     font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase; letter-spacing: 0.07em;
-    cursor: pointer; transition: all 0.25s;
-    display: flex; align-items: center; gap: 10px;
-    border: 1px solid;
+    text-transform: uppercase; cursor: pointer; transition: all 0.25s;
+    display: flex; align-items: center; gap: 10px; border: 1px solid;
   }
-  .qa-btn .material-symbols-outlined { font-size: 18px; transition: transform 0.2s; }
-  .qa-btn:hover .material-symbols-outlined { transform: scale(1.15); }
-  .qa-btn.primary { color: var(--primary); background: var(--primary-dim); border-color: rgba(255,107,43,0.2); }
-  .qa-btn.primary:hover { background: rgba(255,107,43,0.18); box-shadow: 0 0 20px var(--primary-glow); }
-  .qa-btn.accent { color: var(--accent); background: var(--accent-dim); border-color: rgba(0,212,170,0.2); }
-  .qa-btn.accent:hover { background: rgba(0,212,170,0.15); box-shadow: 0 0 20px var(--accent-glow); }
-  .qa-btn.secondary { color: var(--secondary); background: var(--secondary-dim); border-color: rgba(124,143,245,0.2); }
+  .qa-btn.primary { background: var(--primary-dim); border-color: rgba(255,107,43,0.25); color: var(--primary); }
+  .qa-btn.primary:hover { background: rgba(255,107,43,0.18); box-shadow: 0 0 16px var(--primary-glow); }
+  .qa-btn.accent { background: var(--accent-dim); border-color: rgba(0,212,170,0.25); color: var(--accent); }
+  .qa-btn.accent:hover { background: rgba(0,212,170,0.18); box-shadow: 0 0 16px var(--accent-glow); }
+  .qa-btn.secondary { background: var(--secondary-dim); border-color: rgba(124,143,245,0.25); color: var(--secondary); }
   .qa-btn.secondary:hover { background: rgba(124,143,245,0.18); }
 
-  /* Alerts panel */
-  .alerts-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+  .alerts-body {
+    padding: 14px; display: flex; flex-direction: column; gap: 10px;
+    max-height: 440px; overflow-y: auto;
+  }
   .alert-item {
-    background: rgba(255,255,255,0.02); border-radius: 10px;
-    border: 1px solid var(--border); padding: 14px;
-    position: relative; overflow: hidden;
-    transition: border-color 0.2s;
+    padding: 12px 14px; border-radius: 10px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 6px; transition: transform 0.2s;
   }
-  .alert-item::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; border-radius: 0 2px 2px 0; }
-  .alert-item.crit::before { background: var(--error); }
-  .alert-item.warn::before { background: var(--warning); }
-  .alert-item.crit { border-color: rgba(255,71,87,0.15); }
-  .alert-item.warn { border-color: rgba(255,201,71,0.15); }
-  .alert-item:hover { border-color: var(--border-bright); }
+  .alert-item.violation { border-left: 3px solid var(--error); }
+  .alert-item.mismatch { border-left: 3px solid var(--warning); }
+  .alert-item.checkin { border-left: 3px solid var(--accent); }
+  .alert-item.info { border-left: 3px solid var(--secondary); }
 
-  .alert-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .alert-header { display: flex; align-items: center; justify-content: space-between; }
   .alert-badge {
-    display: flex; align-items: center; gap: 5px;
-    font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.07em;
-  }
-  .alert-badge .material-symbols-outlined { font-size: 14px; }
-  .alert-badge.crit { color: var(--error); }
-  .alert-badge.warn { color: var(--warning); }
-  .alert-time { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-3); }
-  .alert-desc { font-size: 12px; color: var(--text-2); line-height: 1.55; margin-bottom: 10px; }
-  .alert-action {
-    font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.07em; color: var(--secondary); background: none;
-    border: 1px solid rgba(124,143,245,0.25); border-radius: 6px;
-    padding: 4px 10px; cursor: pointer; transition: all 0.2s;
     display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
   }
-  .alert-action:hover { background: var(--secondary-dim); }
-  .alert-action .material-symbols-outlined { font-size: 12px; }
-
-  /* ─── Bottom panel ─── */
-  .trends-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-  .trends-body { padding: 24px; }
-  .chart-placeholder {
-    height: 160px; background: rgba(255,255,255,0.015);
-    border: 1px solid var(--border); border-radius: 10px;
-    position: relative; overflow: hidden;
-    display: flex; align-items: flex-end; gap: 8px; padding: 20px 20px 0;
+  .alert-time { font-size: 10px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
+  .alert-desc { font-size: 12px; color: var(--text-2); line-height: 1.4; }
+  .alert-footer { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .alert-ack-btn {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    padding: 3px 8px; font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    color: var(--text-3); cursor: pointer; transition: all 0.2s;
   }
-  .chart-placeholder::before {
-    content: ''; position: absolute; inset: 0;
-    background-image:
-      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
-    background-size: 40px 30px;
-  }
-  .chart-bar {
-    flex: 1; border-radius: 4px 4px 0 0;
-    position: relative; z-index: 1; transition: opacity 0.2s;
-    min-height: 20px;
-  }
-  .chart-bar:hover { opacity: 0.85; }
-  .chart-bar.orange { background: linear-gradient(to top, rgba(255,107,43,0.7), rgba(255,107,43,0.2)); }
-  .chart-bar.accent { background: linear-gradient(to top, rgba(0,212,170,0.7), rgba(0,212,170,0.2)); }
-  .chart-label {
-    font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-3);
-    text-align: center; margin-top: 6px;
-  }
+  .alert-ack-btn:hover { color: var(--text); background: var(--surface-hover); }
 
   /* ─── Modals ─── */
   .modal-overlay {
-    display: none; position: fixed; inset: 0; z-index: 100;
-    background: rgba(4,4,12,0.85);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    align-items: center; justify-content: center; padding: 20px;
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(12px);
+    display: none; align-items: center; justify-content: center; padding: 20px;
   }
   .modal-overlay.open { display: flex; }
   .modal {
-    background: #0e0e1a; border: 1px solid var(--border-bright);
-    border-radius: 20px; width: 100%; max-width: 480px;
-    box-shadow: 0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
-    overflow: hidden;
-    animation: modalIn 0.3s ease;
+    background: #0f0f1c; border: 1px solid var(--border-bright);
+    border-radius: 18px; width: 100%; max-width: 520px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7); overflow: hidden;
+    display: flex; flex-direction: column; max-height: 90vh;
   }
-  .modal.wide { max-width: 560px; }
-  @keyframes modalIn {
-    from { opacity: 0; transform: scale(0.96) translateY(12px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
-  }
+  .modal.wide { max-width: 680px; }
   .modal-header {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex; justify-content: space-between; align-items: flex-start;
-    background: linear-gradient(135deg, rgba(255,107,43,0.06), rgba(0,0,0,0));
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
   }
   .modal-header-icon { display: flex; align-items: center; gap: 12px; }
-  .modal-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
-  .modal-icon.orange { background: var(--primary-dim); border: 1px solid rgba(255,107,43,0.2); }
-  .modal-icon.orange .material-symbols-outlined { color: var(--primary); font-variation-settings: 'FILL' 1; font-size: 20px; }
-  .modal-icon.teal { background: var(--accent-dim); border: 1px solid rgba(0,212,170,0.2); }
-  .modal-icon.teal .material-symbols-outlined { color: var(--accent); font-variation-settings: 'FILL' 1; font-size: 20px; }
-  .modal-icon.secondary { background: var(--secondary-dim); border: 1px solid rgba(124,143,245,0.2); }
-  .modal-icon.secondary .material-symbols-outlined { color: var(--secondary); font-variation-settings: 'FILL' 1; font-size: 20px; }
-  .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; color: var(--text); }
-  .modal-subtitle { font-size: 12px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
-  .modal-close {
-    background: none; border: none; cursor: pointer;
-    color: var(--text-3); padding: 4px; border-radius: 6px; transition: all 0.2s;
+  .modal-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
   }
-  .modal-close:hover { color: var(--text); background: var(--surface-hover); }
-  .modal-close .material-symbols-outlined { font-size: 20px; }
+  .modal-icon.orange { background: var(--primary-dim); color: var(--primary); }
+  .modal-icon.teal { background: var(--accent-dim); color: var(--accent); }
+  .modal-icon.secondary { background: var(--secondary-dim); color: var(--secondary); }
+  .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; }
+  .modal-subtitle { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+  .modal-close {
+    background: none; border: none; color: var(--text-3); cursor: pointer;
+    padding: 4px; border-radius: 6px; transition: color 0.2s;
+  }
+  .modal-close:hover { color: var(--text); }
 
-  .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+  .modal-body { padding: 22px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field-label { font-size: 11px; font-weight: 600; color: var(--text-2); text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+  .field-input, .field-select {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 9px; padding: 10px 14px; font-size: 13px; color: var(--text);
+    outline: none; transition: border-color 0.2s; font-family: 'Inter', sans-serif;
+  }
+  .field-input:focus, .field-select:focus { border-color: var(--primary); }
+  .field-input.mono { font-family: 'JetBrains Mono', monospace; }
+  .field-select { background: #0c0c16; }
+
   .modal-footer {
     padding: 16px 24px; border-top: 1px solid var(--border);
-    display: flex; justify-content: flex-end; gap: 10px;
-    background: rgba(255,255,255,0.015);
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    background: rgba(0,0,0,0.2);
   }
-
-  /* Form elements in modal */
-  .field { display: flex; flex-direction: column; gap: 7px; }
-  .field-label {
-    font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3);
-  }
-  .field-input, .field-select {
-    width: 100%; padding: 10px 14px;
-    background: rgba(255,255,255,0.04); border: 1px solid var(--border-bright);
-    border-radius: 10px; font-size: 13px; color: var(--text);
-    font-family: 'Inter', sans-serif; outline: none; transition: all 0.25s;
-  }
-  .field-input::placeholder { color: var(--text-3); }
-  .field-input:focus, .field-select:focus {
-    border-color: rgba(255,107,43,0.45);
-    background: rgba(255,107,43,0.04);
-    box-shadow: 0 0 0 3px rgba(255,107,43,0.10);
-  }
-  .field-input.mono { font-family: 'JetBrains Mono', monospace; }
-  .field-select { appearance: none; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(240,238,255,0.3)' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
-
-  .field-select option { background: #12121e; }
-
-  .field-hint { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
-  .field-error { font-size: 12px; color: var(--error); display: none; }
-  .field-success { font-size: 12px; color: var(--accent); display: none; }
-
-  .grid-2-modal { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-
-  /* Drop zone */
-  .drop-zone {
-    border: 1.5px dashed var(--border-bright); border-radius: 12px;
-    padding: 32px 20px; text-align: center; cursor: pointer;
-    transition: all 0.25s; background: rgba(255,255,255,0.02);
-  }
-  .drop-zone:hover, .drop-zone.drag-over { border-color: rgba(255,107,43,0.45); background: var(--primary-dim); }
-  .drop-zone .material-symbols-outlined { font-size: 36px; color: var(--text-3); display: block; margin-bottom: 8px; transition: color 0.2s; }
-  .drop-zone:hover .material-symbols-outlined { color: var(--primary); }
-  .drop-zone p { font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
-  .drop-zone span { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
-
-  .preview-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .preview-item { position: relative; }
-  .preview-item img { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
-  .preview-remove {
-    position: absolute; top: -5px; right: -5px;
-    width: 18px; height: 18px; border-radius: 50%;
-    background: var(--error); color: white; border: none; cursor: pointer;
-    font-size: 10px; display: none; align-items: center; justify-content: center;
-    font-family: 'Inter', sans-serif;
-  }
-  .preview-item:hover .preview-remove { display: flex; }
-
-  .info-box {
-    background: var(--accent-dim); border: 1px solid rgba(0,212,170,0.15);
-    border-radius: 10px; padding: 12px 14px;
-    display: flex; gap: 10px; align-items: flex-start;
-  }
-  .info-box .material-symbols-outlined { font-size: 16px; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
-  .info-box p { font-size: 11.5px; color: var(--text-2); line-height: 1.55; }
-  .info-box strong { color: var(--text); }
-
-  /* Modal buttons */
   .btn-modal-cancel {
-    padding: 9px 20px; border-radius: 9px;
-    font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--text-2); background: none; border: 1px solid var(--border-bright);
-    cursor: pointer; transition: all 0.2s;
+    padding: 9px 16px; border-radius: 9px; background: none; border: 1px solid var(--border);
+    color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer;
   }
-  .btn-modal-cancel:hover { color: var(--text); background: var(--surface-hover); }
   .btn-modal-primary {
-    padding: 9px 22px; border-radius: 9px;
-    font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase; letter-spacing: 0.07em;
-    color: white; border: none; cursor: pointer; transition: all 0.25s;
-    display: flex; align-items: center; gap: 7px;
+    padding: 9px 18px; border-radius: 9px; border: none;
+    font-size: 12px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
   }
-  .btn-modal-primary.orange { background: linear-gradient(135deg, var(--primary), #ff8c42); box-shadow: 0 4px 18px var(--primary-glow); }
-  .btn-modal-primary.orange:hover { box-shadow: 0 8px 24px var(--primary-glow); transform: translateY(-1px); }
-  .btn-modal-primary.teal { background: linear-gradient(135deg, var(--accent), #00b896); box-shadow: 0 4px 18px var(--accent-glow); }
-  .btn-modal-primary.teal:hover { box-shadow: 0 8px 24px var(--accent-glow); transform: translateY(-1px); }
-  .btn-modal-primary .material-symbols-outlined { font-size: 15px; }
-  .btn-modal-danger {
-    padding: 9px 18px; border-radius: 9px;
-    font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
-    text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--error); background: none; border: 1px solid rgba(255,71,87,0.25);
-    cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .btn-modal-danger:hover { background: var(--error-dim); }
-  .btn-modal-danger .material-symbols-outlined { font-size: 14px; }
+  .btn-modal-primary.orange { background: var(--primary); color: white; box-shadow: 0 0 16px var(--primary-glow); }
+  .btn-modal-primary.teal { background: var(--accent); color: #040408; font-weight: 700; box-shadow: 0 0 16px var(--accent-glow); }
 
-  /* Helmet table in modal */
-  .helmet-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
-  .helmet-list table { min-width: unset; }
-  .helmet-list thead tr { background: rgba(255,255,255,0.03); }
-  .helmet-list th { padding: 10px 14px; }
-  .helmet-list td { padding: 10px 14px; font-size: 12px; }
-  .helmet-list td:first-child { padding-left: 14px; }
-  .helmet-list td:last-child { padding-right: 14px; text-align: right; }
-  .helmet-status-badge { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid; }
-  .helmet-status-badge.available { background: var(--accent-dim); color: var(--accent); border-color: rgba(0,212,170,0.2); }
-  .helmet-status-badge.occupied  { background: var(--secondary-dim); color: var(--secondary); border-color: rgba(124,143,245,0.2); }
-
-  /* Responsive */
-  @media (max-width: 1200px) { .main-grid { grid-template-columns: 1fr; } .right-col { grid-row: 1; } }
-  @media (max-width: 900px) { .kpi-grid { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 768px) {
-    .sidebar { transform: translateX(-100%); }
-    .sidebar.open { transform: translateX(0); }
-    .main-area { margin-left: 0; }
-    .kpi-grid { grid-template-columns: 1fr; }
-    .page-content { padding: 20px 16px; }
-    .topbar { padding: 0 16px; }
+  .drop-zone {
+    border: 2px dashed var(--border-bright); border-radius: 12px;
+    padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
   }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--primary); background: var(--primary-dim); }
+  .preview-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+  .preview-item { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .preview-item img { width: 100%; height: 100%; object-fit: cover; }
+  .preview-remove { position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,0.7); border: none; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; }
 
-  /* Autofill */
-  .field-input:-webkit-autofill,
-  .field-input:-webkit-autofill:hover,
-  .field-input:-webkit-autofill:focus {
-    -webkit-box-shadow: 0 0 0 40px #12121e inset !important;
-    -webkit-text-fill-color: var(--text) !important;
-    transition: background-color 5000s ease-in-out 0s;
-  }
+  /* Worker Details Modal Elements */
+  .profile-badge-strip { display: flex; gap: 8px; margin-top: 4px; }
+  .detail-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+  .detail-kpi-card { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px; padding: 10px; text-align: center; }
+  .detail-kpi-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+  .detail-kpi-val { font-size: 16px; font-weight: 700; margin-top: 2px; }
 
-  /* Browse btn */
-  .browse-btn {
-    display: inline-block; margin-top: 12px;
-    padding: 6px 16px; border-radius: 7px;
-    background: rgba(255,255,255,0.07); border: 1px solid var(--border-bright);
-    font-size: 11px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2);
-    cursor: pointer; transition: all 0.2s;
+  /* Report Generator Modal */
+  .report-radio-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .report-radio-card {
+    border: 1px solid var(--border); border-radius: 9px; padding: 10px; text-align: center;
+    cursor: pointer; transition: all 0.2s; background: var(--surface);
   }
-  .browse-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+  .report-radio-card.selected { border-color: var(--primary); background: var(--primary-dim); color: var(--primary); }
 </style>
 </head>
 <body>
 
   <!-- ═══ SIDEBAR ═══ -->
-  <nav class="sidebar" id="sidebar">
+  <nav class="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">
         <div class="logo-icon">
-          <span class="material-symbols-outlined">precision_manufacturing</span>
+          <span class="material-symbols-outlined">shield</span>
         </div>
-        <span class="logo-text">Site<span>Sentinel</span></span>
+        <div class="logo-text">Site<span>Sentinel</span></div>
       </div>
     </div>
 
     <div class="sidebar-body">
-      <button class="sidebar-new-btn">
-        <span class="material-symbols-outlined">add_circle</span>
-        New Safety Report
+      <button class="sidebar-new-btn" onclick="openReportModal()">
+        <span class="material-symbols-outlined">summarize</span>
+        Generate Report
       </button>
 
       <div class="nav-section-label">Navigation</div>
-
-      <a class="nav-item active" href="#">
+      <button class="nav-item active">
         <span class="material-symbols-outlined">dashboard</span>
         Dashboard
-      </a>
-      <a class="nav-item" href="#">
+      </button>
+      <button class="nav-item" onclick="openHelmetsModal()">
+        <span class="material-symbols-outlined">construction</span>
+        Helmet Inventory
+      </button>
+      <button class="nav-item" onclick="document.getElementById('addWorkerModal').classList.add('open')">
+        <span class="material-symbols-outlined">person_add</span>
+        Add Worker
+      </button>
+      <button class="nav-item" onclick="openReportModal()">
         <span class="material-symbols-outlined">analytics</span>
-        Analytics
-      </a>
-      <a class="nav-item" href="#">
-        <span class="material-symbols-outlined">settings</span>
-        Settings
-      </a>
+        Audit Reports
+      </button>
     </div>
 
     <div class="sidebar-footer">
@@ -827,10 +581,6 @@
         <span class="material-symbols-outlined fill" id="start-pi-icon">videocam</span>
         <span id="start-pi-label">Start Pi Stream</span>
       </button>
-      <a class="nav-item" href="#">
-        <span class="material-symbols-outlined">help_outline</span>
-        Support
-      </a>
       <a class="nav-item" href="/api/logout" onclick="sessionStorage.removeItem('ss_login_time');">
         <span class="material-symbols-outlined">logout</span>
         Sign Out
@@ -845,95 +595,154 @@
     <header class="topbar">
       <div class="topbar-search">
         <span class="material-symbols-outlined">search</span>
-        <input class="search-input" placeholder="Search workers, zones, reports…" type="text"/>
+        <input class="search-input" id="search-workers-input" placeholder="Search workers, IDs, helmets…" type="text" oninput="filterWorkerRows()"/>
       </div>
       <div class="topbar-right">
         <div class="topbar-live">
           <span class="live-dot"></span>
-          <span class="live-label">Live</span>
+          <span class="live-label">Gate Live</span>
         </div>
         <div class="user-pill">
           <div class="user-avatar" id="user-initials">--</div>
           <div class="user-info">
-            <span class="user-name-text" id="user-name">…</span>
-            <span class="user-role">Site Manager</span>
+            <span class="user-name-text" id="user-name">Site Manager</span>
+            <span class="user-role">Manager</span>
           </div>
         </div>
       </div>
     </header>
 
-    <!-- Page content -->
+    <!-- Page Content -->
     <div class="page-content">
 
-      <!-- Page header -->
+      <!-- Page Header -->
       <div class="page-header">
-        <div class="page-header-left">
-          <h1>Daily Overview</h1>
-          <p>Real-time monitoring &nbsp;·&nbsp; <span id="live-clock">00:00:00</span></p>
+        <div>
+          <h1>Site Safety &amp; Gate Control</h1>
+          <p>Real-time Single-Worker Gate Evaluation &amp; Compliance &nbsp;·&nbsp; Session Active: <span id="live-clock" style="font-family:'JetBrains Mono',monospace;color:var(--text);font-weight:600;">00:00:00</span></p>
         </div>
-        <button class="btn-export">
+        <button class="btn-export" onclick="openReportModal()">
           <span class="material-symbols-outlined">download</span>
-          Export Summary
+          Export Audit Report
         </button>
       </div>
 
-      <!-- KPI Cards -->
-      <div class="kpi-grid">
-        <!-- Workers Present -->
-        <div class="kpi-card card-workers">
-          <div class="kpi-header">
-            <span class="kpi-label">Workers Present</span>
-            <div class="kpi-icon-wrap blue">
-              <span class="material-symbols-outlined fill">groups</span>
+      <!-- Live Monitoring & Active Evaluation HUD -->
+      <div class="monitoring-grid">
+        <!-- Live Stream Video / Status Card -->
+        <div class="cam-card">
+          <div class="cam-header">
+            <div class="cam-title">
+              <span class="material-symbols-outlined" style="color:var(--primary)">videocam</span>
+              Gate Camera 01 (Raspberry Pi Rev 1.3)
+            </div>
+            <div class="cam-meta">
+              <span>FPS: <strong id="hud-fps">--</strong></span>
+              <span>Pi: <strong id="hud-pi-ip">Not set</strong></span>
             </div>
           </div>
-          <div class="kpi-value" id="active-workers-count">0</div>
-          <div class="kpi-sub" id="total-workers-subtext">of 0 registered</div>
-          <div class="kpi-bar-track">
-            <div class="kpi-bar-fill blue" id="active-workers-bar" style="width:0%"></div>
+          <div class="cam-preview-box" id="cam-preview-container">
+            <div class="cam-watermark">
+              <span class="material-symbols-outlined">videocam_off</span>
+              <p>Pi Camera Stream Inactive</p>
+              <span style="font-size:11px;color:var(--text-3);">Click "Start Pi Stream" to launch AI single-worker evaluation</span>
+            </div>
+          </div>
+          <div class="cam-hud-footer">
+            <div class="eval-status-badge idle" id="eval-status-badge">
+              <span class="material-symbols-outlined" style="font-size:14px;">hourglass_empty</span>
+              <span id="eval-status-text">Evaluation: Waiting for worker</span>
+            </div>
+            <div class="cam-controls">
+              <button class="cam-btn accent" onclick="triggerFaceDataReload()" title="Force hot-reload of face biometric database">
+                <span class="material-symbols-outlined" style="font-size:14px;">sync</span>
+                Refresh Face Data
+              </button>
+            </div>
           </div>
         </div>
-        <!-- Safety Compliance -->
-        <div class="kpi-card card-safety">
-          <div class="kpi-header">
-            <span class="kpi-label">Safety Compliance</span>
-            <div class="kpi-icon-wrap green">
-              <span class="material-symbols-outlined fill">health_and_safety</span>
+
+        <!-- Active Worker Session Card -->
+        <div class="session-card">
+          <div class="session-header">
+            <span class="session-title">Active Gate Inspection</span>
+            <span class="status-badge offsite" id="gate-lock-status">UNLOCKED</span>
+          </div>
+          <div class="session-body">
+            <div class="session-row">
+              <span class="session-label">Worker Name</span>
+              <span class="session-val" id="hud-worker-name">—</span>
+            </div>
+            <div class="session-row">
+              <span class="session-label">Worker ID</span>
+              <span class="session-val" id="hud-worker-id">—</span>
+            </div>
+            <div class="session-row">
+              <span class="session-label">Assigned Helmet</span>
+              <span class="session-val" id="hud-assigned-helmet">—</span>
+            </div>
+            <div class="session-row">
+              <span class="session-label">Scanned Helmet</span>
+              <span class="session-val" id="hud-scanned-helmet">—</span>
+            </div>
+            <div class="score-gauge">
+              <div style="display:flex;justify-content:space-between;font-size:11px;font-family:'JetBrains Mono',monospace;">
+                <span>PPE Compliance</span>
+                <strong id="hud-ppe-score">—</strong>
+              </div>
+              <div class="gauge-bar">
+                <div class="gauge-fill" id="hud-gauge-fill" style="width:0%;background:var(--accent);"></div>
+              </div>
             </div>
           </div>
-          <div class="kpi-value" id="safety-compliance-pct">100%</div>
-          <div class="kpi-sub">PPE adherence score</div>
-          <div class="kpi-bar-track">
-            <div class="kpi-bar-fill green" id="safety-compliance-bar" style="width:100%"></div>
-          </div>
-        </div>
-        <!-- Active Violations -->
-        <div class="kpi-card card-violations">
-          <div class="kpi-header">
-            <span class="kpi-label">Active Violations</span>
-            <div class="kpi-icon-wrap red">
-              <span class="material-symbols-outlined fill">warning</span>
-            </div>
-          </div>
-          <div class="kpi-value" id="violations-count">0</div>
-          <div class="kpi-sub" id="violations-subtext">0 minor, 0 critical</div>
-          <div class="kpi-bar-track">
-            <div class="kpi-bar-fill red" id="violations-bar" style="width:0%"></div>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-3);line-height:1.4;">
+            <strong style="color:var(--text-2);">Occupancy Rule:</strong> Exactly 1 worker locked in the gate zone during identification &amp; PPE attribution.
           </div>
         </div>
       </div>
 
-      <!-- Main grid -->
+      <!-- KPI Summary Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-label">Workers Present</span>
+            <div class="kpi-icon-wrap blue"><span class="material-symbols-outlined">groups</span></div>
+          </div>
+          <div class="kpi-value" id="active-workers-count">0</div>
+          <div class="kpi-sub" id="total-workers-subtext">of 0 registered</div>
+          <div class="kpi-bar-track"><div class="kpi-bar-fill blue" id="active-workers-bar" style="width:0%"></div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-label">Safety Compliance</span>
+            <div class="kpi-icon-wrap green"><span class="material-symbols-outlined">health_and_safety</span></div>
+          </div>
+          <div class="kpi-value" id="safety-compliance-pct">100%</div>
+          <div class="kpi-sub">PPE adherence rating</div>
+          <div class="kpi-bar-track"><div class="kpi-bar-fill green" id="safety-compliance-bar" style="width:100%"></div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-label">Active Safety Alerts</span>
+            <div class="kpi-icon-wrap red"><span class="material-symbols-outlined">warning</span></div>
+          </div>
+          <div class="kpi-value" id="violations-count">0</div>
+          <div class="kpi-sub" id="violations-subtext">0 unacknowledged</div>
+          <div class="kpi-bar-track"><div class="kpi-bar-fill red" id="violations-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <!-- Main Layout: Table + Live Alerts -->
       <div class="main-grid">
-        <!-- Left: attendance table -->
+        <!-- Worker Table -->
         <div class="panel">
           <div class="panel-header">
             <div>
-              <div class="panel-title">Live Attendance Log</div>
-              <div class="panel-title-sub">Auto-refreshes every 3 seconds</div>
+              <div class="panel-title">Worker Roster &amp; Gate Status</div>
+              <div class="panel-title-sub">Click any worker row for deep attendance &amp; PPE history</div>
             </div>
-            <button class="panel-action">
-              View Full Log <span class="material-symbols-outlined">arrow_forward</span>
+            <button class="qa-btn primary" style="width:auto;padding:7px 12px;" onclick="document.getElementById('addWorkerModal').classList.add('open')">
+              <span class="material-symbols-outlined" style="font-size:16px;">person_add</span> Add Worker
             </button>
           </div>
           <div class="table-wrap">
@@ -946,139 +755,53 @@
                   <th>Check-In</th>
                   <th>Check-Out</th>
                   <th class="center">PPE</th>
-                  <th>Safety Score</th>
+                  <th>Score</th>
                   <th>Helmet</th>
-                  <th>Actions</th>
+                  <th style="text-align:right;">Actions</th>
                 </tr>
               </thead>
               <tbody id="workers-tbody">
-                <tr>
-                  <td colspan="9">
-                    <div class="empty-state">
-                      <span class="material-symbols-outlined">person_off</span>
-                      <p>No workers registered yet.</p>
-                    </div>
-                  </td>
-                </tr>
+                <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-3);">Loading worker records…</td></tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- Right: actions + alerts -->
+        <!-- Right: Actions & Real-Time Alerts -->
         <div class="right-col">
-          <!-- Worker Management -->
+          <!-- Quick Management -->
           <div class="panel">
             <div class="panel-header">
-              <div class="panel-title">Worker Management</div>
+              <div class="panel-title">Site Operations</div>
             </div>
             <div class="quick-actions-body">
               <button class="qa-btn primary" onclick="document.getElementById('addWorkerModal').classList.add('open')">
-                <span class="material-symbols-outlined fill">person_add</span>
-                Add New Worker
+                <span class="material-symbols-outlined fill">person_add</span> Register New Worker
               </button>
               <button class="qa-btn accent" onclick="openHelmetsModal()">
-                <span class="material-symbols-outlined fill">construction</span>
-                Manage Helmets
+                <span class="material-symbols-outlined fill">construction</span> Manage Helmets
               </button>
               <button class="qa-btn secondary" id="pi-btn" onclick="document.getElementById('piModal').classList.add('open')">
-                <span class="material-symbols-outlined fill">memory</span>
-                <span id="pi-btn-label">Set Raspberry Pi IP</span>
+                <span class="material-symbols-outlined fill">memory</span> <span id="pi-btn-label">Set Raspberry Pi IP</span>
               </button>
             </div>
           </div>
 
-          <!-- Recent Alerts -->
+          <!-- Real-Time Alerts Panel -->
           <div class="panel">
             <div class="panel-header">
-              <div class="panel-title">Recent Alerts</div>
-              <span class="status-badge active" style="font-size:9px;">
-                <span class="dot"></span>Live
-              </span>
+              <div class="panel-title">Real-Time Safety Events</div>
+              <span class="status-badge active" style="font-size:9px;"><span class="dot"></span>Live Polling</span>
             </div>
-            <div class="alerts-body">
-              <div class="alert-item crit">
-                <div class="alert-header">
-                  <div class="alert-badge crit">
-                    <span class="material-symbols-outlined fill">warning</span>
-                    No Hardhat
-                  </div>
-                  <span class="alert-time">10:42 AM</span>
-                </div>
-                <p class="alert-desc">Zone C (Scaffolding). Unidentified worker entering restricted zone without proper headgear.</p>
-                <button class="alert-action">
-                  <span class="material-symbols-outlined">visibility</span>
-                  View Evidence
-                </button>
-              </div>
-              <div class="alert-item warn">
-                <div class="alert-header">
-                  <div class="alert-badge warn">
-                    <span class="material-symbols-outlined fill">gpp_maybe</span>
-                    Missing High-Vis
-                  </div>
-                  <span class="alert-time">09:15 AM</span>
-                </div>
-                <p class="alert-desc">Worker #4105 (S. Jenkins) flagged in Loading Bay without high-visibility vest.</p>
-                <button class="alert-action">
-                  <span class="material-symbols-outlined">visibility</span>
-                  View Evidence
-                </button>
-              </div>
+            <div class="alerts-body" id="alerts-container">
+              <div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">Waiting for gate events…</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Weekly Trends -->
-      <div class="trends-panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title">Weekly Safety Trends</div>
-            <div class="panel-title-sub">Compliance score &amp; violation count per day</div>
-          </div>
-          <button class="panel-action">
-            <span class="material-symbols-outlined">bar_chart</span>
-            Open Full Report
-          </button>
-        </div>
-        <div class="trends-body">
-          <div class="chart-placeholder" id="weekly-chart">
-            <div style="display:flex;flex-direction:column;align-items:center;flex:1">
-              <div class="chart-bar orange" style="height:80%"></div>
-              <div class="chart-label">Mon</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;flex:1">
-              <div class="chart-bar accent" style="height:95%"></div>
-              <div class="chart-label">Tue</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;flex:1">
-              <div class="chart-bar orange" style="height:70%"></div>
-              <div class="chart-label">Wed</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;flex:1">
-              <div class="chart-bar accent" style="height:88%"></div>
-              <div class="chart-label">Thu</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;flex:1">
-              <div class="chart-bar orange" style="height:60%"></div>
-              <div class="chart-label">Fri</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;flex:1">
-              <div class="chart-bar accent" style="height:92%"></div>
-              <div class="chart-label">Sat</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;flex:1">
-              <div class="chart-bar orange" style="height:75%"></div>
-              <div class="chart-label">Sun</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /page-content -->
-  </div><!-- /main-area -->
-
+    </div>
+  </div>
 
   <!-- ═══ MODAL: Add Worker ═══ -->
   <div class="modal-overlay" id="addWorkerModal">
@@ -1088,7 +811,7 @@
           <div class="modal-icon orange"><span class="material-symbols-outlined">person_add</span></div>
           <div>
             <div class="modal-title">Register New Worker</div>
-            <div class="modal-subtitle">Face recognition + helmet assignment</div>
+            <div class="modal-subtitle">Biometric face recognition + helmet assignment</div>
           </div>
         </div>
         <button class="modal-close" onclick="document.getElementById('addWorkerModal').classList.remove('open')">
@@ -1096,156 +819,204 @@
         </button>
       </div>
       <div class="modal-body">
-        <div class="grid-2-modal">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="field">
             <label class="field-label" for="w-first">First Name</label>
-            <input class="field-input" id="w-first" placeholder="John" type="text"/>
+            <input class="field-input" id="w-first" placeholder="e.g. Souvagya" type="text"/>
           </div>
           <div class="field">
             <label class="field-label" for="w-last">Last Name</label>
-            <input class="field-input" id="w-last" placeholder="Doe" type="text"/>
+            <input class="field-input" id="w-last" placeholder="e.g. Karmakar" type="text"/>
           </div>
         </div>
         <div class="field">
           <label class="field-label" for="w-workerid">Worker ID</label>
-          <input class="field-input mono" id="w-workerid" placeholder="e.g. #4115" type="text"/>
+          <input class="field-input mono" id="w-workerid" placeholder="e.g. 003" type="text"/>
         </div>
         <div class="field">
-          <label class="field-label" for="w-helmetid">
-            <span class="material-symbols-outlined" style="font-size:12px;vertical-align:middle;margin-right:3px;">construction</span>
-            Assign Helmet <span style="color:var(--text-3);font-size:9px;text-transform:none;letter-spacing:0;">(optional)</span>
-          </label>
+          <label class="field-label" for="w-helmetid">Assign Helmet (Optional)</label>
           <select class="field-select" id="w-helmetid">
             <option value="">— No helmet assigned yet —</option>
           </select>
-          <span class="field-hint">Select a registered &amp; available helmet to pre-assign.</span>
         </div>
         <div class="field">
-          <label class="field-label">Facial Recognition Data</label>
+          <label class="field-label">Facial Recognition Image</label>
           <div class="drop-zone" id="drop-zone" onclick="document.getElementById('w-images').click()">
-            <span class="material-symbols-outlined">face</span>
-            <p>Drag &amp; drop face images here</p>
-            <span>PNG, JPG up to 5MB each · Multiple allowed</span>
-            <input id="w-images" type="file" accept="image/*" multiple class="hidden" style="display:none"/>
-            <button type="button" class="browse-btn" onclick="event.stopPropagation();document.getElementById('w-images').click()">Browse Files</button>
+            <span class="material-symbols-outlined" style="font-size:32px;color:var(--primary);">face</span>
+            <p style="font-size:13px;font-weight:600;">Drag &amp; drop worker photos here</p>
+            <span style="font-size:11px;color:var(--text-3);">Automatic 128-dim face embedding generation</span>
+            <input id="w-images" type="file" accept="image/*" multiple style="display:none"/>
           </div>
           <div class="preview-grid" id="image-preview"></div>
         </div>
-        <p class="field-error" id="w-error"></p>
+        <p class="field-error" id="w-error" style="display:none;color:var(--error);font-size:12px;"></p>
       </div>
       <div class="modal-footer">
         <button class="btn-modal-cancel" onclick="document.getElementById('addWorkerModal').classList.remove('open')">Cancel</button>
         <button class="btn-modal-primary orange" id="register-btn" onclick="registerWorker()">
-          <span class="material-symbols-outlined">how_to_reg</span>
-          Register Worker
+          <span class="material-symbols-outlined">how_to_reg</span> Register Worker
         </button>
       </div>
     </div>
   </div>
 
-  <!-- ═══ MODAL: Raspberry Pi IP ═══ -->
-  <div class="modal-overlay" id="piModal">
-    <div class="modal">
+  <!-- ═══ MODAL: Worker Profile & Deep Detail ═══ -->
+  <div class="modal-overlay" id="workerDetailModal">
+    <div class="modal wide">
       <div class="modal-header">
         <div class="modal-header-icon">
-          <div class="modal-icon secondary"><span class="material-symbols-outlined">memory</span></div>
+          <div class="modal-icon teal"><span class="material-symbols-outlined">badge</span></div>
           <div>
-            <div class="modal-title">Raspberry Pi IP Address</div>
-            <div class="modal-subtitle">Network configuration</div>
+            <div class="modal-title" id="dt-worker-name">Worker Details</div>
+            <div class="modal-subtitle" id="dt-worker-id">ID: —</div>
           </div>
         </div>
-        <button class="modal-close" onclick="document.getElementById('piModal').classList.remove('open')">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+        <button class="modal-close" onclick="closeWorkerDetailModal()"><span class="material-symbols-outlined">close</span></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" id="worker-detail-body">
+        <div style="display:flex;gap:18px;align-items:center;">
+          <div class="worker-avatar" style="width:64px;height:64px;border-radius:14px;font-size:20px;" id="dt-avatar"></div>
+          <div>
+            <div style="font-size:18px;font-weight:700;" id="dt-full-name">—</div>
+            <div class="profile-badge-strip">
+              <span class="status-badge active" id="dt-status-badge">Active</span>
+              <span class="helmet-badge assigned" id="dt-helmet-badge">Helmet: None</span>
+              <span class="status-badge offsite" id="dt-face-badge">Face: Registered</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-kpis">
+          <div class="detail-kpi-card">
+            <div class="detail-kpi-label">Today's Check-in</div>
+            <div class="detail-kpi-val" id="dt-checkin">—</div>
+          </div>
+          <div class="detail-kpi-card">
+            <div class="detail-kpi-label">Today's Checkout</div>
+            <div class="detail-kpi-val" id="dt-checkout">—</div>
+          </div>
+          <div class="detail-kpi-card">
+            <div class="detail-kpi-label">Latest PPE Score</div>
+            <div class="detail-kpi-val" id="dt-ppe-score" style="color:var(--accent);">100%</div>
+          </div>
+        </div>
+
         <div class="field">
-          <label class="field-label">IP Address</label>
-          <p style="font-size:13px;color:var(--text-2);margin-bottom:8px;">Enter the IP address of your Raspberry Pi shown on its terminal.</p>
-          <input class="field-input mono" id="pi-ip-input" placeholder="e.g. 10.205.70.159" type="text"/>
-          <p class="field-success" id="pi-save-msg">✓ Saved successfully!</p>
+          <label class="field-label">Recent Gate Attendance Trail</label>
+          <div class="table-wrap" style="max-height:160px;">
+            <table>
+              <thead>
+                <tr><th>Timestamp</th><th>Event</th><th>PPE Score</th><th>Helmet</th></tr>
+              </thead>
+              <tbody id="dt-attendance-tbody">
+                <tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:14px;">No records yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Safety Violations &amp; Event Logs</label>
+          <div class="table-wrap" style="max-height:160px;">
+            <table>
+              <thead>
+                <tr><th>Timestamp</th><th>Type</th><th>Message</th></tr>
+              </thead>
+              <tbody id="dt-events-tbody">
+                <tr><td colspan="3" style="text-align:center;color:var(--text-3);padding:14px;">No violations recorded.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-modal-cancel" onclick="document.getElementById('piModal').classList.remove('open')">Cancel</button>
-        <button class="btn-modal-primary orange" onclick="savePiIp()">
-          <span class="material-symbols-outlined">save</span>
-          Save IP
-        </button>
+        <button class="btn-modal-cancel" onclick="closeWorkerDetailModal()">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══ MODAL: ESP32-CAM IP ═══ -->
-  <div class="modal-overlay" id="esp32CamModal">
+  <!-- ═══ MODAL: Report Generator ═══ -->
+  <div class="modal-overlay" id="reportModal">
     <div class="modal">
       <div class="modal-header">
         <div class="modal-header-icon">
-          <div class="modal-icon teal"><span class="material-symbols-outlined">videocam</span></div>
+          <div class="modal-icon orange"><span class="material-symbols-outlined">summarize</span></div>
           <div>
-            <div class="modal-title">ESP32-CAM IP Address</div>
-            <div class="modal-subtitle">Camera stream configuration</div>
+            <div class="modal-title">Generate Site Audit Report</div>
+            <div class="modal-subtitle">Export compliance, attendance, and violation logs</div>
           </div>
         </div>
-        <button class="modal-close" onclick="document.getElementById('esp32CamModal').classList.remove('open')">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+        <button class="modal-close" onclick="closeReportModal()"><span class="material-symbols-outlined">close</span></button>
       </div>
       <div class="modal-body">
         <div class="field">
-          <label class="field-label">IP Address</label>
-          <p style="font-size:13px;color:var(--text-2);margin-bottom:8px;">Enter the IP shown on your ESP32-CAM serial monitor. Stream will be at <span style="font-family:'JetBrains Mono',monospace;color:var(--primary)">IP:81/stream</span></p>
-          <input class="field-input mono" id="esp32-cam-ip-input" placeholder="e.g. 10.36.176.216" type="text"/>
-          <p class="field-success" id="esp32-cam-save-msg">✓ Saved!</p>
+          <label class="field-label">Report Period</label>
+          <div class="report-radio-group">
+            <div class="report-radio-card selected" id="opt-today" onclick="setReportPeriod('today')">Today</div>
+            <div class="report-radio-card" id="opt-week" onclick="setReportPeriod('week')">Last 7 Days</div>
+            <div class="report-radio-card" id="opt-all" onclick="setReportPeriod('all')">All Time</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="field">
+            <label class="field-label">From Date</label>
+            <input type="date" class="field-input" id="rep-from"/>
+          </div>
+          <div class="field">
+            <label class="field-label">To Date</label>
+            <input type="date" class="field-input" id="rep-to"/>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">Worker Filter</label>
+          <select class="field-select" id="rep-worker-select">
+            <option value="">— All Workers —</option>
+          </select>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn-modal-cancel" onclick="document.getElementById('esp32CamModal').classList.remove('open')">Cancel</button>
-        <button class="btn-modal-primary teal" onclick="saveEsp32CamIp()">
-          <span class="material-symbols-outlined">save</span>
-          Save IP
-        </button>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <button class="btn-modal-cancel" onclick="closeReportModal()">Cancel</button>
+        <div style="display:flex;gap:10px;">
+          <button class="btn-modal-primary orange" onclick="downloadReport('csv')">
+            <span class="material-symbols-outlined">table_view</span> Export CSV
+          </button>
+          <button class="btn-modal-primary teal" onclick="downloadReport('pdf')">
+            <span class="material-symbols-outlined">picture_as_pdf</span> Export PDF
+          </button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- ═══ MODAL: Manage Helmets ═══ -->
+  <!-- ═══ MODAL: Helmets Inventory ═══ -->
   <div class="modal-overlay" id="manageHelmetsModal">
     <div class="modal wide">
       <div class="modal-header">
         <div class="modal-header-icon">
           <div class="modal-icon teal"><span class="material-symbols-outlined">construction</span></div>
           <div>
-            <div class="modal-title">Manage Registered Helmets</div>
-            <div class="modal-subtitle">Inventory management</div>
+            <div class="modal-title">Helmet Inventory Management</div>
+            <div class="modal-subtitle">Registered RFID &amp; OCR ID inventory</div>
           </div>
         </div>
-        <button class="modal-close" onclick="closeHelmetsModal()">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+        <button class="modal-close" onclick="closeHelmetsModal()"><span class="material-symbols-outlined">close</span></button>
       </div>
       <div class="modal-body">
         <div class="field">
-          <label class="field-label">Add New Helmet ID</label>
+          <label class="field-label">Register New Helmet ID</label>
           <div style="display:flex;gap:10px;">
-            <input class="field-input mono" id="new-helmet-id-input" placeholder="e.g. SKC0001" type="text" style="text-transform:uppercase"/>
+            <input class="field-input mono" id="new-helmet-id-input" placeholder="e.g. H001" type="text" style="text-transform:uppercase"/>
             <button class="btn-modal-primary teal" onclick="addHelmet()" style="white-space:nowrap;">
-              <span class="material-symbols-outlined">add</span> Add
+              <span class="material-symbols-outlined">add</span> Register
             </button>
           </div>
-          <p class="field-error" id="new-helmet-error"></p>
-          <p class="field-success" id="new-helmet-success">Helmet registered!</p>
         </div>
         <div class="field">
-          <label class="field-label">Registered Helmets</label>
-          <div class="helmet-list">
+          <label class="field-label">Current Helmet Status</label>
+          <div class="table-wrap" style="max-height:240px;">
             <table>
               <thead>
-                <tr>
-                  <th>Helmet ID</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
+                <tr><th>Helmet ID</th><th>Status</th><th style="text-align:right;">Action</th></tr>
               </thead>
               <tbody id="helmets-tbody"></tbody>
             </table>
@@ -1258,6 +1029,32 @@
     </div>
   </div>
 
+  <!-- ═══ MODAL: Pi IP ═══ -->
+  <div class="modal-overlay" id="piModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <div class="modal-icon secondary"><span class="material-symbols-outlined">memory</span></div>
+          <div>
+            <div class="modal-title">Raspberry Pi Configuration</div>
+            <div class="modal-subtitle">LAN camera &amp; GPIO controller</div>
+          </div>
+        </div>
+        <button class="modal-close" onclick="document.getElementById('piModal').classList.remove('open')"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label class="field-label">Pi LAN IP Address</label>
+          <input class="field-input mono" id="pi-ip-input" placeholder="e.g. 192.168.1.100" type="text"/>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-modal-cancel" onclick="document.getElementById('piModal').classList.remove('open')">Cancel</button>
+        <button class="btn-modal-primary orange" onclick="savePiIp()"><span class="material-symbols-outlined">save</span> Save IP</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ MODAL: Assign Helmet ═══ -->
   <div class="modal-overlay" id="assignHelmetModal">
     <div class="modal">
@@ -1266,592 +1063,361 @@
           <div class="modal-icon teal"><span class="material-symbols-outlined">construction</span></div>
           <div>
             <div class="modal-title">Assign Helmet</div>
-            <div class="modal-subtitle">Worker: <span id="assign-helmet-worker-name" style="color:var(--text);font-weight:600;"></span></div>
+            <div class="modal-subtitle">Worker: <span id="assign-helmet-worker-name"></span></div>
           </div>
         </div>
-        <button class="modal-close" onclick="closeAssignHelmetModal()">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+        <button class="modal-close" onclick="closeAssignHelmetModal()"><span class="material-symbols-outlined">close</span></button>
       </div>
       <div class="modal-body">
         <div class="field">
-          <label class="field-label">Helmet ID</label>
+          <label class="field-label">Select Available Helmet</label>
           <select class="field-select" id="assign-helmet-select">
             <option value="">— No helmet assigned —</option>
           </select>
-          <span class="field-hint">Only Available helmets are listed.</span>
         </div>
-        <div class="info-box">
-          <span class="material-symbols-outlined">info</span>
-          <p>This ID should be <strong>written on the physical helmet</strong>. The camera will read it via OCR during attendance check-in and verify it matches.</p>
-        </div>
-        <p class="field-error" id="assign-helmet-error"></p>
-        <p class="field-success" id="assign-helmet-success"></p>
       </div>
       <div class="modal-footer" style="justify-content:space-between;">
-        <button class="btn-modal-danger" onclick="saveHelmetAssignment(); document.getElementById('assign-helmet-select').value = '';">
-          <span class="material-symbols-outlined">link_off</span>
-          Unassign
-        </button>
-        <div style="display:flex;gap:10px;">
-          <button class="btn-modal-cancel" onclick="closeAssignHelmetModal()">Cancel</button>
-          <button class="btn-modal-primary teal" onclick="saveHelmetAssignment()">
-            <span class="material-symbols-outlined">check</span>
-            Assign
-          </button>
-        </div>
+        <button class="btn-modal-cancel" style="color:var(--error);" onclick="saveHelmetAssignment('')">Unassign</button>
+        <button class="btn-modal-primary teal" onclick="saveHelmetAssignment()">Save Assignment</button>
       </div>
     </div>
   </div>
 
-
   <!-- ═══ MODAL: Edit Worker ═══ -->
   <div class="modal-overlay" id="editWorkerModal">
-    <div class="modal wide">
-      <div class="modal-header" style="background: linear-gradient(135deg, rgba(124,143,245,0.06), rgba(0,0,0,0));">
+    <div class="modal">
+      <div class="modal-header">
         <div class="modal-header-icon">
           <div class="modal-icon secondary"><span class="material-symbols-outlined">edit</span></div>
           <div>
-            <div class="modal-title">Edit Worker Details</div>
-            <div class="modal-subtitle">Update name or worker ID</div>
+            <div class="modal-title">Edit Worker</div>
+            <div class="modal-subtitle">Update registration details</div>
           </div>
         </div>
-        <button class="modal-close" onclick="closeEditWorkerModal()">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+        <button class="modal-close" onclick="closeEditWorkerModal()"><span class="material-symbols-outlined">close</span></button>
       </div>
       <div class="modal-body">
-        <div class="grid-2-modal">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="field">
-            <label class="field-label" for="edit-w-first">First Name</label>
-            <input class="field-input" id="edit-w-first" placeholder="John" type="text"/>
+            <label class="field-label">First Name</label>
+            <input class="field-input" id="edit-w-first" type="text"/>
           </div>
           <div class="field">
-            <label class="field-label" for="edit-w-last">Last Name</label>
-            <input class="field-input" id="edit-w-last" placeholder="Doe" type="text"/>
+            <label class="field-label">Last Name</label>
+            <input class="field-input" id="edit-w-last" type="text"/>
           </div>
         </div>
         <div class="field">
-          <label class="field-label" for="edit-w-workerid">Worker ID</label>
-          <input class="field-input mono" id="edit-w-workerid" placeholder="e.g. #4115" type="text"/>
+          <label class="field-label">Worker ID</label>
+          <input class="field-input mono" id="edit-w-workerid" type="text"/>
         </div>
-        <p class="field-error" id="edit-w-error"></p>
-        <p class="field-success" id="edit-w-success"></p>
       </div>
       <div class="modal-footer">
         <button class="btn-modal-cancel" onclick="closeEditWorkerModal()">Cancel</button>
-        <button class="btn-modal-primary" id="edit-save-btn" onclick="saveEditWorker()" style="background:linear-gradient(135deg,var(--secondary),#a0b0ff);box-shadow:0 4px 18px rgba(124,143,245,0.3);">
-          <span class="material-symbols-outlined">save</span>
-          Save Changes
-        </button>
+        <button class="btn-modal-primary orange" onclick="saveEditWorker()"><span class="material-symbols-outlined">save</span> Save Changes</button>
       </div>
     </div>
   </div>
 
 <script>
-  // ── Real-time Monitoring Session Timer (starts from 0 at login) ──
-  let loginTimestamp = parseInt(sessionStorage.getItem('ss_login_time'), 10);
-  if (!loginTimestamp || isNaN(loginTimestamp)) {
-    loginTimestamp = Date.now();
-    sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
+  // ── Session Timer ──
+  let loginTimestamp = parseInt(sessionStorage.getItem('ss_login_time'), 10) || Date.now();
+  sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
+
+  function updateTimer() {
+    const elapsed = Math.max(0, Math.floor((Date.now() - loginTimestamp) / 1000));
+    const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+    const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    const el = document.getElementById('live-clock');
+    if (el) el.textContent = `${h}:${m}:${s}`;
   }
+  setInterval(updateTimer, 1000);
+  updateTimer();
 
-  function updateMonitoringTimer() {
-    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - loginTimestamp) / 1000));
-    const hours   = Math.floor(elapsedSeconds / 3600);
-    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-    const seconds = elapsedSeconds % 60;
-    const pad = (n) => String(n).padStart(2, '0');
-    const formatted = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-
-    const clockEl = document.getElementById('live-clock');
-    if (clockEl) {
-      clockEl.textContent = formatted;
-    }
-  }
-  updateMonitoringTimer();
-  setInterval(updateMonitoringTimer, 1000);
-
-  // ── Load user info ──
+  // ── User Auth State ──
   fetch('/api/me')
-    .then(res => { if (!res.ok) window.location.href = '/login.html'; return res.json(); })
-    .then(data => {
-      if (data.login_time && !sessionStorage.getItem('ss_login_time')) {
-        loginTimestamp = Math.floor(data.login_time * 1000);
-        sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
-        updateMonitoringTimer();
-      }
-      const name = data.name || data.email || 'User';
-      document.getElementById('user-name').textContent = name;
-      const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    .then(r => { if (!r.ok) window.location.href = '/login.html'; return r.json(); })
+    .then(d => {
+      document.getElementById('user-name').textContent = d.name || d.email || 'Manager';
+      const initials = (d.name || d.email || 'SM').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
       document.getElementById('user-initials').textContent = initials;
-    })
-    .catch(() => window.location.href = '/login.html');
+    }).catch(() => window.location.href = '/login.html');
 
-  // ── Load workers ──
+  // ── Worker Records & KPIs ──
+  let cachedWorkers = [];
+
   function loadWorkers() {
     fetch('/api/workers')
       .then(r => r.json())
       .then(data => {
-        const tbody = document.getElementById('workers-tbody');
         const workers = data.workers || [];
+        cachedWorkers = workers;
+        renderWorkers(workers);
+        updateKpis(workers);
+      }).catch(err => console.error('Load workers error:', err));
+  }
 
-        // KPI calculations
-        const totalWorkersCount  = workers.length;
-        const activeWorkers      = workers.filter(w => w.status === 'Active');
-        const activeWorkersCount = activeWorkers.length;
+  function updateKpis(workers) {
+    const total = workers.length;
+    const active = workers.filter(w => w.status === 'Active');
+    document.getElementById('active-workers-count').textContent = active.length;
+    document.getElementById('total-workers-subtext').textContent = `of ${total} registered`;
+    document.getElementById('active-workers-bar').style.width = total > 0 ? `${(active.length/total)*100}%` : '0%';
 
-        document.getElementById('active-workers-count').textContent = activeWorkersCount;
-        document.getElementById('total-workers-subtext').textContent = `of ${totalWorkersCount} registered`;
-        const activeWorkersPct = totalWorkersCount > 0 ? (activeWorkersCount / totalWorkersCount) * 100 : 0;
-        document.getElementById('active-workers-bar').style.width = `${activeWorkersPct}%`;
+    const safetyEl = document.getElementById('safety-compliance-pct');
+    if (active.length > 0) {
+      const avg = active.reduce((acc, w) => acc + (parseInt(w.ppe_score) || 0), 0) / active.length;
+      safetyEl.textContent = `${avg.toFixed(1)}%`;
+      document.getElementById('safety-compliance-bar').style.width = `${avg}%`;
+    } else {
+      safetyEl.textContent = '100%';
+      document.getElementById('safety-compliance-bar').style.width = '100%';
+    }
+  }
 
-        const safetyEl = document.getElementById('safety-compliance-pct');
-        if (activeWorkersCount > 0) {
-          const totalPpe = activeWorkers.reduce((s, w) => s + (parseInt(w.ppe_score) || 0), 0);
-          const pct = (totalPpe / (activeWorkersCount * 100)) * 100;
-          safetyEl.textContent = `${pct.toFixed(1)}%`;
-          document.getElementById('safety-compliance-bar').style.width = `${pct}%`;
-        } else {
-          safetyEl.textContent = '—';
-          document.getElementById('safety-compliance-bar').style.width = '0%';
-        }
+  function renderWorkers(workers) {
+    const tbody = document.getElementById('workers-tbody');
+    if (!workers.length) {
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-3);">No registered workers found.</td></tr>`;
+      return;
+    }
 
-        const violations = activeWorkers.filter(w => (parseInt(w.ppe_score) || 0) < 100);
-        const minor    = violations.filter(w => (parseInt(w.ppe_score) || 0) === 50).length;
-        const critical = violations.filter(w => (parseInt(w.ppe_score) || 0) === 0).length;
-        document.getElementById('violations-count').textContent  = violations.length;
-        document.getElementById('violations-subtext').textContent = `${minor} minor, ${critical} critical`;
-        const violPct = totalWorkersCount > 0 ? (violations.length / totalWorkersCount) * 100 : 0;
-        document.getElementById('violations-bar').style.width = `${violPct}%`;
+    tbody.innerHTML = workers.map(w => {
+      const score = w.ppe_score !== null && w.ppe_score !== undefined ? parseInt(w.ppe_score) : 0;
+      const scoreClass = score >= 80 ? 'high' : (score >= 50 ? 'mid' : 'low');
+      const isActive = w.status === 'Active';
+      const avatarHtml = w.image_url ? `<img src="${w.image_url}" alt="${w.first_name}"/>` : `${(w.first_name[0]||'')+(w.last_name[0]||'')}`;
 
-        if (workers.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><span class="material-symbols-outlined">person_off</span><p>No workers registered yet. Add your first worker.</p></div></td></tr>`;
-          return;
-        }
+      return `<tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">${w.worker_id}</td>
+        <td>
+          <div class="worker-cell" onclick="openWorkerDetailModal(${w.id})">
+            <div class="worker-avatar">${avatarHtml}</div>
+            <span class="worker-name">${w.first_name} ${w.last_name}</span>
+          </div>
+        </td>
+        <td><span class="status-badge ${isActive ? 'active' : 'offsite'}"><span class="dot"></span>${isActive ? 'Active' : 'Off-Site'}</span></td>
+        <td style="font-family:'JetBrains Mono',monospace;">${w.checkin_time || '—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;">${w.checkout_time || '—'}</td>
+        <td class="center">
+          <div class="ppe-icons">
+            <span class="material-symbols-outlined ${isActive && score >= 50 ? 'active-icon' : 'inactive-icon'}">construction</span>
+            <span class="material-symbols-outlined ${isActive && score === 100 ? 'active-icon' : 'inactive-icon'}">security</span>
+          </div>
+        </td>
+        <td>
+          <div class="score-cell">
+            <div class="score-bar"><div class="score-fill ${scoreClass}" style="width:${score}%"></div></div>
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:600;">${score}%</span>
+          </div>
+        </td>
+        <td>
+          ${w.helmet_id ? `<span class="helmet-badge ${isActive ? 'scanned' : 'assigned'}"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.helmet_id}</span>` : `<span style="color:var(--text-3);">—</span>`}
+        </td>
+        <td>
+          <div class="action-group">
+            <button class="action-btn teal" onclick="openAssignHelmetModal('${w.worker_id}', '${w.first_name} ${w.last_name}', '${w.helmet_id||''}')" title="Assign Helmet"><span class="material-symbols-outlined">construction</span></button>
+            <button class="action-btn edit" onclick="openEditWorkerModal(${w.id}, '${w.first_name}', '${w.last_name}', '${w.worker_id}')" title="Edit Worker"><span class="material-symbols-outlined">edit</span></button>
+            <button class="action-btn danger" onclick="deleteWorker(${w.id})" title="Delete"><span class="material-symbols-outlined">delete</span></button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }
 
-        tbody.innerHTML = workers.map(w => {
-          const score    = parseInt(w.ppe_score) || 0;
-          const scoreClass = score >= 80 ? 'high' : score >= 50 ? 'mid' : 'low';
-          const isActive = w.status === 'Active';
-
-          const avatarHtml = w.image_url
-            ? `<img src="${w.image_url}" alt="${w.first_name}"/>`
-            : `${(w.first_name[0] || '') + (w.last_name[0] || '')}`;
-
-          const statusHtml = isActive
-            ? `<span class="status-badge active"><span class="dot"></span>Active</span>`
-            : `<span class="status-badge offsite"><span class="dot"></span>Off-Site</span>`;
-
-          const checkinHtml = w.checkin_time
-            ? `<span class="time-cell">${w.checkin_time}</span>`
-            : `<span class="time-cell dash">—</span>`;
-
-          const checkoutHtml = w.checkout_time
-            ? `<span class="time-cell">${w.checkout_time}</span>`
-            : `<span class="time-cell dash">—</span>`;
-
-          const ppeHtml = `<div class="ppe-icons">
-            <span class="material-symbols-outlined ${isActive ? 'active-icon' : 'inactive-icon'}">construction</span>
-            <span class="material-symbols-outlined ${isActive ? 'active-icon' : 'inactive-icon'}">security</span>
-          </div>`;
-
-          const helmetHtml = w.helmet_id
-            ? `<span class="helmet-badge ${isActive ? 'scanned' : 'assigned'}">
-                <span class="material-symbols-outlined">construction</span>
-                ${w.helmet_id}
-               </span>`
-            : `<span style="color:var(--text-3);font-size:10px;">—</span>`;
-
-          return `<tr>
-            <td>${w.worker_id}</td>
-            <td>
-              <div class="worker-cell">
-                <div class="worker-avatar">${avatarHtml}</div>
-                <span class="worker-name">${w.first_name} ${w.last_name}</span>
-              </div>
-            </td>
-            <td>${statusHtml}</td>
-            <td>${checkinHtml}</td>
-            <td>${checkoutHtml}</td>
-            <td class="center">${ppeHtml}</td>
-            <td>
-              <div class="score-cell">
-                <div class="score-bar"><div class="score-fill ${scoreClass}" style="width:${score}%"></div></div>
-                <span>${score}</span>
-              </div>
-            </td>
-            <td>${helmetHtml}</td>
-            <td>
-              <div class="action-group">
-                <button class="action-btn teal" onclick="openAssignHelmetModal('${w.worker_id}', '${w.first_name} ${w.last_name}', '${w.helmet_id || ''}')" title="Assign Helmet">
-                  <span class="material-symbols-outlined">construction</span>
-                </button>
-                <button class="action-btn edit" onclick="openEditWorkerModal(${w.id}, '${w.first_name}', '${w.last_name}', '${w.worker_id}')" title="Edit worker details">
-                  <span class="material-symbols-outlined">edit</span>
-                </button>
-                <button class="action-btn danger" onclick="deleteWorker(${w.id})" title="Remove worker">
-                  <span class="material-symbols-outlined">delete</span>
-                </button>
-              </div>
-            </td>
-          </tr>`;
-        }).join('');
-      });
+  function filterWorkerRows() {
+    const q = document.getElementById('search-workers-input').value.toLowerCase().trim();
+    if (!q) { renderWorkers(cachedWorkers); return; }
+    const filtered = cachedWorkers.filter(w => 
+      w.worker_id.toLowerCase().includes(q) ||
+      `${w.first_name} ${w.last_name}`.toLowerCase().includes(q) ||
+      (w.helmet_id || '').toLowerCase().includes(q)
+    );
+    renderWorkers(filtered);
   }
 
   loadWorkers();
-  setInterval(loadWorkers, 3000);
+  setInterval(loadWorkers, 3500);
 
-  // ── Image preview ──
-  let selectedFiles = [];
+  // ── Real-Time Structured Events & Alerts ──
+  let lastEventId = 0;
+  let allEvents = [];
 
-  document.getElementById('w-images').addEventListener('change', function() {
-    const newFiles = Array.from(this.files);
-    newFiles.forEach(f => {
-      if (!selectedFiles.some(ex => ex.name === f.name && ex.size === f.size)) selectedFiles.push(f);
-    });
-    renderPreviews();
-  });
-
-  function renderPreviews() {
-    const preview = document.getElementById('image-preview');
-    preview.innerHTML = selectedFiles.map((f, i) => `
-      <div class="preview-item">
-        <img src="${URL.createObjectURL(f)}" alt="Preview ${i+1}"/>
-        <button class="preview-remove" onclick="removeFile(${i})">✕</button>
-      </div>`).join('');
+  function pollEvents() {
+    const url = lastEventId ? `/api/events?after_id=${lastEventId}` : '/api/events?limit=25';
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        const events = data.events || [];
+        if (events.length > 0) {
+          if (!lastEventId) {
+            allEvents = events;
+            lastEventId = Math.max(...events.map(e => e.id), 0);
+          } else {
+            allEvents = [...events, ...allEvents];
+            lastEventId = Math.max(...events.map(e => e.id), lastEventId);
+          }
+          renderAlerts(allEvents);
+        }
+      }).catch(() => {});
   }
 
-  function removeFile(idx) {
-    selectedFiles.splice(idx, 1);
-    renderPreviews();
-  }
+  function renderAlerts(events) {
+    const container = document.getElementById('alerts-container');
+    const unackCount = events.filter(e => !e.acknowledged).length;
+    document.getElementById('violations-count').textContent = unackCount;
+    document.getElementById('violations-subtext').textContent = `${unackCount} unreviewed safety event(s)`;
+    document.getElementById('violations-bar').style.width = unackCount > 0 ? '100%' : '0%';
 
-  // Drag & drop
-  const dz = document.getElementById('drop-zone');
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-  dz.addEventListener('drop', e => {
-    e.preventDefault(); dz.classList.remove('drag-over');
-    document.getElementById('w-images').files = e.dataTransfer.files;
-    document.getElementById('w-images').dispatchEvent(new Event('change'));
-  });
-
-  // ── Register worker ──
-  async function registerWorker() {
-    const btn  = document.getElementById('register-btn');
-    const err  = document.getElementById('w-error');
-    err.style.display = 'none';
-
-    const first_name = document.getElementById('w-first').value.trim();
-    const last_name  = document.getElementById('w-last').value.trim();
-    const worker_id  = document.getElementById('w-workerid').value.trim();
-    const helmet_id  = document.getElementById('w-helmetid').value.trim();
-
-    if (!first_name || !last_name || !worker_id) {
-      err.textContent = 'First name, last name and worker ID are required.';
-      err.style.display = 'block';
+    if (!events.length) {
+      container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">No active safety events.</div>`;
       return;
     }
 
-    btn.disabled = true;
-    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> Uploading…';
+    container.innerHTML = events.slice(0, 15).map(ev => {
+      const isViol = ev.event_type.includes('VIOLATION');
+      const isMismatch = ev.event_type.includes('MISMATCH');
+      const isCheckin = ev.event_type.includes('CHECK');
+      const typeClass = isViol ? 'violation' : (isMismatch ? 'mismatch' : (isCheckin ? 'checkin' : 'info'));
+      const timeStr = ev.created_at ? ev.created_at.split(' ')[1] || ev.created_at : 'Just now';
 
-    const images = await Promise.all(selectedFiles.map(f => new Promise((res, rej) => {
-      const reader = new FileReader();
-      reader.onload  = () => res(reader.result);
-      reader.onerror = rej;
-      reader.readAsDataURL(f);
-    })));
-
-    const response = await fetch('/api/workers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ first_name, last_name, worker_id, images, helmet_id })
-    });
-    const data = await response.json();
-
-    if (response.ok) {
-      document.getElementById('addWorkerModal').classList.remove('open');
-      document.getElementById('w-first').value = '';
-      document.getElementById('w-last').value  = '';
-      document.getElementById('w-workerid').value = '';
-      document.getElementById('w-helmetid').value = '';
-      document.getElementById('image-preview').innerHTML = '';
-      selectedFiles = [];
-      loadWorkers();
-    } else {
-      err.textContent = data.error || 'Registration failed.';
-      err.style.display = 'block';
-    }
-    btn.disabled = false;
-    btn.innerHTML = '<span class="material-symbols-outlined">how_to_reg</span> Register Worker';
+      return `<div class="alert-item ${typeClass}">
+        <div class="alert-header">
+          <div class="alert-badge" style="color:${isViol ? 'var(--error)' : (isMismatch ? 'var(--warning)' : 'var(--accent)')}">
+            <span class="material-symbols-outlined" style="font-size:13px;">${isViol ? 'warning' : (isMismatch ? 'gpp_maybe' : 'verified')}</span>
+            ${ev.event_type.replace('_', ' ')}
+          </div>
+          <span class="alert-time">${timeStr}</span>
+        </div>
+        <div class="alert-desc">${ev.message}</div>
+        ${!ev.acknowledged ? `<div class="alert-footer"><button class="alert-ack-btn" onclick="acknowledgeAlert(${ev.id})">Acknowledge</button></div>` : ''}
+      </div>`;
+    }).join('');
   }
 
-  // ── Edit worker ──
-  let _editWorkerDbId = null;
-
-  function openEditWorkerModal(dbId, firstName, lastName, workerId) {
-    _editWorkerDbId = dbId;
-    document.getElementById('edit-w-first').value    = firstName;
-    document.getElementById('edit-w-last').value     = lastName;
-    document.getElementById('edit-w-workerid').value = workerId;
-    document.getElementById('edit-w-error').style.display   = 'none';
-    document.getElementById('edit-w-success').style.display = 'none';
-    document.getElementById('editWorkerModal').classList.add('open');
-  }
-
-  function closeEditWorkerModal() {
-    document.getElementById('editWorkerModal').classList.remove('open');
-    _editWorkerDbId = null;
-  }
-
-  async function saveEditWorker() {
-    if (!_editWorkerDbId) return;
-    const btn      = document.getElementById('edit-save-btn');
-    const errEl    = document.getElementById('edit-w-error');
-    const successEl = document.getElementById('edit-w-success');
-    errEl.style.display = successEl.style.display = 'none';
-
-    const first_name = document.getElementById('edit-w-first').value.trim();
-    const last_name  = document.getElementById('edit-w-last').value.trim();
-    const worker_id  = document.getElementById('edit-w-workerid').value.trim();
-
-    if (!first_name || !last_name || !worker_id) {
-      errEl.textContent = 'All fields are required.';
-      errEl.style.display = 'block';
-      return;
-    }
-
-    btn.disabled = true;
-    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> Saving…';
-
-    try {
-      const res  = await fetch(`/api/workers/${_editWorkerDbId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ first_name, last_name, worker_id })
+  function acknowledgeAlert(id) {
+    fetch(`/api/events/${id}/acknowledge`, { method: 'POST' })
+      .then(r => r.json())
+      .then(() => {
+        allEvents = allEvents.map(e => e.id === id ? { ...e, acknowledged: 1 } : e);
+        renderAlerts(allEvents);
       });
-      const data = await res.json();
-      if (res.ok) {
-        successEl.textContent = '✓ Worker updated successfully!';
-        successEl.style.display = 'block';
-        loadWorkers();
-        setTimeout(() => closeEditWorkerModal(), 1400);
-      } else {
-        errEl.textContent = data.error || 'Update failed.';
-        errEl.style.display = 'block';
-      }
-    } catch(e) {
-      errEl.textContent = 'Connection error.';
-      errEl.style.display = 'block';
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes';
   }
 
-  // ── Delete worker ──
-  async function deleteWorker(id) {
-    if (!confirm('Remove this worker?')) return;
-    await fetch(`/api/workers/${id}`, { method: 'DELETE' });
-    loadWorkers();
-  }
+  pollEvents();
+  setInterval(pollEvents, 2000);
 
-  // ── Helmet dropdown populate ──
-  async function populateHelmetDropdown(selectId = 'w-helmetid', currentVal = '') {
-    try {
-      const res  = await fetch('/api/helmets');
-      const data = await res.json();
-      const sel  = document.getElementById(selectId);
-      const available = (data.helmets || []).filter(h => h.status === 'Available' || h.helmet_id === currentVal);
-      sel.innerHTML = '<option value="">\u2014 No helmet assigned yet \u2014</option>'
-        + available.map(h => `<option value="${h.helmet_id}" ${h.helmet_id === currentVal ? 'selected' : ''}>${h.helmet_id}</option>`).join('');
-    } catch(e) { console.error('Failed to load helmets:', e); }
-  }
+  // ── Worker Detail Modal ──
+  function openWorkerDetailModal(dbId) {
+    fetch(`/api/workers/${dbId}/details`)
+      .then(r => r.json())
+      .then(data => {
+        const w = data.worker;
+        document.getElementById('dt-worker-name').textContent = `${w.first_name} ${w.last_name}`;
+        document.getElementById('dt-worker-id').textContent = `Worker ID: ${w.worker_id}`;
+        document.getElementById('dt-full-name').textContent = `${w.first_name} ${w.last_name}`;
+        document.getElementById('dt-checkin').textContent = w.checkin_time || '—';
+        document.getElementById('dt-checkout').textContent = w.checkout_time || '—';
+        document.getElementById('dt-ppe-score').textContent = `${w.ppe_score !== null ? w.ppe_score : 0}%`;
 
-  // Populate when Add Worker modal opens
-  document.querySelector('[onclick*="addWorkerModal"]').addEventListener('click', () => populateHelmetDropdown());
+        const avatarEl = document.getElementById('dt-avatar');
+        avatarEl.innerHTML = w.image_url ? `<img src="${w.image_url}" alt="${w.first_name}"/>` : `${(w.first_name[0]||'')+(w.last_name[0]||'')}`;
 
-  // ── Assign Helmet Modal ──
-  let _assignWorkerIdTarget = '';
+        const stBadge = document.getElementById('dt-status-badge');
+        stBadge.className = `status-badge ${w.status === 'Active' ? 'active' : 'offsite'}`;
+        stBadge.textContent = w.status || 'Off-Site';
 
-  function openAssignHelmetModal(workerId, workerName, currentHelmet) {
-    _assignWorkerIdTarget = workerId;
-    document.getElementById('assign-helmet-worker-name').textContent = workerName;
-    document.getElementById('assign-helmet-error').style.display   = 'none';
-    document.getElementById('assign-helmet-success').style.display = 'none';
-    document.getElementById('assignHelmetModal').classList.add('open');
-    populateHelmetDropdown('assign-helmet-select', currentHelmet);
-  }
+        document.getElementById('dt-helmet-badge').textContent = `Helmet: ${w.helmet_id || 'None'}`;
+        document.getElementById('dt-face-badge').textContent = `Biometrics: ${data.face_status}`;
 
-  function closeAssignHelmetModal() {
-    document.getElementById('assignHelmetModal').classList.remove('open');
-    _assignWorkerIdTarget = '';
-  }
+        // Render attendance logs
+        const attTbody = document.getElementById('dt-attendance-tbody');
+        attTbody.innerHTML = (data.recent_attendance || []).map(a => `
+          <tr>
+            <td style="font-family:'JetBrains Mono',monospace;">${a.timestamp}</td>
+            <td>${a.event}</td>
+            <td style="font-weight:600;">${a.ppe_score}%</td>
+            <td>${a.helmet_id || '—'}</td>
+          </tr>
+        `).join('') || `<tr><td colspan="4" style="text-align:center;padding:12px;color:var(--text-3);">No attendance logs.</td></tr>`;
 
-  async function saveHelmetAssignment() {
-    const helmetId  = document.getElementById('assign-helmet-select').value.trim();
-    const errEl     = document.getElementById('assign-helmet-error');
-    const successEl = document.getElementById('assign-helmet-success');
-    errEl.style.display = successEl.style.display = 'none';
+        // Render events
+        const evTbody = document.getElementById('dt-events-tbody');
+        evTbody.innerHTML = (data.recent_events || []).map(e => `
+          <tr>
+            <td style="font-family:'JetBrains Mono',monospace;">${e.created_at}</td>
+            <td><strong style="color:var(--warning);">${e.event_type}</strong></td>
+            <td>${e.message}</td>
+          </tr>
+        `).join('') || `<tr><td colspan="3" style="text-align:center;padding:12px;color:var(--text-3);">No safety events for this worker.</td></tr>`;
 
-    if (!_assignWorkerIdTarget) return;
-
-    try {
-      const res  = await fetch(`/api/workers/${_assignWorkerIdTarget}/helmet`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ helmet_id: helmetId })
+        document.getElementById('workerDetailModal').classList.add('open');
       });
-      const data = await res.json();
-      if (res.ok) {
-        successEl.textContent = helmetId ? `✓ Helmet ${helmetId} assigned!` : '✓ Helmet unassigned.';
-        successEl.style.display = 'block';
-        loadWorkers();
-        setTimeout(() => closeAssignHelmetModal(), 1500);
-      } else {
-        errEl.textContent = data.error || 'Failed to assign helmet.';
-        errEl.style.display = 'block';
-      }
-    } catch(e) {
-      errEl.textContent = 'Connection error.';
-      errEl.style.display = 'block';
+  }
+
+  function closeWorkerDetailModal() {
+    document.getElementById('workerDetailModal').classList.remove('open');
+  }
+
+  // ── Face Data Hot Reload ──
+  function triggerFaceDataReload() {
+    fetch('/api/face-data/refresh', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        alert('Face data reload signaled! Active CV loop will sync new biometric snapshot.');
+      }).catch(() => alert('Could not contact backend for face sync.'));
+  }
+
+  // ── Report Generator Modal ──
+  function openReportModal() {
+    // Populate worker dropdown
+    const sel = document.getElementById('rep-worker-select');
+    sel.innerHTML = `<option value="">— All Workers —</option>` + cachedWorkers.map(w => `<option value="${w.worker_id}">${w.first_name} ${w.last_name} (${w.worker_id})</option>`).join('');
+    setReportPeriod('today');
+    document.getElementById('reportModal').classList.add('open');
+  }
+
+  function closeReportModal() {
+    document.getElementById('reportModal').classList.remove('open');
+  }
+
+  function setReportPeriod(type) {
+    document.querySelectorAll('.report-radio-card').forEach(c => c.classList.remove('selected'));
+    const today = new Date().toISOString().split('T')[0];
+
+    if (type === 'today') {
+      document.getElementById('opt-today').classList.add('selected');
+      document.getElementById('rep-from').value = today;
+      document.getElementById('rep-to').value = today;
+    } else if (type === 'week') {
+      document.getElementById('opt-week').classList.add('selected');
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      document.getElementById('rep-from').value = d.toISOString().split('T')[0];
+      document.getElementById('rep-to').value = today;
+    } else if (type === 'all') {
+      document.getElementById('opt-all').classList.add('selected');
+      document.getElementById('rep-from').value = '';
+      document.getElementById('rep-to').value = '';
     }
   }
 
-  // ── Helmet Inventory ──
-  function openHelmetsModal() {
-    document.getElementById('manageHelmetsModal').classList.add('open');
-    document.getElementById('new-helmet-id-input').value = '';
-    document.getElementById('new-helmet-error').style.display = 'none';
-    document.getElementById('new-helmet-success').style.display = 'none';
-    loadHelmets();
+  function downloadReport(format) {
+    const from = document.getElementById('rep-from').value;
+    const to = document.getElementById('rep-to').value;
+    const wid = document.getElementById('rep-worker-select').value;
+
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    if (wid) params.append('worker_id', wid);
+
+    const url = `/api/reports/export.${format}?${params.toString()}`;
+    window.open(url, '_blank');
   }
 
-  function closeHelmetsModal() {
-    document.getElementById('manageHelmetsModal').classList.remove('open');
-  }
-
-  async function loadHelmets() {
-    try {
-      const res  = await fetch('/api/helmets');
-      const data = await res.json();
-      const tbody  = document.getElementById('helmets-tbody');
-      const helmets = data.helmets || [];
-
-      if (helmets.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-3);font-family:'JetBrains Mono',monospace;font-size:12px;">No helmets registered yet.</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = helmets.map(h => {
-        const occupied = h.status === 'Occupied';
-        return `<tr>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">${h.helmet_id}</td>
-          <td><span class="helmet-status-badge ${occupied ? 'occupied' : 'available'}">${h.status}</span></td>
-          <td style="text-align:right;">
-            <button class="action-btn danger" onclick="deleteHelmet('${h.helmet_id}')" ${occupied ? 'disabled title="Cannot delete occupied helmet"' : ''} style="${occupied ? 'opacity:0.3;cursor:not-allowed' : ''}">
-              <span class="material-symbols-outlined">delete</span>
-            </button>
-          </td>
-        </tr>`;
-      }).join('');
-    } catch(e) { console.error('Error loading helmets:', e); }
-  }
-
-  async function addHelmet() {
-    const input     = document.getElementById('new-helmet-id-input');
-    const helmetId  = input.value.trim().toUpperCase();
-    const errorEl   = document.getElementById('new-helmet-error');
-    const successEl = document.getElementById('new-helmet-success');
-    errorEl.style.display = successEl.style.display = 'none';
-
-    if (!helmetId) {
-      errorEl.textContent = 'Helmet ID is required.';
-      errorEl.style.display = 'block';
-      return;
-    }
-
-    try {
-      const res  = await fetch('/api/helmets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ helmet_id: helmetId })
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        input.value = '';
-        successEl.style.display = 'block';
-        loadHelmets();
-        setTimeout(() => successEl.style.display = 'none', 2000);
-      } else {
-        errorEl.textContent = data.error || 'Failed to add helmet.';
-        errorEl.style.display = 'block';
-      }
-    } catch(e) {
-      errorEl.textContent = 'Connection error.';
-      errorEl.style.display = 'block';
-    }
-  }
-
-  async function deleteHelmet(id) {
-    if (!confirm('Remove this helmet from inventory?')) return;
-    try {
-      const res  = await fetch(`/api/helmets/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (res.ok) { loadHelmets(); }
-      else alert(data.error || 'Failed to delete helmet.');
-    } catch(e) { alert('Connection error.'); }
-  }
-
-  // ── Pi IP ──
-  fetch('/api/pi-ip').then(r => r.json()).then(d => {
-    if (d.pi_ip) {
-      document.getElementById('pi-ip-input').value = d.pi_ip;
-      document.getElementById('pi-btn-label').textContent = `Pi: ${d.pi_ip}`;
-    }
-  }).catch(() => {});
-
-  async function savePiIp() {
-    const ip  = document.getElementById('pi-ip-input').value.trim();
-    const msg = document.getElementById('pi-save-msg');
-    const res = await fetch('/api/pi-ip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pi_ip: ip })
-    });
-    if (res.ok) {
-      msg.style.display = 'block';
-      document.getElementById('pi-btn-label').textContent = ip ? `Pi: ${ip}` : 'Set Raspberry Pi IP';
-      setTimeout(() => {
-        msg.style.display = 'none';
-        document.getElementById('piModal').classList.remove('open');
-      }, 1500);
-    }
-  }
-
-  // ── ESP32-CAM IP ──
-  async function saveEsp32CamIp() {
-    const ip  = document.getElementById('esp32-cam-ip-input').value.trim();
-    const msg = document.getElementById('esp32-cam-save-msg');
-    const res = await fetch('/api/esp32-cam-ip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ esp32_cam_ip: ip })
-    });
-    if (res.ok) {
-      msg.style.display = 'block';
-      setTimeout(() => {
-        msg.style.display = 'none';
-        document.getElementById('esp32CamModal').classList.remove('open');
-      }, 1500);
-    }
-  }
-
-  // ── Start / Stop Pi Stream ──
+  // ── Pi Stream Start / Stop Lifecycle ──
   let isPiRunning = false;
 
   async function checkPiStatus() {
@@ -1866,66 +1432,253 @@
 
   function updatePiBtnState(running) {
     isPiRunning = running;
-    const btn   = document.getElementById('start-pi-btn');
-    const icon  = document.getElementById('start-pi-icon');
+    const btn = document.getElementById('start-pi-btn');
+    const icon = document.getElementById('start-pi-icon');
     const label = document.getElementById('start-pi-label');
-    if (!btn || !icon || !label) return;
+    const badge = document.getElementById('eval-status-badge');
+    const statusText = document.getElementById('eval-status-text');
 
-    btn.classList.remove('loading');
     if (running) {
       btn.classList.add('running');
       icon.textContent = 'sensors';
       label.textContent = 'Pi Stream Active';
-      btn.title = 'Pi detection is active. Click to stop.';
+      badge.className = 'eval-status-badge approved';
+      statusText.textContent = 'Gate Evaluation: Active';
     } else {
       btn.classList.remove('running');
       icon.textContent = 'videocam';
       label.textContent = 'Start Pi Stream';
-      btn.title = 'Start Raspberry Pi stream and AI safety detection';
+      badge.className = 'eval-status-badge idle';
+      statusText.textContent = 'Gate Evaluation: Offline';
     }
   }
 
   async function togglePiStream() {
-    const btn   = document.getElementById('start-pi-btn');
-    const icon  = document.getElementById('start-pi-icon');
-    const label = document.getElementById('start-pi-label');
-    if (!btn) return;
-
-    btn.classList.add('loading');
-    icon.textContent = 'sync';
-    label.textContent = isPiRunning ? 'Stopping Pi…' : 'Starting Pi…';
-
     try {
       if (isPiRunning) {
-        const res = await fetch('/api/pi/stop', { method: 'POST' });
-        const data = await res.json().catch(() => ({}));
+        await fetch('/api/pi/stop', { method: 'POST' });
         updatePiBtnState(false);
       } else {
         const res = await fetch('/api/pi/start', { method: 'POST' });
-        const data = await res.json().catch(() => ({ error: `Server returned status ${res.status}` }));
+        const data = await res.json();
         if (res.ok) {
           updatePiBtnState(true);
         } else {
-          updatePiBtnState(false);
-          if (data.error && (data.error.includes('IP') || data.error.includes('configured'))) {
-            alert(data.error);
-            document.getElementById('piModal').classList.add('open');
-          } else {
-            alert(data.error || 'Failed to start Pi stream.');
-          }
+          alert(data.error || 'Failed to start Pi stream.');
         }
       }
     } catch(err) {
-      console.error('Error toggling Pi stream:', err);
-      updatePiBtnState(isPiRunning);
-      alert('Could not connect to backend server. Please make sure the Flask backend (python main.py) is running.');
+      alert('Error connecting to backend.');
     }
   }
 
   checkPiStatus();
   setInterval(checkPiStatus, 4000);
 
-  // ── Close modals on backdrop click ──
+  // ── Image Upload Preview ──
+  let selectedFiles = [];
+  document.getElementById('w-images').addEventListener('change', function() {
+    selectedFiles = Array.from(this.files);
+    renderPreviews();
+  });
+
+  function renderPreviews() {
+    const preview = document.getElementById('image-preview');
+    preview.innerHTML = selectedFiles.map((f, i) => `
+      <div class="preview-item">
+        <img src="${URL.createObjectURL(f)}" alt="Preview"/>
+        <button class="preview-remove" onclick="selectedFiles.splice(${i},1);renderPreviews();">✕</button>
+      </div>`).join('');
+  }
+
+  // ── Register Worker ──
+  async function registerWorker() {
+    const btn = document.getElementById('register-btn');
+    const err = document.getElementById('w-error');
+    err.style.display = 'none';
+
+    const first_name = document.getElementById('w-first').value.trim();
+    const last_name = document.getElementById('w-last').value.trim();
+    const worker_id = document.getElementById('w-workerid').value.trim();
+    const helmet_id = document.getElementById('w-helmetid').value.trim();
+
+    if (!first_name || !last_name || !worker_id) {
+      err.textContent = 'First name, last name, and worker ID are required.';
+      err.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> Uploading…';
+
+    const images = await Promise.all(selectedFiles.map(f => new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result);
+      reader.onerror = rej;
+      reader.readAsDataURL(f);
+    })));
+
+    const response = await fetch('/api/workers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ first_name, last_name, worker_id, images, helmet_id })
+    });
+    const data = await response.json();
+
+    if (response.ok) {
+      document.getElementById('addWorkerModal').classList.remove('open');
+      document.getElementById('w-first').value = '';
+      document.getElementById('w-last').value = '';
+      document.getElementById('w-workerid').value = '';
+      document.getElementById('w-helmetid').value = '';
+      document.getElementById('image-preview').innerHTML = '';
+      selectedFiles = [];
+      loadWorkers();
+    } else {
+      err.textContent = data.error || 'Registration failed.';
+      err.style.display = 'block';
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined">how_to_reg</span> Register Worker';
+  }
+
+  // ── Helmet Inventory Operations ──
+  function openHelmetsModal() {
+    document.getElementById('manageHelmetsModal').classList.add('open');
+    loadHelmets();
+  }
+  function closeHelmetsModal() { document.getElementById('manageHelmetsModal').classList.remove('open'); }
+
+  async function loadHelmets() {
+    const res = await fetch('/api/helmets');
+    const data = await res.json();
+    const tbody = document.getElementById('helmets-tbody');
+    const helmets = data.helmets || [];
+    if (!helmets.length) {
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-3);">No registered helmets.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = helmets.map(h => `
+      <tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">${h.helmet_id}</td>
+        <td><span class="status-badge ${h.status === 'Occupied' ? 'offsite' : 'active'}">${h.status}</span></td>
+        <td style="text-align:right;">
+          <button class="action-btn danger" onclick="deleteHelmet('${h.helmet_id}')"><span class="material-symbols-outlined">delete</span></button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function addHelmet() {
+    const input = document.getElementById('new-helmet-id-input');
+    const hid = input.value.trim().toUpperCase();
+    if (!hid) return;
+    const res = await fetch('/api/helmets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ helmet_id: hid })
+    });
+    if (res.ok) { input.value = ''; loadHelmets(); }
+    else { const d = await res.json(); alert(d.error || 'Failed to add helmet'); }
+  }
+
+  async function deleteHelmet(hid) {
+    if (!confirm(`Delete helmet ${hid}?`)) return;
+    await fetch(`/api/helmets/${hid}`, { method: 'DELETE' });
+    loadHelmets();
+  }
+
+  // ── Helmet Assignment ──
+  let _assignTarget = '';
+  function openAssignHelmetModal(wid, name, currentHelmet) {
+    _assignTarget = wid;
+    document.getElementById('assign-helmet-worker-name').textContent = name;
+    fetch('/api/helmets').then(r => r.json()).then(d => {
+      const sel = document.getElementById('assign-helmet-select');
+      const available = (d.helmets || []).filter(h => h.status === 'Available' || h.helmet_id === currentHelmet);
+      sel.innerHTML = `<option value="">— No helmet assigned —</option>` + available.map(h => `<option value="${h.helmet_id}" ${h.helmet_id === currentHelmet ? 'selected' : ''}>${h.helmet_id}</option>`).join('');
+      document.getElementById('assignHelmetModal').classList.add('open');
+    });
+  }
+  function closeAssignHelmetModal() { document.getElementById('assignHelmetModal').classList.remove('open'); }
+
+  async function saveHelmetAssignment(overrideVal) {
+    const val = overrideVal !== undefined ? overrideVal : document.getElementById('assign-helmet-select').value;
+    const res = await fetch(`/api/workers/${_assignTarget}/helmet`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ helmet_id: val })
+    });
+    if (res.ok) {
+      closeAssignHelmetModal();
+      loadWorkers();
+    } else {
+      const d = await res.json();
+      alert(d.error || 'Failed to update helmet');
+    }
+  }
+
+  // ── Edit Worker ──
+  let _editWorkerId = null;
+  function openEditWorkerModal(id, first, last, wid) {
+    _editWorkerId = id;
+    document.getElementById('edit-w-first').value = first;
+    document.getElementById('edit-w-last').value = last;
+    document.getElementById('edit-w-workerid').value = wid;
+    document.getElementById('editWorkerModal').classList.add('open');
+  }
+  function closeEditWorkerModal() { document.getElementById('editWorkerModal').classList.remove('open'); }
+
+  async function saveEditWorker() {
+    if (!_editWorkerId) return;
+    const first_name = document.getElementById('edit-w-first').value.trim();
+    const last_name = document.getElementById('edit-w-last').value.trim();
+    const worker_id = document.getElementById('edit-w-workerid').value.trim();
+
+    const res = await fetch(`/api/workers/${_editWorkerId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ first_name, last_name, worker_id })
+    });
+    if (res.ok) {
+      closeEditWorkerModal();
+      loadWorkers();
+    } else {
+      const d = await res.json();
+      alert(d.error || 'Update failed');
+    }
+  }
+
+  async function deleteWorker(id) {
+    if (!confirm('Remove this worker from SiteSentinel?')) return;
+    await fetch(`/api/workers/${id}`, { method: 'DELETE' });
+    loadWorkers();
+  }
+
+  // ── Pi IP Settings ──
+  fetch('/api/pi-ip').then(r => r.json()).then(d => {
+    if (d.pi_ip) {
+      document.getElementById('pi-ip-input').value = d.pi_ip;
+      document.getElementById('pi-btn-label').textContent = `Pi: ${d.pi_ip}`;
+      document.getElementById('hud-pi-ip').textContent = d.pi_ip;
+    }
+  });
+
+  async function savePiIp() {
+    const ip = document.getElementById('pi-ip-input').value.trim();
+    const res = await fetch('/api/pi-ip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pi_ip: ip })
+    });
+    if (res.ok) {
+      document.getElementById('pi-btn-label').textContent = ip ? `Pi: ${ip}` : 'Set Raspberry Pi IP';
+      document.getElementById('hud-pi-ip').textContent = ip || 'Not set';
+      document.getElementById('piModal').classList.remove('open');
+    }
+  }
+
+  // Close modals on click outside
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) overlay.classList.remove('open');
