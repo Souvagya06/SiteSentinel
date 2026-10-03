@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://sitesentinel.onrender.com/api/$1"
+    },
+    {
+      "src": "/",
+      "dest": "/frontend/pages/index.html"
+    },
+    {
+      "src": "/login(.html)?",
+      "dest": "/frontend/pages/login.html"
+    },
+    {
+      "src": "/dashboard(.html)?",
+      "dest": "/frontend/pages/dashboard.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/pages/$1"
+    }
+  ]
+}
