@@ -4,7 +4,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "https://sitesentinel.onrender.com/api/$1"
+      "dest": "https://sitesentinel-or0h.onrender.com/api/$1"
     },
     {
       "src": "/",
