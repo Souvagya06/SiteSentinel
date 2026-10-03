@@ -19,6 +19,10 @@
       "dest": "/frontend/pages/dashboard.html"
     },
     {
+      "src": "/pages/(.*)",
+      "dest": "/frontend/pages/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "/frontend/pages/$1"
     }
