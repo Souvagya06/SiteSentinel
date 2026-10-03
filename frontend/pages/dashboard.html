@@ -545,7 +545,7 @@
     <div class="sidebar-header">
       <div class="sidebar-logo">
         <div class="logo-icon">
-          <span class="material-symbols-outlined">shield</span>
+          <span class="material-symbols-outlined">precision_manufacturing</span>
         </div>
         <div class="logo-text">Site<span>Sentinel</span></div>
       </div>
@@ -1120,6 +1120,10 @@
   </div>
 
 <script>
+  if (window.location.pathname !== '/') {
+    try { window.history.replaceState(null, '', '/'); } catch(e) {}
+  }
+
   // ── Session Timer ──
   let loginTimestamp = parseInt(sessionStorage.getItem('ss_login_time'), 10) || Date.now();
   sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
