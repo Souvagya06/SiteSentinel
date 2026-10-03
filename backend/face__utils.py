@@ -1,4 +1,8 @@
-import face_recognition
+try:
+    import face_recognition
+except ImportError:
+    face_recognition = None
+
 import numpy as np
 import requests
 from io import BytesIO
@@ -11,6 +15,8 @@ def get_embedding_from_url(image_url: str):
     Download image from Cloudinary URL and return 128-dim face embedding.
     Uses model='small' to ensure consistent 128-dim output.
     """
+    if face_recognition is None:
+        return None
     try:
         response = requests.get(image_url, timeout=10)
         img = Image.open(BytesIO(response.content)).convert("RGB")
@@ -31,6 +37,8 @@ def get_embedding_from_frame(frame_rgb):
     Uses model='small' to match stored embeddings.
     Returns list of embeddings (one per face detected).
     """
+    if face_recognition is None:
+        return []
     return face_recognition.face_encodings(frame_rgb, model="small")
 
 
@@ -40,6 +48,8 @@ def match_face(live_embedding, stored_embedding_json: str, threshold: float = 0.
     Returns (matched: bool, distance: float).
     Lower distance = better match. Threshold 0.5 is standard.
     """
+    if face_recognition is None:
+        return False, 1.0
     try:
         stored = np.array(json.loads(stored_embedding_json))
         live   = np.array(live_embedding)
