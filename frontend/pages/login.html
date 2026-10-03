@@ -334,7 +334,7 @@
       <div class="brand-icon">
         <span class="material-symbols-outlined">precision_manufacturing</span>
       </div>
-      <span class="brand-name">Site<span>Sentinel</span> AI</span>
+      <span class="brand-name">Site<span>Sentinel</span></span>
     </div>
 
     <div class="left-content">
@@ -377,7 +377,7 @@
       <div class="brand-icon">
         <span class="material-symbols-outlined">precision_manufacturing</span>
       </div>
-      <span class="brand-name">Site<span>Sentinel</span> AI</span>
+      <span class="brand-name">Site<span>Sentinel</span></span>
     </div>
 
     <div class="form-container">
@@ -468,6 +468,10 @@
 </div>
 
 <script>
+  if (window.location.pathname !== '/') {
+    try { window.history.replaceState(null, '', '/'); } catch(e) {}
+  }
+
   // ── Tab switcher ──
   function switchTab(tab) {
     const loginForm   = document.getElementById('form-login');
