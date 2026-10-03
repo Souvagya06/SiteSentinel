@@ -1,30 +1,28 @@
 {
-  "version": 2,
-  "cleanUrls": true,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "https://sitesentinel-or0h.onrender.com/api/$1"
+      "source": "/api/:match*",
+      "destination": "https://sitesentinel-or0h.onrender.com/api/:match*"
     },
     {
-      "src": "/",
-      "dest": "/frontend/pages/index.html"
+      "source": "/",
+      "destination": "/frontend/pages/index.html"
     },
     {
-      "src": "/login(.html)?",
-      "dest": "/frontend/pages/login.html"
+      "source": "/login",
+      "destination": "/frontend/pages/login.html"
     },
     {
-      "src": "/dashboard(.html)?",
-      "dest": "/frontend/pages/dashboard.html"
+      "source": "/login.html",
+      "destination": "/frontend/pages/login.html"
     },
     {
-      "src": "/pages/(.*)",
-      "dest": "/frontend/pages/$1"
+      "source": "/dashboard",
+      "destination": "/frontend/pages/dashboard.html"
     },
     {
-      "src": "/(.*)",
-      "dest": "/frontend/pages/$1"
+      "source": "/dashboard.html",
+      "destination": "/frontend/pages/dashboard.html"
     }
   ]
 }
