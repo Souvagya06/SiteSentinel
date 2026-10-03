@@ -521,7 +521,7 @@
     if (res.ok) {
       const loginTime = (data.login_time ? Math.floor(data.login_time * 1000) : Date.now()).toString();
       sessionStorage.setItem('ss_login_time', loginTime);
-      window.location.href = '/dashboard.html';
+      window.location.href = '/dashboard';
     } else {
       alert(data.error || 'Login failed.');
       btn.disabled = false;
