@@ -4,6 +4,30 @@
     {
       "source": "/api/:match*",
       "destination": "https://sitesentinel-or0h.onrender.com/api/:match*"
+    },
+    {
+      "source": "/frontend/pages/index(.html)?",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/frontend/pages/login(.html)?",
+      "destination": "/login.html"
+    },
+    {
+      "source": "/frontend/pages/dashboard(.html)?",
+      "destination": "/dashboard.html"
+    },
+    {
+      "source": "/frontend/login(.html)?",
+      "destination": "/login.html"
+    },
+    {
+      "source": "/frontend/dashboard(.html)?",
+      "destination": "/dashboard.html"
+    },
+    {
+      "source": "/frontend/pages",
+      "destination": "/index.html"
     }
   ]
 }
