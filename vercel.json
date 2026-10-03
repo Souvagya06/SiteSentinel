@@ -6,28 +6,24 @@
       "destination": "https://sitesentinel-or0h.onrender.com/api/:match*"
     },
     {
-      "source": "/frontend/pages/index(.html)?",
-      "destination": "/index.html"
+      "source": "/",
+      "destination": "/frontend/pages/index.html"
     },
     {
-      "source": "/frontend/pages/login(.html)?",
-      "destination": "/login.html"
+      "source": "/login",
+      "destination": "/frontend/pages/login.html"
     },
     {
-      "source": "/frontend/pages/dashboard(.html)?",
-      "destination": "/dashboard.html"
+      "source": "/login.html",
+      "destination": "/frontend/pages/login.html"
     },
     {
-      "source": "/frontend/login(.html)?",
-      "destination": "/login.html"
+      "source": "/dashboard",
+      "destination": "/frontend/pages/dashboard.html"
     },
     {
-      "source": "/frontend/dashboard(.html)?",
-      "destination": "/dashboard.html"
-    },
-    {
-      "source": "/frontend/pages",
-      "destination": "/index.html"
+      "source": "/dashboard.html",
+      "destination": "/frontend/pages/dashboard.html"
     }
   ]
 }
