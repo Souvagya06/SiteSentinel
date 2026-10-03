@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SiteSentinel | Authentication</title>
+<meta name="description" content="Sign in to SiteSentinel AI — Industrial Safety Monitoring Platform."/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #080810;
+    --bg-2: #0d0d1a;
+    --surface: rgba(255,255,255,0.03);
+    --surface-hover: rgba(255,255,255,0.06);
+    --surface-elevated: rgba(255,255,255,0.05);
+    --border: rgba(255,255,255,0.08);
+    --border-bright: rgba(255,255,255,0.14);
+    --primary: #ff6b2b;
+    --primary-glow: rgba(255,107,43,0.3);
+    --primary-dim: rgba(255,107,43,0.1);
+    --accent: #00d4aa;
+    --accent-dim: rgba(0,212,170,0.1);
+    --error: #ff4757;
+    --error-dim: rgba(255,71,87,0.1);
+    --text: #f0eeff;
+    --text-2: rgba(240,238,255,0.58);
+    --text-3: rgba(240,238,255,0.32);
+    --radius: 12px;
+    --radius-lg: 18px;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--primary-dim); color: var(--primary); }
+
+  /* ── Autofill fix ── */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 40px #12121e inset !important;
+    -webkit-text-fill-color: var(--text) !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* ── Layout ── */
+  .auth-layout {
+    display: flex; height: 100vh; overflow: hidden;
+  }
+
+  /* ── Left panel ── */
+  .left-panel {
+    width: 48%; position: relative;
+    display: flex; flex-direction: column;
+    justify-content: space-between; padding: 40px 48px;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+  }
+
+  /* Aurora gradient background */
+  .left-panel::before {
+    content: ''; position: absolute; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 20% 10%, rgba(255,107,43,0.15) 0%, transparent 55%),
+      radial-gradient(ellipse 60% 70% at 80% 90%, rgba(0,212,170,0.10) 0%, transparent 55%),
+      radial-gradient(ellipse 80% 60% at 50% 50%, rgba(60,30,120,0.12) 0%, transparent 70%);
+    animation: auroraShift 10s ease-in-out infinite alternate;
+  }
+  @keyframes auroraShift {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0.85; transform: scale(1.05) rotate(1deg); }
+  }
+
+  /* Background image */
+  .left-panel-bg {
+    position: absolute; inset: 0; z-index: 0;
+    background-size: cover; background-position: center;
+    background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAHRDkpXm9dun_G1gBev-U7VzRcgFwMUVDMSeZH8zTR41-OEArfTO2ff-MJYGrLqfhAlDK6QvZ_7NJYe8VyDy5fuZkJIyxTki670mU3JtqIYGnSi1UZkV8Hdmq6r8xmW_nFnI2XNUDSbUH7rd7guAbCiCPTXu7e8D9wriE0DzAdfHIZDT6LnlqwWZK-BbvhOILvJNgIewvCqkX3g2O5KRB4uASNFa3htNxcuFR4UuOKncXAcgRzQXEF1LJ0SIRaz9a3mUuTvb2zG9o');
+    opacity: 0.12; filter: saturate(0.6) contrast(1.1);
+  }
+
+  /* Overlay gradient */
+  .left-panel-overlay {
+    position: absolute; inset: 0; z-index: 1;
+    background: linear-gradient(
+      to bottom,
+      rgba(8,8,16,0.3) 0%,
+      rgba(8,8,16,0.1) 40%,
+      rgba(8,8,16,0.4) 100%
+    );
+  }
+
+  /* Grid pattern */
+  .left-panel-grid {
+    position: absolute; inset: 0; z-index: 1;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%);
+  }
+
+  .left-content { position: relative; z-index: 10; }
+
+  /* Brand logo */
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand-icon {
+    width: 40px; height: 40px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--primary), #ff8c42);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 24px var(--primary-glow);
+  }
+  .brand-icon .material-symbols-outlined { font-size: 22px; color: white; font-variation-settings: 'FILL' 1; }
+  .brand-name { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; }
+  .brand-name span { color: var(--primary); }
+
+  /* Value prop card */
+  .value-card {
+    background: rgba(8,8,16,0.55);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--border-bright);
+    border-radius: var(--radius-lg);
+    padding: 32px; max-width: 420px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.2), 0 40px 80px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07);
+  }
+  .value-card-status {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 20px;
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 8px var(--accent); }
+    50%       { box-shadow: 0 0 16px var(--accent); }
+  }
+  .status-text { font-size: 11px; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+  .value-card h2 { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 12px; letter-spacing: -0.01em; }
+  .value-card p { font-size: 14px; color: var(--text-2); line-height: 1.65; margin-bottom: 28px; }
+  .value-metrics {
+    display: grid; grid-template-columns: 1fr 1px 1fr 1px 1fr;
+    align-items: center; gap: 0;
+  }
+  .metric-divider { height: 36px; background: var(--border-bright); }
+  .metric { text-align: center; }
+  .metric-val { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; color: var(--text); }
+  .metric-label { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px; }
+
+  /* ── Right panel ── */
+  .right-panel {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 48px; position: relative; overflow-y: auto;
+    background: var(--bg);
+  }
+
+  /* Back link */
+  .back-link {
+    position: absolute; top: 24px; right: 28px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500; color: var(--text-2);
+    text-decoration: none; letter-spacing: 0.05em; text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+    transition: color 0.2s;
+    padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .back-link:hover { color: var(--text); border-color: var(--border-bright); }
+  .back-link .material-symbols-outlined { font-size: 14px; transition: transform 0.2s; }
+  .back-link:hover .material-symbols-outlined { transform: translateX(-2px); }
+
+  /* Mobile brand */
+  .mobile-brand {
+    display: none; align-items: center; gap: 10px; margin-bottom: 40px;
+    justify-content: center;
+  }
+
+  /* Form container */
+  .form-container { width: 100%; max-width: 400px; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px; margin-bottom: 32px;
+  }
+  .tab-btn {
+    flex: 1; padding: 9px 20px; border-radius: 7px;
+    font-size: 12px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    border: none; cursor: pointer; transition: all 0.25s;
+    color: var(--text-2); background: transparent;
+  }
+  .tab-btn.active {
+    background: rgba(255,107,43,0.15);
+    color: var(--primary);
+    box-shadow: 0 0 0 1px rgba(255,107,43,0.3);
+  }
+  .tab-btn:hover:not(.active) { color: var(--text); background: var(--surface-hover); }
+
+  /* Forms */
+  .auth-form { display: flex; flex-direction: column; gap: 20px; }
+  .auth-form.hidden { display: none; }
+
+  .form-group { display: flex; flex-direction: column; gap: 8px; }
+  .form-label {
+    font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-2);
+  }
+  .form-label-row { display: flex; justify-content: space-between; align-items: center; }
+  .forgot-link { font-size: 12px; color: var(--primary); text-decoration: none; transition: opacity 0.2s; }
+  .forgot-link:hover { opacity: 0.75; }
+
+  .input-wrap { position: relative; }
+  .input-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    font-size: 18px; color: var(--text-3); pointer-events: none;
+    transition: color 0.2s;
+  }
+  .form-input {
+    width: 100%; background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px 12px 44px;
+    font-size: 14px; color: var(--text); font-family: 'Inter', sans-serif;
+    transition: all 0.25s; outline: none;
+  }
+  .form-input::placeholder { color: var(--text-3); }
+  .form-input:focus {
+    border-color: rgba(255,107,43,0.5);
+    background: rgba(255,107,43,0.05);
+    box-shadow: 0 0 0 3px rgba(255,107,43,0.12);
+  }
+  .form-input:focus + .input-icon-after,
+  .input-wrap:focus-within .input-icon { color: var(--primary); }
+  .form-input.no-icon { padding-left: 14px; }
+  .form-input.with-btn { padding-right: 44px; }
+
+  .toggle-pass-btn {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer;
+    color: var(--text-3); transition: color 0.2s; padding: 2px;
+  }
+  .toggle-pass-btn:hover { color: var(--text-2); }
+  .toggle-pass-btn .material-symbols-outlined { font-size: 18px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* Submit button */
+  .btn-submit {
+    width: 100%; padding: 13px 24px; border-radius: 11px;
+    font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: white; border: none; cursor: pointer;
+    background: linear-gradient(135deg, #ff6b2b, #ff8c42);
+    box-shadow: 0 4px 24px var(--primary-glow);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: all 0.25s; position: relative; overflow: hidden;
+    margin-top: 4px;
+  }
+  .btn-submit::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent);
+    opacity: 0; transition: opacity 0.25s;
+  }
+  .btn-submit:hover { transform: translateY(-1px); box-shadow: 0 8px 32px var(--primary-glow); }
+  .btn-submit:hover::before { opacity: 1; }
+  .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .btn-submit .material-symbols-outlined { font-size: 16px; }
+
+  /* Divider */
+  .divider {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .divider-line { flex: 1; height: 1px; background: var(--border); }
+  .divider-text { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* Google button */
+  .btn-google {
+    width: 100%; padding: 12px 24px; border-radius: 11px;
+    font-size: 13px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text); background: var(--surface); border: 1px solid var(--border-bright);
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: all 0.25s;
+  }
+  .btn-google:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.22); transform: translateY(-1px); }
+  .btn-google .material-symbols-outlined { font-size: 18px; color: var(--text-2); }
+
+  /* Terms text */
+  .terms-text { font-size: 11.5px; color: var(--text-3); text-align: center; line-height: 1.6; }
+  .terms-text a { color: var(--primary); text-decoration: none; }
+  .terms-text a:hover { text-decoration: underline; }
+
+  /* Password hint */
+  .password-hint { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .left-panel { display: none; }
+    .right-panel { padding: 40px 24px; }
+    .mobile-brand { display: flex; }
+    .back-link { top: 16px; right: 16px; }
+  }
+  @media (max-width: 480px) {
+    .form-container { max-width: 100%; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="auth-layout">
+
+  <!-- Left Panel -->
+  <section class="left-panel">
+    <div class="left-panel-bg"></div>
+    <div class="left-panel-overlay"></div>
+    <div class="left-panel-grid"></div>
+
+    <div class="left-content brand">
+      <div class="brand-icon">
+        <span class="material-symbols-outlined">precision_manufacturing</span>
+      </div>
+      <span class="brand-name">Site<span>Sentinel</span> AI</span>
+    </div>
+
+    <div class="left-content">
+      <div class="value-card">
+        <div class="value-card-status">
+          <span class="status-dot"></span>
+          <span class="status-text">System Active</span>
+        </div>
+        <h2>Industrial Safety Redefined.</h2>
+        <p>Deploy AI-driven computer vision to monitor heavy machinery, detect safety hazards in real-time, and automate compliance logging across all your active sites.</p>
+        <div class="value-metrics">
+          <div class="metric">
+            <div class="metric-val">99.9%</div>
+            <div class="metric-label">Uptime</div>
+          </div>
+          <div class="metric-divider"></div>
+          <div class="metric">
+            <div class="metric-val">12.4k</div>
+            <div class="metric-label">Prevented</div>
+          </div>
+          <div class="metric-divider"></div>
+          <div class="metric">
+            <div class="metric-val">500+</div>
+            <div class="metric-label">Clients</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right Panel -->
+  <section class="right-panel">
+    <a class="back-link" href="/">
+      <span class="material-symbols-outlined">arrow_back</span>
+      Home
+    </a>
+
+    <!-- Mobile brand -->
+    <div class="mobile-brand">
+      <div class="brand-icon">
+        <span class="material-symbols-outlined">precision_manufacturing</span>
+      </div>
+      <span class="brand-name">Site<span>Sentinel</span> AI</span>
+    </div>
+
+    <div class="form-container">
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">Login</button>
+        <button class="tab-btn" id="tab-signup" onclick="switchTab('signup')">Sign Up</button>
+      </div>
+
+      <!-- Login Form -->
+      <form class="auth-form" id="form-login" onsubmit="event.preventDefault();">
+        <div class="form-group">
+          <label class="form-label" for="login-email">Email Address</label>
+          <div class="input-wrap">
+            <span class="material-symbols-outlined input-icon">mail</span>
+            <input class="form-input" id="login-email" placeholder="operator@site.com" type="email" autocomplete="email"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="form-label-row">
+            <label class="form-label" for="login-password">Password</label>
+            <a class="forgot-link" href="#">Forgot?</a>
+          </div>
+          <div class="input-wrap">
+            <span class="material-symbols-outlined input-icon">lock</span>
+            <input class="form-input with-btn" id="login-password" placeholder="••••••••" type="password" autocomplete="current-password"/>
+            <button class="toggle-pass-btn" onclick="togglePassword('login-password', 'login-eye-icon')" type="button">
+              <span class="material-symbols-outlined" id="login-eye-icon">visibility_off</span>
+            </button>
+          </div>
+        </div>
+        <button class="btn-submit" type="submit">
+          Authenticate Sequence
+          <span class="material-symbols-outlined">arrow_forward</span>
+        </button>
+        <div class="divider">
+          <div class="divider-line"></div>
+          <span class="divider-text">or</span>
+          <div class="divider-line"></div>
+        </div>
+        <button class="btn-google" type="button">
+          <span class="material-symbols-outlined">account_circle</span>
+          Continue with Google
+        </button>
+      </form>
+
+      <!-- Sign Up Form -->
+      <form class="auth-form hidden" id="form-signup" onsubmit="event.preventDefault();">
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label" for="signup-name">Full Name</label>
+            <input class="form-input no-icon" id="signup-name" placeholder="John Doe" type="text" autocomplete="name"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="signup-company">Company</label>
+            <input class="form-input no-icon" id="signup-company" placeholder="Acme Corp" type="text" autocomplete="organization"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="signup-email">Work Email</label>
+          <div class="input-wrap">
+            <span class="material-symbols-outlined input-icon">mail</span>
+            <input class="form-input" id="signup-email" placeholder="name@company.com" type="email" autocomplete="email"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="signup-password">Password</label>
+          <div class="input-wrap">
+            <span class="material-symbols-outlined input-icon">lock</span>
+            <input class="form-input with-btn" id="signup-password" placeholder="••••••••" type="password" autocomplete="new-password"/>
+            <button class="toggle-pass-btn" onclick="togglePassword('signup-password', 'signup-eye-icon')" type="button">
+              <span class="material-symbols-outlined" id="signup-eye-icon">visibility_off</span>
+            </button>
+          </div>
+          <span class="password-hint">Min. 12 characters, include numbers &amp; symbols.</span>
+        </div>
+        <button class="btn-submit" type="submit">
+          Initialize Account
+        </button>
+        <p class="terms-text">
+          By creating an account, you agree to our
+          <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+        </p>
+      </form>
+
+    </div>
+  </section>
+</div>
+
+<script>
+  // ── Tab switcher ──
+  function switchTab(tab) {
+    const loginForm   = document.getElementById('form-login');
+    const signupForm  = document.getElementById('form-signup');
+    const loginTabBtn = document.getElementById('tab-login');
+    const signupTabBtn = document.getElementById('tab-signup');
+
+    if (tab === 'login') {
+      loginForm.classList.remove('hidden');
+      signupForm.classList.add('hidden');
+      loginTabBtn.classList.add('active');
+      signupTabBtn.classList.remove('active');
+    } else {
+      signupForm.classList.remove('hidden');
+      loginForm.classList.add('hidden');
+      signupTabBtn.classList.add('active');
+      loginTabBtn.classList.remove('active');
+    }
+  }
+
+  // ── Toggle password ──
+  function togglePassword(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon  = document.getElementById(iconId);
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.textContent = 'visibility';
+      icon.style.color = 'var(--primary)';
+    } else {
+      input.type = 'password';
+      icon.textContent = 'visibility_off';
+      icon.style.color = '';
+    }
+  }
+
+  // ── LOGIN ──
+  document.getElementById('form-login').addEventListener('submit', async function() {
+    const email    = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    const btn      = this.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.innerHTML = 'Authenticating...';
+
+    const res  = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      const loginTime = (data.login_time ? Math.floor(data.login_time * 1000) : Date.now()).toString();
+      sessionStorage.setItem('ss_login_time', loginTime);
+      window.location.href = '/dashboard.html';
+    } else {
+      alert(data.error || 'Login failed.');
+      btn.disabled = false;
+      btn.innerHTML = 'Authenticate Sequence <span class="material-symbols-outlined">arrow_forward</span>';
+    }
+  });
+
+  // ── SIGNUP ──
+  document.getElementById('form-signup').addEventListener('submit', async function() {
+    const name     = document.getElementById('signup-name').value;
+    const company  = document.getElementById('signup-company').value;
+    const email    = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    const btn      = this.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = 'Initializing...';
+
+    const res  = await fetch('/api/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, company, email, password })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      alert('Account created! Please log in.');
+      switchTab('login');
+    } else {
+      alert(data.error || 'Signup failed.');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Initialize Account';
+  });
+</script>
+</body>
+</html>

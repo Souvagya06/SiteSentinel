@@ -1,28 +1,9 @@
 {
+  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/api/:match*",
       "destination": "https://sitesentinel-or0h.onrender.com/api/:match*"
-    },
-    {
-      "source": "/",
-      "destination": "/frontend/pages/index.html"
-    },
-    {
-      "source": "/login",
-      "destination": "/frontend/pages/login.html"
-    },
-    {
-      "source": "/login.html",
-      "destination": "/frontend/pages/login.html"
-    },
-    {
-      "source": "/dashboard",
-      "destination": "/frontend/pages/dashboard.html"
-    },
-    {
-      "source": "/dashboard.html",
-      "destination": "/frontend/pages/dashboard.html"
     }
   ]
 }
