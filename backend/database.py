@@ -31,30 +31,26 @@ def query_one(sql, args=[]):
         rows = result["results"][0]["response"]["result"]["rows"]
         if not rows:
             return None
-        return dict(zip(cols, [v["value"] for v in rows[0]]))
+        return dict(zip(cols, [v.get("value") for v in rows[0]]))
     except (KeyError, IndexError):
         return None
 
 def query_all(sql, args=[]):
     result = execute(sql, args)
-
     try:
         cols = [
             c["name"]
             for c in result["results"][0]["response"]["result"]["cols"]
         ]
-
         rows = result["results"][0]["response"]["result"]["rows"]
-
         return [
             dict(
                 zip(
                     cols,
-                    [v["value"] for v in row]
+                    [v.get("value") for v in row]
                 )
             )
             for row in rows
         ]
-
-    except:
+    except Exception:
         return []

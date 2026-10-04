@@ -1120,10 +1120,6 @@
   </div>
 
 <script>
-  if (window.location.pathname !== '/') {
-    try { window.history.replaceState(null, '', '/'); } catch(e) {}
-  }
-
   // ── Session Timer ──
   let loginTimestamp = parseInt(sessionStorage.getItem('ss_login_time'), 10) || Date.now();
   sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
