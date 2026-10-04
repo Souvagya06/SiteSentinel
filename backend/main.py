@@ -51,17 +51,31 @@ def bump_face_data_version(user_id):
 # Pages
 # ─────────────────────────────────────────
 @app.route("/")
+@app.route("/index.html")
+@app.route("/frontend/pages/index.html")
+@app.route("/frontend/pages/index")
+@app.route("/frontend/pages")
 def landing():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
+@app.route("/login")
 @app.route("/login.html")
+@app.route("/frontend/pages/login.html")
+@app.route("/frontend/pages/login")
+@app.route("/frontend/login.html")
+@app.route("/frontend/login")
 def login():
     return send_from_directory(FRONTEND_DIR, "login.html")
 
+@app.route("/dashboard")
 @app.route("/dashboard.html")
+@app.route("/frontend/pages/dashboard.html")
+@app.route("/frontend/pages/dashboard")
+@app.route("/frontend/dashboard.html")
+@app.route("/frontend/dashboard")
 def dashboard():
     if "user_id" not in session:
-        return redirect("/login.html")
+        return redirect("/login")
     return send_from_directory(FRONTEND_DIR, "dashboard.html")
 
 # ─────────────────────────────────────────
@@ -156,7 +170,7 @@ def logout():
         webcam_process.kill()
         webcam_process = None
     session.clear()
-    return redirect("/login.html")
+    return redirect("/login")
 
 # ─────────────────────────────────────────
 # Workers CRUD
