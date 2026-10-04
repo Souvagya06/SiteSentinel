@@ -16,7 +16,7 @@ import cloudinary
 import cloudinary.uploader
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from face__utils import get_embedding_from_url
 from report_service import generate_csv_report, generate_pdf_report
 import urllib.parse
@@ -28,6 +28,8 @@ load_dotenv(env_path)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
@@ -58,6 +60,8 @@ def bump_face_data_version(user_id):
 @app.route("/frontend/pages/index")
 @app.route("/frontend/pages")
 def landing():
+    if "user_id" in session:
+        return redirect("/dashboard")
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 @app.route("/login")
@@ -67,6 +71,8 @@ def landing():
 @app.route("/frontend/login.html")
 @app.route("/frontend/login")
 def login():
+    if "user_id" in session:
+        return redirect("/dashboard")
     return send_from_directory(FRONTEND_DIR, "login.html")
 
 @app.route("/dashboard")
@@ -170,6 +176,7 @@ def login_api():
         print(f"[Auth] Login failed: Password mismatch for user '{email}'.")
         return jsonify({"error": "Invalid email or password."}), 401
 
+    session.permanent = True
     session["user_id"] = user["id"]
     session["email"]   = user["email"]
     session["login_time"] = time.time()
@@ -316,6 +323,7 @@ def google_callback():
             print(f"[Google OAuth] Failed to retrieve user for {email}")
             return redirect("/login?error=user_creation_failed")
 
+        session.permanent = True
         session["user_id"] = user["id"]
         session["email"] = user["email"]
         session["login_time"] = time.time()
@@ -340,7 +348,7 @@ def get_workers():
     try:
         cols    = [c["name"] for c in result["results"][0]["response"]["result"]["cols"]]
         rows    = result["results"][0]["response"]["result"]["rows"]
-        workers = [dict(zip(cols, [v["value"] for v in row])) for row in rows]
+        workers = [dict(zip(cols, [v.get("value") for v in row])) for row in rows]
     except (KeyError, IndexError):
         workers = []
     return jsonify({"workers": workers})
@@ -719,7 +727,7 @@ def get_helmets():
     try:
         cols    = [c["name"] for c in result["results"][0]["response"]["result"]["cols"]]
         rows    = result["results"][0]["response"]["result"]["rows"]
-        helmets = [dict(zip(cols, [v["value"] for v in row])) for row in rows]
+        helmets = [dict(zip(cols, [v.get("value") for v in row])) for row in rows]
     except (KeyError, IndexError):
         helmets = []
     return jsonify({"helmets": helmets})
