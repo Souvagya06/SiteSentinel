@@ -19,6 +19,8 @@ import time
 from datetime import datetime
 from face__utils import get_embedding_from_url
 from report_service import generate_csv_report, generate_pdf_report
+import urllib.parse
+import requests
 from dotenv import load_dotenv
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -171,6 +173,147 @@ def logout():
         webcam_process = None
     session.clear()
     return redirect("/login")
+
+# ─────────────────────────────────────────
+# Google OAuth
+# ─────────────────────────────────────────
+@app.route("/auth/google")
+@app.route("/api/auth/google")
+def google_login():
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    if not client_id:
+        return jsonify({"error": "Google OAuth is not configured. GOOGLE_CLIENT_ID is missing."}), 500
+
+    forwarded_host = request.headers.get("X-Forwarded-Host", request.host)
+    if "sitesentinel.site" in forwarded_host:
+        redirect_uri = "https://sitesentinel.site/auth/google/callback"
+    elif "127.0.0.1" in forwarded_host:
+        redirect_uri = "http://127.0.0.1:5000/auth/google/callback"
+    elif "localhost" in forwarded_host:
+        redirect_uri = "http://localhost:5000/auth/google/callback"
+    else:
+        scheme = "https" if request.is_secure or request.headers.get("X-Forwarded-Proto") == "https" else "http"
+        redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", f"{scheme}://{forwarded_host}/auth/google/callback")
+
+    session["oauth_state"] = secrets.token_urlsafe(16)
+    session["oauth_redirect_uri"] = redirect_uri
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": session["oauth_state"],
+        "prompt": "select_account"
+    }
+    google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+    return redirect(google_auth_url)
+
+@app.route("/auth/google/callback")
+@app.route("/api/auth/google/callback")
+def google_callback():
+    error = request.args.get("error")
+    if error:
+        return redirect(f"/login?error={urllib.parse.quote(error)}")
+
+    code = request.args.get("code")
+    state = request.args.get("state")
+    stored_state = session.get("oauth_state")
+
+    if not code:
+        return redirect("/login?error=missing_auth_code")
+    if stored_state and state and state != stored_state:
+        print(f"[Google OAuth] State mismatch: {state} != {stored_state}")
+        return redirect("/login?error=invalid_oauth_state")
+
+    redirect_uri = session.get("oauth_redirect_uri")
+    if not redirect_uri:
+        forwarded_host = request.headers.get("X-Forwarded-Host", request.host)
+        if "sitesentinel.site" in forwarded_host:
+            redirect_uri = "https://sitesentinel.site/auth/google/callback"
+        elif "127.0.0.1" in forwarded_host:
+            redirect_uri = "http://127.0.0.1:5000/auth/google/callback"
+        else:
+            redirect_uri = "http://localhost:5000/auth/google/callback"
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+    # Exchange authorization code for tokens
+    try:
+        token_resp = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri
+            },
+            timeout=10
+        )
+        if not token_resp.ok:
+            print(f"[Google OAuth] Token exchange error: {token_resp.text}")
+            return redirect("/login?error=token_exchange_failed")
+
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            return redirect("/login?error=missing_access_token")
+
+        userinfo_resp = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10
+        )
+        if not userinfo_resp.ok:
+            print(f"[Google OAuth] Userinfo fetch error: {userinfo_resp.text}")
+            return redirect("/login?error=userinfo_fetch_failed")
+
+        userinfo = userinfo_resp.json()
+        google_sub = userinfo.get("sub")
+        email = userinfo.get("email", "").strip().lower()
+        name = userinfo.get("name", "") or "Google User"
+        picture = userinfo.get("picture", "")
+
+        if not google_sub or not email:
+            return redirect("/login?error=invalid_google_profile")
+
+        # 1. Check if user already exists by google_sub or email
+        user = query_one("SELECT * FROM users WHERE google_sub = ?", [{"type": "text", "value": google_sub}])
+        if not user:
+            user = query_one("SELECT * FROM users WHERE email = ?", [{"type": "text", "value": email}])
+
+        if user:
+            # Link/update Google sub and profile picture
+            execute(
+                "UPDATE users SET google_sub = ?, profile_picture = COALESCE(NULLIF(?, ''), profile_picture) WHERE id = ?",
+                [{"type": "text", "value": google_sub}, {"type": "text", "value": picture}, {"type": "text", "value": str(user["id"])}]
+            )
+            user["google_sub"] = google_sub
+            if picture:
+                user["profile_picture"] = picture
+        else:
+            # 2. Create new user record
+            execute(
+                "INSERT INTO users (email, password, name, company, google_sub, profile_picture, face_data_version) VALUES (?, '', ?, 'Google User', ?, ?, 1)",
+                [{"type": "text", "value": email}, {"type": "text", "value": name}, {"type": "text", "value": google_sub}, {"type": "text", "value": picture}]
+            )
+            user = query_one("SELECT * FROM users WHERE email = ?", [{"type": "text", "value": email}])
+
+        if not user:
+            print(f"[Google OAuth] Failed to retrieve user for {email}")
+            return redirect("/login?error=user_creation_failed")
+
+        session["user_id"] = user["id"]
+        session["email"] = user["email"]
+        session["login_time"] = time.time()
+        print(f"[Google OAuth] Authenticated user_id={user['id']}, email={user['email']}")
+        return redirect("/dashboard")
+
+    except Exception as e:
+        print(f"[Google OAuth] Exception: {e}")
+        return redirect("/login?error=oauth_internal_error")
 
 # ─────────────────────────────────────────
 # Workers CRUD
