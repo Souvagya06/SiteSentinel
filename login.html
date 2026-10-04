@@ -418,7 +418,7 @@
           <span class="divider-text">or</span>
           <div class="divider-line"></div>
         </div>
-        <button class="btn-google" type="button">
+        <button class="btn-google" type="button" onclick="window.location.href='/auth/google'">
           <span class="material-symbols-outlined">account_circle</span>
           Continue with Google
         </button>
@@ -457,6 +457,15 @@
         <button class="btn-submit" type="submit">
           Initialize Account
         </button>
+        <div class="divider">
+          <div class="divider-line"></div>
+          <span class="divider-text">or</span>
+          <div class="divider-line"></div>
+        </div>
+        <button class="btn-google" type="button" onclick="window.location.href='/auth/google'">
+          <span class="material-symbols-outlined">account_circle</span>
+          Continue with Google
+        </button>
         <p class="terms-text">
           By creating an account, you agree to our
           <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
@@ -468,8 +477,9 @@
 </div>
 
 <script>
-  if (window.location.pathname !== '/') {
-    try { window.history.replaceState(null, '', '/'); } catch(e) {}
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('error')) {
+    alert('Google sign-in error: ' + urlParams.get('error'));
   }
 
   // ── Tab switcher ──

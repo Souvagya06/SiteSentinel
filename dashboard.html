@@ -1143,6 +1143,10 @@
   fetch('/api/me')
     .then(r => { if (!r.ok) window.location.href = '/login'; return r.json(); })
     .then(d => {
+      if (d.login_time) {
+        loginTimestamp = Math.floor(d.login_time * 1000);
+        sessionStorage.setItem('ss_login_time', loginTimestamp.toString());
+      }
       document.getElementById('user-name').textContent = d.name || d.email || 'Manager';
       const initials = (d.name || d.email || 'SM').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
       document.getElementById('user-initials').textContent = initials;

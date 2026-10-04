@@ -106,6 +106,21 @@ try:
     print("Added face_data_version column")
 except: pass
 
+try:
+    execute("ALTER TABLE users ADD COLUMN google_sub TEXT")
+    print("Added google_sub column")
+except: pass
+
+try:
+    execute("ALTER TABLE users ADD COLUMN profile_picture TEXT")
+    print("Added profile_picture column")
+except: pass
+
+try:
+    execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)")
+    print("Added idx_users_google_sub index")
+except: pass
+
 execute("""
 CREATE TABLE IF NOT EXISTS safety_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
