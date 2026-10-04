@@ -27,14 +27,14 @@ def test_worker_session():
     mgr.update_frame([p1, p2], 640, 480)
     assert mgr.state == SessionState.CROWDED, f"Expected CROWDED, got {mgr.state}"
     
-    # 3. One person steps back -> 1 person remains -> IDENTIFYING
+    # 3. One person steps back -> 1 person remains -> VERIFYING (Parallel lock)
     mgr.update_frame([p1], 640, 480)
-    assert mgr.state == SessionState.IDENTIFYING, f"Expected IDENTIFYING, got {mgr.state}"
+    assert mgr.state == SessionState.VERIFYING, f"Expected VERIFYING, got {mgr.state}"
     assert mgr.active_track_id == 1, f"Expected track 1, got {mgr.active_track_id}"
     
-    # 4. Face matched
+    # 4. Face matched asynchronously
     mgr.set_identified_worker({"worker_id": "003", "name": "Souvagya Karmakar", "helmet_id": "H001", "status": "Off-Site"})
-    assert mgr.state == SessionState.EVALUATING_PPE, f"Expected EVALUATING_PPE, got {mgr.state}"
+    assert mgr.state == SessionState.VERIFYING, f"Expected VERIFYING, got {mgr.state}"
     
     # 5. PPE spatial attribution: Hardhat at top, Vest at middle
     ppe_dets = [
@@ -45,7 +45,7 @@ def test_worker_session():
         mgr.attribute_ppe_detections(ppe_dets)
         mgr.update_frame([p1], 640, 480)
         
-    assert mgr.state == SessionState.FINALIZED, f"Expected FINALIZED, got {mgr.state}"
+    assert mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED], f"Expected CONFIRMING or COMPLETED, got {mgr.state}"
     assert mgr.finalized_ppe_score == 100, f"Expected score 100, got {mgr.finalized_ppe_score}"
     print("[PASS] WorkerSessionManager test passed!")
 

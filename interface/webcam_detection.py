@@ -1,13 +1,14 @@
 """
-SiteSentinel — Advanced AI Computer Vision Gate Monitoring Engine
+SiteSentinel — High-Performance Parallel AI Computer Vision Gate Monitoring Engine
 Features:
-- Single-worker evaluation state machine & Gate Occupancy Lock
-- Spatial PPE anatomical attribution (Head -> Hardhat, Torso -> Vest)
-- 8-frame temporal smoothing & locked PPE evaluation (0, 50, 100)
-- Face data hot-reloading in background without restarts
-- Real-time structured safety events & attendance logging
-- Raspberry Pi GPIO hardware integration (LEDs, Buzzer, Matrix)
-- Rich annotated monitoring HUD
+- Parallel Event-Driven Single-Worker Evaluation State Machine
+- Concurrent Asynchronous Workers for Face Recognition & Helmet OCR
+- Spatial PPE Anatomical Attribution (Head -> Hardhat, Torso -> Vest)
+- Fast Adaptive 4-Frame Temporal PPE Consensus Voting
+- Vectorized In-Memory Face Data Matching & Hot-Reloading
+- Real-time Structured Safety Events & Non-blocking Attendance Logging
+- Raspberry Pi Hardware Integration (LEDs, Buzzer, 8x8 Matrix)
+- Rich Annotated Gate Monitoring HUD
 """
 import sys
 import os
@@ -15,6 +16,7 @@ import argparse
 import re
 import time
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 import cv2
 import requests
 import json
@@ -53,12 +55,14 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
 parser = argparse.ArgumentParser()
 parser.add_argument("--user-id", required=True, help="Manager User ID")
 parser.add_argument("--camera-id", default="Pi Camera 01", help="Camera identifier")
+parser.add_argument("--imgsz", type=int, default=416, help="YOLO inference size (320 or 416)")
 args = parser.parse_args()
 MANAGER_USER_ID = str(args.user_id)
 CAMERA_ID = str(args.camera_id)
+YOLO_IMGSZ = args.imgsz
 
 print("=" * 65)
-print(f"  SiteSentinel CV Engine | Manager ID: {MANAGER_USER_ID} | Camera: {CAMERA_ID}")
+print(f"  SiteSentinel Parallel CV Engine | Manager: {MANAGER_USER_ID} | Camera: {CAMERA_ID} | imgsz: {YOLO_IMGSZ}")
 print("=" * 65)
 
 # ── Verify Raspberry Pi Configuration ───────────────────
@@ -80,7 +84,7 @@ event_client = EventClient(BACKEND_URL, MANAGER_USER_ID)
 face_manager = FaceDataManager(BACKEND_URL, MANAGER_USER_ID, poll_interval=8.0)
 face_manager.start_hot_reload()
 
-session_mgr = WorkerSessionManager(required_ppe_frames=8, grace_period_sec=2.0)
+session_mgr = WorkerSessionManager(required_ppe_frames=4, grace_period_sec=2.0, max_verify_sec=4.0)
 
 # ── Load YOLO PPE Model ────────────────────────────────
 MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "best.pt"
@@ -90,7 +94,7 @@ if not MODEL_PATH.exists():
 model = YOLO(str(MODEL_PATH))
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
-print(f"[Init] YOLO PPE Model loaded on device: {device.upper()}")
+print(f"[Init] YOLO PPE Model loaded on device: {device.upper()} (Inference Size: {YOLO_IMGSZ}x{YOLO_IMGSZ})")
 
 # ── Initialize OCR ────────────────────────────────────
 ocr_reader = None
@@ -103,15 +107,22 @@ if easyocr is not None:
 
 HELMET_ID_PATTERN = re.compile(r'[A-Za-z]{1,6}[_\-]?\d{1,6}', re.IGNORECASE)
 
+# ── Thread Pools for Concurrent Verification Workers ──
+face_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="FaceWorker")
+ocr_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="OCRWorker")
+face_future = None
+ocr_future = None
+
 # ── State Tracking & Metrics ───────────────────────────
 last_buzzer_state = False
 fps_counter = 0
 fps_start_time = time.time()
 current_fps = 0.0
-last_ocr_time = 0
-ocr_cached_helmet = ""
+last_ocr_dispatch_time = 0.0
+last_face_dispatch_time = 0.0
 
-# Track simple centroids across frames for person track IDs
+
+# ── Centroid Tracker for Worker Lock ───────────────────
 class SimpleCentroidTracker:
     def __init__(self, max_disappeared=30):
         self.next_object_id = 1
@@ -198,12 +209,28 @@ class SimpleCentroidTracker:
 tracker = SimpleCentroidTracker(max_disappeared=20)
 
 
-def extract_helmet_id_from_crop(head_crop_bgr):
-    """Runs OCR on the head crop to detect stenciled/printed helmet IDs."""
+# ── Asynchronous Background Tasks ──────────────────────
+def async_face_recognition_task(person_crop_rgb):
+    """Worker task: Extracts 128-d face embedding and matches against in-memory cache."""
+    try:
+        if person_crop_rgb is None or person_crop_rgb.size == 0:
+            return None
+        embeddings = get_embedding_from_frame(person_crop_rgb)
+        if embeddings:
+            for emb in embeddings:
+                matched, matched_worker, dist = face_manager.match_face(emb, threshold=0.52)
+                if matched and matched_worker:
+                    return matched_worker
+    except Exception as e:
+        print(f"[AsyncFaceWorker] Error: {e}")
+    return None
+
+
+def async_helmet_ocr_task(head_crop_bgr):
+    """Worker task: Runs OCR on cropped helmet region."""
     if ocr_reader is None or head_crop_bgr is None or head_crop_bgr.size == 0:
         return ""
     try:
-        # Preprocess for contrast
         gray = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2GRAY)
         gray = cv2.resize(gray, (0, 0), fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC)
         results = ocr_reader.readtext(gray, detail=0)
@@ -218,62 +245,65 @@ def extract_helmet_id_from_crop(head_crop_bgr):
 
 
 # ── Finalize Session Action ────────────────────────────
-def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str):
+def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str, elapsed_time: float):
     """
-    Submits finalized attendance and validation to Flask backend and actuates Pi hardware.
+    Submits finalized attendance and validation to backend and actuates Pi hardware asynchronously.
     """
-    worker_id = worker_dict.get("worker_id", "")
-    worker_name = worker_dict.get("name", worker_id)
-    assigned_helmet = worker_dict.get("helmet_id", "")
-    current_status = worker_dict.get("status", "Off-Site")
+    def _async_commit():
+        worker_id = worker_dict.get("worker_id", "")
+        worker_name = worker_dict.get("name", worker_id)
+        assigned_helmet = worker_dict.get("helmet_id", "")
+        current_status = worker_dict.get("status", "Off-Site")
 
-    print(f"\n[Session Finalized] Worker: {worker_name} ({worker_id}) | PPE: {final_ppe_score}% | Assigned Helmet: {assigned_helmet or 'None'} | Scanned: {scanned_helmet_id or 'None'}")
+        print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_id}) | PPE: {final_ppe_score}% | Assigned Helmet: {assigned_helmet or 'None'} | Scanned: {scanned_helmet_id or 'None'}")
 
-    # Determine attendance transition
-    new_status = "Off-Site" if current_status in ["Active", "On-Site"] else "Active"
-    action_type = "Check-in" if new_status == "Active" else "Check-out"
+        # Determine attendance transition
+        new_status = "Off-Site" if current_status in ["Active", "On-Site"] else "Active"
+        action_type = "Check-in" if new_status == "Active" else "Check-out"
 
-    # Validate helmet assignment
-    if assigned_helmet and scanned_helmet_id and assigned_helmet.upper() != scanned_helmet_id.upper():
-        event_client.log_safety_event(
-            event_type="HELMET_MISMATCH",
-            message=f"Helmet mismatch for {worker_name}: Assigned {assigned_helmet}, scanned {scanned_helmet_id}",
-            worker_id=worker_id,
-            ppe_score=final_ppe_score,
-            helmet_id=scanned_helmet_id,
-            camera_id=CAMERA_ID
-        )
+        # Validate helmet assignment
+        if assigned_helmet and scanned_helmet_id and assigned_helmet.upper() != scanned_helmet_id.upper() and worker_id != "UNKNOWN":
+            event_client.log_safety_event(
+                event_type="HELMET_MISMATCH",
+                message=f"Helmet mismatch for {worker_name}: Assigned {assigned_helmet}, scanned {scanned_helmet_id}",
+                worker_id=worker_id,
+                ppe_score=final_ppe_score,
+                helmet_id=scanned_helmet_id,
+                camera_id=CAMERA_ID
+            )
 
-    # Record attendance in database
-    resp = event_client.record_attendance(
-        worker_id=worker_id,
-        ppe_score=final_ppe_score,
-        helmet_id=scanned_helmet_id or assigned_helmet
-    )
+        # Record attendance in database
+        if worker_id != "UNKNOWN":
+            event_client.record_attendance(
+                worker_id=worker_id,
+                ppe_score=final_ppe_score,
+                helmet_id=scanned_helmet_id or assigned_helmet
+            )
 
-    # Hardware Feedback
-    if final_ppe_score >= 100:
-        if action_type == "Check-in":
-            pi.checkin()
+        # Hardware Feedback
+        if final_ppe_score >= 100 and worker_id != "UNKNOWN":
+            if action_type == "Check-in":
+                pi.checkin()
+            else:
+                pi.checkout()
+            pi.show_score(final_ppe_score)
         else:
-            pi.checkout()
-        pi.show_score(final_ppe_score)
-    else:
-        # PPE Violation feedback
-        pi.show_score(final_ppe_score)
-        # Pulse buzzer
-        def _warn_buzzer():
-            pi.buzzer_on()
-            time.sleep(1.2)
-            pi.buzzer_off()
-        Thread(target=_warn_buzzer, daemon=True).start()
+            # PPE Violation or Unknown feedback
+            pi.show_score(final_ppe_score)
+            def _warn_buzzer():
+                pi.buzzer_on()
+                time.sleep(1.2)
+                pi.buzzer_off()
+            Thread(target=_warn_buzzer, daemon=True).start()
 
-    # Trigger hot-reload check to refresh worker on-site statuses
-    Thread(target=face_manager.check_and_reload_if_stale, daemon=True).start()
+        # Refresh worker on-site statuses
+        face_manager.check_and_reload_if_stale()
+
+    Thread(target=_async_commit, daemon=True).start()
 
 
 # ── Main Video Processing Loop ──────────────────────────
-print("\n[SiteSentinel] Starting live camera processing loop. Press 'q' to exit.\n")
+print("\n[SiteSentinel] Starting live camera parallel processing loop. Press 'q' to exit.\n")
 
 try:
     while True:
@@ -281,8 +311,7 @@ try:
         success, frame = stream.read()
 
         if not success or frame is None:
-            # Reconnecting or waiting for stream
-            time.sleep(0.05)
+            time.sleep(0.02)
             continue
 
         frame_h, frame_w = frame.shape[:2]
@@ -292,8 +321,8 @@ try:
             fps_counter = 0
             fps_start_time = time.time()
 
-        # 1. Run YOLO PPE Detection & Person Detection
-        results = model(frame, conf=0.35, verbose=False)[0]
+        # 1. Run YOLO PPE Detection & Person Detection with optimized imgsz
+        results = model(frame, imgsz=YOLO_IMGSZ, conf=0.45, verbose=False)[0]
         
         person_rects = []
         ppe_detections = []
@@ -319,62 +348,67 @@ try:
         # 3. Update Single-Worker Evaluation State Machine
         session_mgr.update_frame(tracked_persons, frame_w, frame_h)
 
-        # 4. State-Specific Operations
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # 4. Check Background Worker Results (Non-Blocking)
+        if face_future is not None and face_future.done():
+            try:
+                matched_worker = face_future.result()
+                if matched_worker:
+                    session_mgr.set_identified_worker(matched_worker)
+                    print(f"[Face Matched (Async)] {matched_worker['name']} ({session_mgr.elapsed_verify_time:.2f}s)")
+            except Exception as e:
+                print(f"[AsyncFace] Error reading result: {e}")
+            face_future = None
 
-        # ── State: IDENTIFYING ──
-        if session_mgr.state == SessionState.IDENTIFYING and session_mgr.active_worker is None:
-            # Crop locked worker area to run face recognition
-            if session_mgr.active_bbox is not None:
-                bx1, by1, bx2, by2 = session_mgr.active_bbox
-                # Add margin
-                px1 = max(0, bx1)
-                py1 = max(0, by1)
-                px2 = min(frame_w, bx2)
-                py2 = min(frame_h, by2)
-                
-                person_crop_rgb = frame_rgb[py1:py2, px1:px2]
-                if person_crop_rgb.size > 0:
-                    live_embeddings = get_embedding_from_frame(person_crop_rgb)
-                    if live_embeddings:
-                        for emb in live_embeddings:
-                            matched, matched_worker, dist = face_manager.match_face(emb, threshold=0.52)
-                            if matched and matched_worker:
-                                session_mgr.set_identified_worker(matched_worker)
-                                print(f"[Face Matched] {matched_worker['name']} (Dist: {dist:.3f})")
-                                break
+        if ocr_future is not None and ocr_future.done():
+            try:
+                scanned_hid = ocr_future.result()
+                if scanned_hid:
+                    session_mgr.record_ocr_reading(scanned_hid)
+                    print(f"[Helmet OCR (Async)] Detected: {scanned_hid} ({session_mgr.elapsed_verify_time:.2f}s)")
+            except Exception as e:
+                print(f"[AsyncOCR] Error reading result: {e}")
+            ocr_future = None
 
-        # ── State: EVALUATING_PPE ──
-        if session_mgr.state == SessionState.EVALUATING_PPE:
-            # Calculate strict spatial PPE attribution
+        # 5. Dispatch Parallel Tasks When in VERIFYING State
+        if session_mgr.state == SessionState.VERIFYING and session_mgr.active_bbox is not None:
+            # A. Calculate Spatial PPE Attribution for current frame
             ppe_obs = session_mgr.attribute_ppe_detections(ppe_detections)
 
-            # Try helmet OCR once during evaluation if head crop available
-            if (time.time() - last_ocr_time) > 2.0 and session_mgr.active_bbox:
-                bx1, by1, bx2, by2 = session_mgr.active_bbox
-                bh = by2 - by1
-                head_crop = frame[max(0, by1):min(frame_h, int(by1 + bh * 0.35)), max(0, bx1):min(frame_w, bx2)]
-                if head_crop.size > 0:
-                    detected_hid = extract_helmet_id_from_crop(head_crop)
-                    if detected_hid:
-                        ocr_cached_helmet = detected_hid
-                        session_mgr.finalized_helmet_id = detected_hid
-                last_ocr_time = time.time()
+            bx1, by1, bx2, by2 = session_mgr.active_bbox
+            px1, py1 = max(0, bx1), max(0, by1)
+            px2, py2 = min(frame_w, bx2), min(frame_h, by2)
 
-        # ── State: FINALIZED (Trigger backend & GPIO once) ──
-        if session_mgr.state == SessionState.FINALIZED and session_mgr.finalized_action is None:
+            # B. Dispatch Face Recognition asynchronously if identity not resolved yet
+            if session_mgr.active_worker is None and face_future is None and (time.time() - last_face_dispatch_time) > 0.25:
+                person_crop_bgr = frame[py1:py2, px1:px2]
+                if person_crop_bgr.size > 0:
+                    person_crop_rgb = cv2.cvtColor(person_crop_bgr, cv2.COLOR_BGR2RGB)
+                    face_future = face_executor.submit(async_face_recognition_task, person_crop_rgb)
+                    last_face_dispatch_time = time.time()
+
+            # C. Dispatch Helmet OCR asynchronously
+            bh = py2 - py1
+            if ocr_future is None and (time.time() - last_ocr_dispatch_time) > 0.4:
+                head_crop_bgr = frame[py1:min(frame_h, int(py1 + bh * 0.38)), px1:px2]
+                if head_crop_bgr.size > 0:
+                    ocr_future = ocr_executor.submit(async_helmet_ocr_task, head_crop_bgr)
+                    last_ocr_dispatch_time = time.time()
+
+        # 6. State: COMPLETED (Trigger backend & GPIO asynchronously once)
+        if session_mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED] and session_mgr.finalized_action is None:
             if session_mgr.active_worker is not None:
                 final_score = session_mgr.finalized_ppe_score if session_mgr.finalized_ppe_score is not None else 0
                 session_mgr.finalized_action = "DONE"
                 commit_evaluation_session(
                     worker_dict=session_mgr.active_worker,
                     final_ppe_score=final_score,
-                    scanned_helmet_id=session_mgr.finalized_helmet_id or ocr_cached_helmet
+                    scanned_helmet_id=session_mgr.finalized_helmet_id,
+                    elapsed_time=session_mgr.elapsed_verify_time
                 )
 
-        # ── Handle Violation Buzzer ──
+        # 7. Real-Time Violation Buzzer
         current_score = session_mgr.get_smoothed_ppe_score()
-        has_active_violation = (session_mgr.state == SessionState.EVALUATING_PPE and current_score is not None and current_score < 100)
+        has_active_violation = (session_mgr.state == SessionState.VERIFYING and current_score is not None and current_score < 100)
         if has_active_violation != last_buzzer_state:
             if has_active_violation:
                 Thread(target=pi.buzzer_on, daemon=True).start()
@@ -383,7 +417,7 @@ try:
             last_buzzer_state = has_active_violation
 
         # ───────────────────────────────────────────────────
-        # 5. Render Rich HUD Annotations
+        # 8. Render Rich HUD Annotations
         # ───────────────────────────────────────────────────
         annotated = frame.copy()
         gx1, gy1, gx2, gy2 = session_mgr.get_gate_roi(frame_w, frame_h)
@@ -420,18 +454,19 @@ try:
         cv2.rectangle(annotated, (0, 0), (frame_w, 48), (12, 12, 20), -1)
         cv2.line(annotated, (0, 48), (frame_w, 48), (50, 50, 70), 1)
 
-        cv2.putText(annotated, "SiteSentinel AI", (14, 30), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 107, 43), 2, cv2.LINE_AA)
+        cv2.putText(annotated, "SiteSentinel AI [Parallel]", (14, 30), cv2.FONT_HERSHEY_DUPLEX, 0.72, (255, 107, 43), 2, cv2.LINE_AA)
         
-        status_text = f"FPS: {current_fps:.1f}  |  Pi: {PI_IP} [CONNECTED]"
-        cv2.putText(annotated, status_text, (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+        status_text = f"FPS: {current_fps:.1f} | Pi: {PI_IP}"
+        cv2.putText(annotated, status_text, (230, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
 
-        # Evaluation State Badge (Top Right)
+        # State Badge (Top Right)
         state_colors = {
             SessionState.IDLE: (140, 140, 140),
             SessionState.CROWDED: (50, 50, 240),
-            SessionState.IDENTIFYING: (0, 200, 255),
-            SessionState.EVALUATING_PPE: (255, 170, 0),
-            SessionState.FINALIZED: (0, 220, 100),
+            SessionState.LOCKED: (0, 200, 255),
+            SessionState.VERIFYING: (255, 170, 0),
+            SessionState.CONFIRMING: (0, 220, 100),
+            SessionState.COMPLETED: (0, 220, 100),
             SessionState.COOLDOWN: (200, 140, 255)
         }
         st_color = state_colors.get(session_mgr.state, (200, 200, 200))
@@ -443,21 +478,21 @@ try:
         cv2.line(annotated, (0, frame_h - 75), (frame_w, frame_h - 75), (50, 50, 70), 1)
 
         # HUD Message
-        cv2.putText(annotated, session_mgr.hud_message, (16, frame_h - 45), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(annotated, session_mgr.hud_message, (16, frame_h - 45), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
 
         # Worker Details (Bottom Left)
         if session_mgr.active_worker:
             w_info = f"Worker: {session_mgr.active_worker['name']} ({session_mgr.active_worker['worker_id']})"
-            h_info = f"Helmet: {session_mgr.finalized_helmet_id or session_mgr.active_worker.get('helmet_id') or 'N/A'}"
+            h_info = f"Helmet: {session_mgr.finalized_helmet_id or session_mgr.active_worker.get('helmet_id') or 'Scanning...'}"
             cv2.putText(annotated, f"{w_info}  |  {h_info}", (16, frame_h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 212, 170), 1, cv2.LINE_AA)
 
         # PPE Score Gauge (Bottom Right)
         score_val = session_mgr.get_smoothed_ppe_score()
         if score_val is not None:
             score_color = (0, 220, 100) if score_val >= 100 else ((0, 200, 255) if score_val >= 50 else (50, 50, 240))
-            cv2.putText(annotated, f"PPE SCORE: {score_val}%", (frame_w - 220, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, score_color, 2, cv2.LINE_AA)
+            cv2.putText(annotated, f"PPE: {score_val}%", (frame_w - 200, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, score_color, 2, cv2.LINE_AA)
         else:
-            cv2.putText(annotated, "PPE SCORE: --", (frame_w - 220, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, (140, 140, 140), 1, cv2.LINE_AA)
+            cv2.putText(annotated, "PPE: --", (frame_w - 200, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, (140, 140, 140), 1, cv2.LINE_AA)
 
         # Crowding warning overlay banner
         if session_mgr.crowding_warning:
@@ -472,11 +507,13 @@ try:
 except KeyboardInterrupt:
     print("\n[SiteSentinel] Interrupted by user.")
 finally:
-    print("[SiteSentinel] Shutting down CV engine...")
+    print("[SiteSentinel] Shutting down parallel CV engine...")
     try:
         pi.buzzer_off()
     except:
         pass
+    face_executor.shutdown(wait=False)
+    ocr_executor.shutdown(wait=False)
     face_manager.stop()
     stream.close()
     cv2.destroyAllWindows()
