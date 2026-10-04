@@ -717,9 +717,9 @@
             <span class="kpi-label">Safety Compliance</span>
             <div class="kpi-icon-wrap green"><span class="material-symbols-outlined">health_and_safety</span></div>
           </div>
-          <div class="kpi-value" id="safety-compliance-pct">100%</div>
+          <div class="kpi-value" id="safety-compliance-pct" style="font-size:18px;">No worker detected</div>
           <div class="kpi-sub">PPE adherence rating</div>
-          <div class="kpi-bar-track"><div class="kpi-bar-fill green" id="safety-compliance-bar" style="width:100%"></div></div>
+          <div class="kpi-bar-track"><div class="kpi-bar-fill green" id="safety-compliance-bar" style="width:0%"></div></div>
         </div>
         <div class="kpi-card">
           <div class="kpi-header">
@@ -1170,13 +1170,26 @@
     document.getElementById('active-workers-bar').style.width = total > 0 ? `${(active.length/total)*100}%` : '0%';
 
     const safetyEl = document.getElementById('safety-compliance-pct');
+    const safetyBar = document.getElementById('safety-compliance-bar');
     if (active.length > 0) {
       const avg = active.reduce((acc, w) => acc + (parseInt(w.ppe_score) || 0), 0) / active.length;
-      safetyEl.textContent = `${avg.toFixed(1)}%`;
-      document.getElementById('safety-compliance-bar').style.width = `${avg}%`;
+      const formatted = avg % 1 === 0 ? avg : avg.toFixed(1);
+      safetyEl.textContent = `${formatted}%`;
+      safetyEl.style.fontSize = '';
+      safetyBar.style.width = `${avg}%`;
+    } else if (total > 0) {
+      const scoredWorkers = workers.filter(w => w.ppe_score !== null && w.ppe_score !== undefined);
+      const avg = scoredWorkers.length > 0 
+        ? scoredWorkers.reduce((acc, w) => acc + (parseInt(w.ppe_score) || 0), 0) / scoredWorkers.length
+        : 100;
+      const formatted = avg % 1 === 0 ? avg : avg.toFixed(1);
+      safetyEl.textContent = `${formatted}%`;
+      safetyEl.style.fontSize = '';
+      safetyBar.style.width = `${avg}%`;
     } else {
-      safetyEl.textContent = '100%';
-      document.getElementById('safety-compliance-bar').style.width = '100%';
+      safetyEl.textContent = 'No worker detected';
+      safetyEl.style.fontSize = '18px';
+      safetyBar.style.width = '0%';
     }
   }
 
