@@ -949,7 +949,7 @@ def export_csv_report():
 
     manager_id = str(session["user_id"])
     user = query_one("SELECT name FROM users WHERE id = ?", [{"type": "text", "value": manager_id}])
-    manager_name = user.get("name") if user else "Site Manager"
+    manager_name: str = str(user.get("name")) if (user and user.get("name")) else "Site Manager"
 
     from_date = request.args.get("from", "").strip()
     to_date = request.args.get("to", "").strip()
@@ -1016,7 +1016,7 @@ def export_pdf_report():
 
     manager_id = str(session["user_id"])
     user = query_one("SELECT name FROM users WHERE id = ?", [{"type": "text", "value": manager_id}])
-    manager_name = user.get("name") if user else "Site Manager"
+    manager_name: str = str(user.get("name")) if (user and user.get("name")) else "Site Manager"
 
     from_date = request.args.get("from", "").strip()
     to_date = request.args.get("to", "").strip()
