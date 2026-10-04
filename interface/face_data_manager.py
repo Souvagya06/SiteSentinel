@@ -18,6 +18,7 @@ class FaceDataManager:
 
         self._lock = threading.Lock()
         self._known_faces = []  # List of dicts: {"worker_id": str, "name": str, "embedding": np.ndarray}
+        self._embeddings_matrix = None  # np.ndarray shape (N, 128)
         self._current_version = 0
         self._last_checked: float = 0.0
         self._last_reloaded: float = 0.0
@@ -79,6 +80,7 @@ class FaceDataManager:
             version = new_version if new_version is not None else payload.get("version", self._current_version + 1)
 
             parsed_faces = []
+            embeddings_list = []
             for item in raw_faces:
                 w_id = item.get("worker_id", "")
                 w_name = f"{item.get('first_name', '')} {item.get('last_name', '')}".strip()
@@ -106,10 +108,14 @@ class FaceDataManager:
                         "status": item.get("status", "Off-Site"),
                         "embedding": emb_arr
                     })
+                    embeddings_list.append(emb_arr)
+
+            matrix = np.array(embeddings_list, dtype=np.float64) if embeddings_list else None
 
             # Atomic swap under lock
             with self._lock:
                 self._known_faces = parsed_faces
+                self._embeddings_matrix = matrix
                 self._current_version = version
                 self._last_reloaded = time.time()
                 self._last_checked = self._last_reloaded
@@ -126,29 +132,27 @@ class FaceDataManager:
         with self._lock:
             return list(self._known_faces)
 
-    def match_face(self, live_embedding, threshold: float = 0.5):
+    def match_face(self, live_embedding, threshold: float = 0.52):
         """
-        Matches a live 128-dim embedding against the snapshot.
+        Fast vectorized Euclidean distance matching against all cached worker embeddings.
         Returns: (matched: bool, worker_dict: dict or None, distance: float)
         """
-        snapshot = self.get_snapshot()
-        if not snapshot or live_embedding is None:
+        with self._lock:
+            snapshot = self._known_faces
+            matrix = self._embeddings_matrix
+
+        if matrix is None or len(snapshot) == 0 or live_embedding is None:
             return False, None, 1.0
 
         live_arr = np.array(live_embedding, dtype=np.float64)
         if live_arr.ndim != 1 or len(live_arr) != 128:
             return False, None, 1.0
 
-        best_match = None
-        best_dist = 1.0
+        # Vectorized Euclidean distance across all N cached embeddings: O(N) in C/BLAS
+        distances = np.linalg.norm(matrix - live_arr, axis=1)
+        min_idx = int(np.argmin(distances))
+        best_dist = float(distances[min_idx])
 
-        for face in snapshot:
-            dist = float(face_recognition.face_distance([face["embedding"]], live_arr)[0])
-            if dist < best_dist:
-                best_dist = dist
-                if dist < threshold:
-                    best_match = face
-
-        if best_match is not None:
-            return True, best_match, best_dist
+        if best_dist < threshold:
+            return True, snapshot[min_idx], best_dist
         return False, None, best_dist
