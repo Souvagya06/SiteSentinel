@@ -146,7 +146,7 @@ def signup():
 
 @app.route("/api/login", methods=["POST"])
 def login_api():
-    data     = request.get_json()
+    data     = request.get_json() or {}
     email    = data.get("email", "").strip().lower()
     password = data.get("password", "")
 
@@ -157,12 +157,23 @@ def login_api():
         "SELECT * FROM users WHERE email = ?",
         [{"type": "text", "value": email}]
     )
-    if not user or not bcrypt.checkpw(password.encode(), user["password"].encode()):
+    
+    if not user:
+        print(f"[Auth] Login failed: User '{email}' not found.")
+        return jsonify({"error": "Invalid email or password."}), 401
+
+    if not user.get("password"):
+        print(f"[Auth] Login failed: User '{email}' has no password set (registered via Google).")
+        return jsonify({"error": "This account was registered with Google. Please use 'Continue with Google'."}), 401
+
+    if not bcrypt.checkpw(password.encode(), user["password"].encode()):
+        print(f"[Auth] Login failed: Password mismatch for user '{email}'.")
         return jsonify({"error": "Invalid email or password."}), 401
 
     session["user_id"] = user["id"]
     session["email"]   = user["email"]
     session["login_time"] = time.time()
+    print(f"[Auth] Login successful for: {email} (ID: {user['id']})")
     return jsonify({"message": "Login successful.", "login_time": session["login_time"]}), 200
 
 @app.route("/api/logout")
