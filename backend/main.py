@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import execute, query_one, query_all
 from flask import Flask, send_from_directory, request, jsonify, session, redirect, Response
-from threading import Thread, Timer
+from threading import Thread, Timer, Lock
 import webbrowser
 import subprocess
 import bcrypt
@@ -36,6 +36,11 @@ cloudinary.config(
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
+
+# ── Shared In-Process Frame Buffer (for dashboard MJPEG stream) ──
+_latest_frame_jpeg: bytes = b""
+_frame_lock = Lock()
+_frame_updated_at: float = 0.0
 
 FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../frontend/pages")
@@ -928,11 +933,15 @@ def get_events():
 
     after_id = request.args.get("after_id", type=int)
     worker_id = request.args.get("worker_id", "")
-    limit = request.args.get("limit", default=50, type=int)
+    limit = request.args.get("limit", default=100, type=int)
 
     if after_id is not None:
         rows = query_all(
-            "SELECT * FROM safety_events WHERE manager_id = ? AND id > ? ORDER BY id ASC LIMIT ?",
+            """SELECT se.*, w.first_name, w.last_name, w.image_url 
+               FROM safety_events se
+               LEFT JOIN workers w ON (se.worker_id = w.worker_id AND se.manager_id = w.user_id)
+               WHERE se.manager_id = ? AND se.id > ? 
+               ORDER BY se.id ASC LIMIT ?""",
             [
                 {"type": "text", "value": str(manager_id)},
                 {"type": "text", "value": str(after_id)},
@@ -941,7 +950,11 @@ def get_events():
         )
     elif worker_id:
         rows = query_all(
-            "SELECT * FROM safety_events WHERE manager_id = ? AND worker_id = ? ORDER BY created_at DESC LIMIT ?",
+            """SELECT se.*, w.first_name, w.last_name, w.image_url 
+               FROM safety_events se
+               LEFT JOIN workers w ON (se.worker_id = w.worker_id AND se.manager_id = w.user_id)
+               WHERE se.manager_id = ? AND se.worker_id = ? 
+               ORDER BY se.created_at DESC LIMIT ?""",
             [
                 {"type": "text", "value": str(manager_id)},
                 {"type": "text", "value": worker_id},
@@ -950,7 +963,11 @@ def get_events():
         )
     else:
         rows = query_all(
-            "SELECT * FROM safety_events WHERE manager_id = ? ORDER BY id DESC LIMIT ?",
+            """SELECT se.*, w.first_name, w.last_name, w.image_url 
+               FROM safety_events se
+               LEFT JOIN workers w ON (se.worker_id = w.worker_id AND se.manager_id = w.user_id)
+               WHERE se.manager_id = ? 
+               ORDER BY se.id DESC LIMIT ?""",
             [
                 {"type": "text", "value": str(manager_id)},
                 {"type": "text", "value": str(limit)}
@@ -1046,6 +1063,27 @@ def worker_checkin():
     worker_update_args.append({"type": "text", "value": str(worker["id"])})
 
     execute(worker_update_sql, worker_update_args)
+
+    # Sync helmets table status to match the worker's assignment
+    effective_helmet = helmet_id or (worker.get("helmet_id") or "")
+    if event == "CHECK-IN" and effective_helmet:
+        # Mark the assigned helmet as Occupied
+        execute(
+            "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": effective_helmet},
+                {"type": "text", "value": manager_id}
+            ]
+        )
+    elif event == "CHECK-OUT" and effective_helmet:
+        # Release the helmet back to Available when worker checks out
+        execute(
+            "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": effective_helmet},
+                {"type": "text", "value": manager_id}
+            ]
+        )
 
     execute(
         """INSERT INTO attendance_log
@@ -1281,6 +1319,7 @@ def save_pi_ip():
     return jsonify({"message": "Pi IP saved successfully"})
 
 webcam_process = None
+_webcam_log_path = Path(__file__).resolve().parent.parent / "webcam_detection.log"
 
 def start_webcam_detection(user_id):
     global webcam_process
@@ -1293,14 +1332,82 @@ def start_webcam_detection(user_id):
 
     if webcam_process and webcam_process.poll() is None:
         webcam_process.kill()
+        webcam_process = None
+
+    try:
+        log_file = open(str(_webcam_log_path), "w", encoding="utf-8", buffering=1)
+    except Exception as e:
+        print(f"WARNING: Could not open log file: {e}")
+        log_file = None
+
+    # Use -u flag (unbuffered) so log writes appear immediately
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = subprocess.CREATE_NEW_CONSOLE
 
     webcam_process = subprocess.Popen(
-        [sys.executable, str(script), "--user-id", user_id],
+        [sys.executable, "-u", str(script), "--user-id", user_id],
         cwd=str(script.parent),
-        creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+        stdout=log_file,
+        stderr=log_file,
+        creationflags=creationflags
     )
-    print(f"webcam_detection.py started for user_id={user_id}")
+    print(f"webcam_detection.py started (PID {webcam_process.pid}) — log: {_webcam_log_path}")
     return True
+
+# ── Dashboard MJPEG Stream Routes ──────────────────────
+@app.route("/api/pi/frame/push", methods=["POST"])
+def push_frame():
+    """Called by webcam_detection.py to push the latest annotated JPEG frame."""
+    global _latest_frame_jpeg, _frame_updated_at
+    data = request.get_data()
+    if data:
+        with _frame_lock:
+            _latest_frame_jpeg = data
+            _frame_updated_at = time.time()
+    return '', 204
+
+def _mjpeg_generator():
+    """Yields MJPEG frames from the shared buffer for the dashboard stream."""
+    BOUNDARY = b"--frame"
+    while True:
+        with _frame_lock:
+            frame = _latest_frame_jpeg
+            updated = _frame_updated_at
+        if frame:
+            yield (
+                BOUNDARY + b"\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" +
+                frame + b"\r\n"
+            )
+        time.sleep(0.04)  # ~25 fps cap
+
+@app.route("/api/pi/stream")
+def pi_stream():
+    """MJPEG stream endpoint consumed by the dashboard <img> tag."""
+    return Response(
+        _mjpeg_generator(),
+        mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
+
+@app.route("/api/pi/test", methods=["POST"])
+def api_test_pi():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    data = request.get_json() or {}
+    ip = data.get("pi_ip", "").strip()
+    if not ip or ip in ["0", "1", "local", "webcam", "usb"]:
+        return jsonify({"ok": True, "type": "local", "message": "Local camera mode (no remote Pi required)."})
+    try:
+        start_t = time.time()
+        r = requests.get(f"http://{ip}:8080/health", timeout=2.5)
+        latency = round((time.time() - start_t) * 1000)
+        if r.ok:
+            return jsonify({"ok": True, "type": "pi", "latency_ms": latency, "message": f"Connected to Raspberry Pi ({latency}ms latency)"})
+        else:
+            return jsonify({"ok": False, "type": "pi", "message": f"Pi replied with HTTP {r.status_code}"})
+    except Exception as e:
+        return jsonify({"ok": False, "type": "pi", "message": f"Cannot connect to {ip}:8080. Make sure the Pi is running raspberry_Pi_Code.py on this Wi-Fi network."})
 
 @app.route("/api/pi/start", methods=["POST"])
 def api_start_pi():
@@ -1311,14 +1418,47 @@ def api_start_pi():
         "SELECT pi_ip FROM users WHERE id = ?",
         [{"type": "text", "value": str(session["user_id"])}]
     )
-    if not user or not user.get("pi_ip"):
-        return jsonify({"error": "Raspberry Pi IP address is not configured. Please set your Pi IP first."}), 400
+    if not user:
+        return jsonify({"error": "User not found."}), 404
 
     success = start_webcam_detection(session["user_id"])
     if not success:
         return jsonify({"error": "Failed to start webcam detection script."}), 500
 
-    return jsonify({"message": "Raspberry Pi stream and detection started.", "running": True})
+    return jsonify({"message": "Camera stream and AI safety detection started.", "running": True})
+
+@app.route("/api/pi/actuate/<action>", methods=["POST"])
+def api_pi_actuate(action):
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    user = query_one(
+        "SELECT pi_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}]
+    )
+    pi_ip = (user.get("pi_ip") if user else None) or "0"
+    
+    # Import PiController
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "interface"))
+    from pi_controller import PiController
+    controller = PiController(pi_ip)
+    
+    if action == "checkin":
+        controller.checkin()
+        return jsonify({"message": "Green LED (Check-in) command sent to Pi"})
+    elif action == "checkout":
+        controller.checkout()
+        return jsonify({"message": "Red LED (Check-out) command sent to Pi"})
+    elif action == "buzzer":
+        def _buzz():
+            controller.buzzer_on()
+            time.sleep(1.0)
+            controller.buzzer_off()
+        Thread(target=_buzz, daemon=True).start()
+        return jsonify({"message": "Buzzer test command sent"})
+    elif action == "ppe":
+        controller.show_score(100)
+        return jsonify({"message": "Matrix test command sent"})
+    return jsonify({"error": "Invalid action"}), 400
 
 @app.route("/api/pi/status", methods=["GET"])
 def api_pi_status():
@@ -1326,17 +1466,33 @@ def api_pi_status():
         return jsonify({"error": "Not logged in"}), 401
 
     is_running = webcam_process is not None and webcam_process.poll() is None
-    return jsonify({"running": is_running})
+    exit_code = webcam_process.poll() if webcam_process is not None else None
+    return jsonify({"running": is_running, "exit_code": exit_code})
+
+@app.route("/api/pi/log", methods=["GET"])
+def api_pi_log():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    try:
+        with open(str(_webcam_log_path), "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        return jsonify({"log": "".join(lines[-80:]), "exit_code": webcam_process.poll() if webcam_process else None})
+    except FileNotFoundError:
+        return jsonify({"log": "No log file yet. Start the Pi stream first.", "exit_code": None})
+    except Exception as e:
+        return jsonify({"log": str(e), "exit_code": None})
 
 @app.route("/api/pi/stop", methods=["POST"])
 def api_pi_stop():
-    global webcam_process
+    global webcam_process, _latest_frame_jpeg
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
 
     if webcam_process and webcam_process.poll() is None:
         webcam_process.kill()
         webcam_process = None
+        with _frame_lock:
+            _latest_frame_jpeg = b""
         return jsonify({"message": "Pi stream stopped.", "running": False})
     return jsonify({"message": "Pi stream is not currently running.", "running": False})
 
@@ -1347,4 +1503,4 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     if os.getenv("RENDER") is None:
         Timer(1, open_browser).start()
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True)

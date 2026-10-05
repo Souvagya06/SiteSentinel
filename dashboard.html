@@ -216,7 +216,7 @@
 
   /* ─── Live Camera & Monitoring HUD ─── */
   .monitoring-grid {
-    display: grid; grid-template-columns: 1.8fr 1fr; gap: 20px;
+    display: grid; grid-template-columns: 1.55fr 1fr; gap: 20px; align-items: stretch;
   }
 
   .cam-card {
@@ -235,8 +235,11 @@
     font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text-2);
   }
   .cam-preview-box {
-    position: relative; aspect-ratio: 16/9; background: #040408;
+    position: relative; aspect-ratio: 16/9; width: 100%; background: #000;
     display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .cam-preview-box img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
   .cam-watermark {
     text-align: center; color: var(--text-3); font-size: 13px;
@@ -420,27 +423,48 @@
 
   .alerts-body {
     padding: 14px; display: flex; flex-direction: column; gap: 10px;
-    max-height: 440px; overflow-y: auto;
+    max-height: 480px; overflow-y: auto;
   }
   .alert-item {
     padding: 12px 14px; border-radius: 10px;
     background: var(--surface-elevated); border: 1px solid var(--border);
-    display: flex; flex-direction: column; gap: 6px; transition: transform 0.2s;
+    display: flex; flex-direction: column; gap: 8px; transition: transform 0.2s, border-color 0.2s;
   }
+  .alert-item:hover { border-color: rgba(255,255,255,0.15); }
   .alert-item.violation { border-left: 3px solid var(--error); }
   .alert-item.mismatch { border-left: 3px solid var(--warning); }
   .alert-item.checkin { border-left: 3px solid var(--accent); }
   .alert-item.info { border-left: 3px solid var(--secondary); }
 
-  .alert-header { display: flex; align-items: center; justify-content: space-between; }
+  .alert-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .alert-worker-info { display: flex; align-items: center; gap: 8px; }
+  .alert-avatar {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--surface-hover);
+    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: var(--text-2); overflow: hidden; flex-shrink: 0;
+  }
+  .alert-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .alert-worker-name { font-size: 12px; font-weight: 600; color: var(--text-1); }
+  .alert-worker-id { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-3); }
+
   .alert-badge {
     display: inline-flex; align-items: center; gap: 4px;
     font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
     text-transform: uppercase;
   }
-  .alert-time { font-size: 10px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
+  .alert-time { font-size: 10px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
   .alert-desc { font-size: 12px; color: var(--text-2); line-height: 1.4; }
-  .alert-footer { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .alert-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .alert-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    padding: 2px 7px; border-radius: 4px; background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border); color: var(--text-2);
+  }
+  .alert-tag.pass { border-color: rgba(0,212,170,0.3); color: var(--accent); background: rgba(0,212,170,0.06); }
+  .alert-tag.fail { border-color: rgba(245,69,94,0.3); color: var(--error); background: rgba(245,69,94,0.06); }
+  .alert-tag.warn { border-color: rgba(255,178,56,0.3); color: var(--warning); background: rgba(255,178,56,0.06); }
+  .alert-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
   .alert-ack-btn {
     background: none; border: 1px solid var(--border); border-radius: 6px;
     padding: 3px 8px; font-size: 10px; font-family: 'JetBrains Mono', monospace;
@@ -627,7 +651,7 @@
         </button>
       </div>
 
-      <!-- Live Monitoring & Active Evaluation HUD -->
+      <!-- Live Monitoring & Site Operations Grid -->
       <div class="monitoring-grid">
         <!-- Live Stream Video / Status Card -->
         <div class="cam-card">
@@ -644,8 +668,8 @@
           <div class="cam-preview-box" id="cam-preview-container">
             <div class="cam-watermark">
               <span class="material-symbols-outlined">videocam_off</span>
-              <p>Pi Camera Stream Inactive</p>
-              <span style="font-size:11px;color:var(--text-3);">Click "Start Pi Stream" to launch AI single-worker evaluation</span>
+              <p>Camera Stream Inactive</p>
+              <span style="font-size:11px;color:var(--text-3);">Click "Start Camera Stream" in the sidebar to launch</span>
             </div>
           </div>
           <div class="cam-hud-footer">
@@ -662,41 +686,66 @@
           </div>
         </div>
 
-        <!-- Active Worker Session Card -->
-        <div class="session-card">
-          <div class="session-header">
-            <span class="session-title">Active Gate Inspection</span>
-            <span class="status-badge offsite" id="gate-lock-status">UNLOCKED</span>
+        <!-- Site Operations Card (Top Right) -->
+        <div class="panel" style="display:flex;flex-direction:column;justify-content:space-between;height:100%;">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Site Operations</div>
+              <div class="panel-title-sub">Gate controls &amp; hardware testing</div>
+            </div>
+            <span class="status-badge active" style="font-size:9px;"><span class="dot"></span>Ready</span>
           </div>
-          <div class="session-body">
-            <div class="session-row">
-              <span class="session-label">Worker Name</span>
-              <span class="session-val" id="hud-worker-name">—</span>
+          <div class="quick-actions-body" style="padding:16px 18px;display:flex;flex-direction:column;gap:10px;flex:1;justify-content:space-between;">
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <button class="qa-btn primary" onclick="document.getElementById('addWorkerModal').classList.add('open')">
+                <span class="material-symbols-outlined fill">person_add</span> Register New Worker
+              </button>
+              <button class="qa-btn accent" onclick="openHelmetsModal()">
+                <span class="material-symbols-outlined fill">construction</span> Manage Helmets
+              </button>
+              <button class="qa-btn secondary" id="pi-btn" onclick="document.getElementById('piModal').classList.add('open')">
+                <span class="material-symbols-outlined fill">memory</span> <span id="pi-btn-label">Set Raspberry Pi IP</span>
+              </button>
             </div>
-            <div class="session-row">
-              <span class="session-label">Worker ID</span>
-              <span class="session-val" id="hud-worker-id">—</span>
-            </div>
-            <div class="session-row">
-              <span class="session-label">Assigned Helmet</span>
-              <span class="session-val" id="hud-assigned-helmet">—</span>
-            </div>
-            <div class="session-row">
-              <span class="session-label">Scanned Helmet</span>
-              <span class="session-val" id="hud-scanned-helmet">—</span>
-            </div>
-            <div class="score-gauge">
-              <div style="display:flex;justify-content:space-between;font-size:11px;font-family:'JetBrains Mono',monospace;">
-                <span>PPE Compliance</span>
-                <strong id="hud-ppe-score">—</strong>
+
+            <!-- Manual Hardware Actuation Strip -->
+            <div style="padding:12px;border-radius:10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);">
+              <div style="font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:14px;color:var(--primary);">developer_board</span>
+                Manual Hardware GPIO Test
               </div>
-              <div class="gauge-bar">
-                <div class="gauge-fill" id="hud-gauge-fill" style="width:0%;background:var(--accent);"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <button class="cam-btn accent" style="justify-content:center;padding:8px;" onclick="testHardware('checkin')" title="Turn ON Green LED on GPIO 17">
+                  <span class="material-symbols-outlined" style="font-size:15px;">check_circle</span> Green LED
+                </button>
+                <button class="cam-btn primary" style="justify-content:center;padding:8px;color:#ff5555;border-color:rgba(255,85,85,0.3);background:rgba(255,85,85,0.1);" onclick="testHardware('checkout')" title="Turn ON Red LED on GPIO 27">
+                  <span class="material-symbols-outlined" style="font-size:15px;">cancel</span> Red LED
+                </button>
               </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                <button class="cam-btn" style="justify-content:center;padding:7px;border-color:var(--border);color:var(--text-2);" onclick="testHardware('buzzer')" title="Sound buzzer for 1s">
+                  <span class="material-symbols-outlined" style="font-size:14px;">volume_up</span> Buzzer
+                </button>
+                <button class="cam-btn" style="justify-content:center;padding:7px;border-color:var(--border);color:var(--text-2);" onclick="testHardware('ppe')" title="Test LED matrix">
+                  <span class="material-symbols-outlined" style="font-size:14px;">grid_view</span> LED Matrix
+                </button>
+              </div>
+              <div id="hw-test-feedback" style="margin-top:8px;font-size:11px;color:var(--accent);display:none;text-align:center;font-family:'JetBrains Mono',monospace;"></div>
             </div>
-          </div>
-          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-3);line-height:1.4;">
-            <strong style="color:var(--text-2);">Occupancy Rule:</strong> Exactly 1 worker locked in the gate zone during identification &amp; PPE attribution.
+
+            <!-- Gate Inspection Diagnostics Card -->
+            <div style="padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:11px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-outlined" style="font-size:18px;color:var(--accent);">shield_lock</span>
+                <div>
+                  <div style="font-weight:600;color:var(--text);">Gate Enforcement</div>
+                  <div style="font-size:10px;color:var(--text-3);">Single-Worker Gate Lock</div>
+                </div>
+              </div>
+              <button class="cam-btn" style="padding:5px 10px;font-size:10px;border-color:var(--border);color:var(--text-2);" onclick="triggerFaceDataReload()" title="Hot-reload biometric database">
+                <span class="material-symbols-outlined" style="font-size:13px;">sync</span> Sync
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -733,7 +782,7 @@
       </div>
 
       <!-- Main Layout: Table + Live Alerts -->
-      <div class="main-grid">
+      <div class="main-grid" style="grid-template-columns: 1.6fr 1fr; gap: 20px;">
         <!-- Worker Table -->
         <div class="panel">
           <div class="panel-header">
@@ -767,35 +816,36 @@
           </div>
         </div>
 
-        <!-- Right: Actions & Real-Time Alerts -->
-        <div class="right-col">
-          <!-- Quick Management -->
-          <div class="panel">
-            <div class="panel-header">
-              <div class="panel-title">Site Operations</div>
-            </div>
-            <div class="quick-actions-body">
-              <button class="qa-btn primary" onclick="document.getElementById('addWorkerModal').classList.add('open')">
-                <span class="material-symbols-outlined fill">person_add</span> Register New Worker
-              </button>
-              <button class="qa-btn accent" onclick="openHelmetsModal()">
-                <span class="material-symbols-outlined fill">construction</span> Manage Helmets
-              </button>
-              <button class="qa-btn secondary" id="pi-btn" onclick="document.getElementById('piModal').classList.add('open')">
-                <span class="material-symbols-outlined fill">memory</span> <span id="pi-btn-label">Set Raspberry Pi IP</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Real-Time Alerts Panel -->
-          <div class="panel">
-            <div class="panel-header">
-              <div class="panel-title">Real-Time Safety Events</div>
-              <span class="status-badge active" style="font-size:9px;"><span class="dot"></span>Live Polling</span>
+        <!-- Real-Time Alerts Panel -->
+        <div class="panel" style="display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div class="panel-header" style="flex-wrap:wrap;gap:8px;">
+              <div>
+                <div class="panel-title">Real-Time Safety Events</div>
+                <div class="panel-title-sub">Audit trail &amp; multi-worker logs</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <select id="event-worker-filter" onchange="filterEvents()" style="padding:4px 8px;font-size:11px;height:28px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:6px;color:var(--text-1);cursor:pointer;outline:none;">
+                  <option value="">All Workers</option>
+                </select>
+                <select id="event-type-filter" onchange="filterEvents()" style="padding:4px 8px;font-size:11px;height:28px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:6px;color:var(--text-1);cursor:pointer;outline:none;">
+                  <option value="">All Events</option>
+                  <option value="VIOLATION">Violations Only</option>
+                  <option value="CHECK">Check-ins/outs</option>
+                  <option value="MISMATCH">Mismatches</option>
+                </select>
+                <span class="status-badge active" style="font-size:9px;"><span class="dot"></span>Live</span>
+              </div>
             </div>
             <div class="alerts-body" id="alerts-container">
               <div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">Waiting for gate events…</div>
             </div>
+          </div>
+          <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;justify-content:center;">
+            <button class="qa-btn secondary" id="toggle-events-btn" style="width:100%;justify-content:center;display:none;padding:8px 12px;" onclick="toggleAllEvents()">
+              <span class="material-symbols-outlined" id="toggle-events-icon" style="font-size:16px;">expand_more</span>
+              <span id="toggle-events-label">View All Records</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1044,13 +1094,20 @@
       </div>
       <div class="modal-body">
         <div class="field">
-          <label class="field-label">Pi LAN IP Address</label>
-          <input class="field-input mono" id="pi-ip-input" placeholder="e.g. 192.168.1.100" type="text"/>
+          <label class="field-label">Pi LAN IP Address / Camera Source</label>
+          <input class="field-input mono" id="pi-ip-input" placeholder="e.g. 192.168.1.100 or 0 for local webcam" type="text"/>
+          <span style="font-size:11px;color:var(--text-3);margin-top:6px;display:block;">
+            💡 <strong>Tip:</strong> Enter your Raspberry Pi's IP address (e.g. <code>192.168.1.50</code>), or type <code>0</code> / <code>local</code> to run with your PC's webcam.
+          </span>
         </div>
+        <div id="pi-test-result" style="margin-top:10px;font-size:12px;display:none;padding:8px 12px;border-radius:6px;"></div>
       </div>
-      <div class="modal-footer">
-        <button class="btn-modal-cancel" onclick="document.getElementById('piModal').classList.remove('open')">Cancel</button>
-        <button class="btn-modal-primary orange" onclick="savePiIp()"><span class="material-symbols-outlined">save</span> Save IP</button>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
+        <button class="qa-btn secondary" style="font-size:12px;padding:6px 12px;" onclick="testPiConnection()"><span class="material-symbols-outlined" style="font-size:16px;">network_check</span> Test Connection</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-modal-cancel" onclick="document.getElementById('piModal').classList.remove('open')">Cancel</button>
+          <button class="btn-modal-primary orange" onclick="savePiIp()"><span class="material-symbols-outlined">save</span> Save IP</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1260,9 +1317,46 @@
   // ── Real-Time Structured Events & Alerts ──
   let lastEventId = 0;
   let allEvents = [];
+  let showAllEvents = false;
+  let selectedWorkerFilter = '';
+  let selectedTypeFilter = '';
+
+  function toggleAllEvents() {
+    showAllEvents = !showAllEvents;
+    renderAlerts(allEvents);
+  }
+
+  function filterEvents() {
+    selectedWorkerFilter = document.getElementById('event-worker-filter')?.value || '';
+    selectedTypeFilter = document.getElementById('event-type-filter')?.value || '';
+    renderAlerts(allEvents);
+  }
+
+  async function testHardware(act) {
+    const fb = document.getElementById('hw-test-feedback');
+    if (fb) {
+      fb.style.display = 'block';
+      fb.style.color = 'var(--text-2)';
+      fb.textContent = `Sending ${act} command...`;
+    }
+    try {
+      const res = await fetch(`/api/pi/actuate/${act}`, { method: 'POST' });
+      const d = await res.json();
+      if (fb) {
+        fb.style.color = res.ok ? 'var(--accent)' : 'var(--error)';
+        fb.textContent = d.message || d.error || 'Command sent';
+        setTimeout(() => { if (fb) fb.style.display = 'none'; }, 3500);
+      }
+    } catch(e) {
+      if (fb) {
+        fb.style.color = 'var(--error)';
+        fb.textContent = 'Failed to connect to backend';
+      }
+    }
+  }
 
   function pollEvents() {
-    const url = lastEventId ? `/api/events?after_id=${lastEventId}` : '/api/events?limit=25';
+    const url = lastEventId ? `/api/events?after_id=${lastEventId}` : '/api/events?limit=100';
     fetch(url)
       .then(r => r.json())
       .then(data => {
@@ -1287,28 +1381,105 @@
     document.getElementById('violations-subtext').textContent = `${unackCount} unreviewed safety event(s)`;
     document.getElementById('violations-bar').style.width = unackCount > 0 ? '100%' : '0%';
 
-    if (!events.length) {
-      container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-3);font-size:12px;">No active safety events.</div>`;
+    // Populate worker filter dropdown if needed
+    const wFilter = document.getElementById('event-worker-filter');
+    if (wFilter && cachedWorkers.length > 0 && wFilter.options.length <= 1) {
+      const currentVal = wFilter.value;
+      wFilter.innerHTML = '<option value="">All Workers</option>' + 
+        cachedWorkers.map(w => `<option value="${w.worker_id}">${w.first_name} ${w.last_name} (${w.worker_id})</option>`).join('');
+      wFilter.value = currentVal;
+    }
+
+    // Filter events
+    let filtered = events;
+    if (selectedWorkerFilter) {
+      filtered = filtered.filter(e => e.worker_id === selectedWorkerFilter);
+    }
+    if (selectedTypeFilter) {
+      filtered = filtered.filter(e => (e.event_type || '').includes(selectedTypeFilter));
+    }
+
+    const toggleBtn = document.getElementById('toggle-events-btn');
+    const toggleLabel = document.getElementById('toggle-events-label');
+    const toggleIcon = document.getElementById('toggle-events-icon');
+    
+    if (toggleBtn) {
+      if (filtered.length > 5) {
+        toggleBtn.style.display = 'flex';
+        toggleLabel.textContent = showAllEvents ? 'Show Recent Only' : `View All Records (${filtered.length})`;
+        toggleIcon.textContent = showAllEvents ? 'expand_less' : 'expand_more';
+      } else {
+        toggleBtn.style.display = 'none';
+      }
+    }
+
+    if (!filtered.length) {
+      container.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;">No safety events match selected filters.</div>`;
       return;
     }
 
-    container.innerHTML = events.slice(0, 15).map(ev => {
-      const isViol = ev.event_type.includes('VIOLATION');
-      const isMismatch = ev.event_type.includes('MISMATCH');
-      const isCheckin = ev.event_type.includes('CHECK');
+    const displayEvents = showAllEvents ? filtered : filtered.slice(0, 5);
+
+    container.innerHTML = displayEvents.map(ev => {
+      const isViol = (ev.event_type || '').includes('VIOLATION');
+      const isMismatch = (ev.event_type || '').includes('MISMATCH');
+      const isCheckin = (ev.event_type || '').includes('CHECK');
       const typeClass = isViol ? 'violation' : (isMismatch ? 'mismatch' : (isCheckin ? 'checkin' : 'info'));
-      const timeStr = ev.created_at ? ev.created_at.split(' ')[1] || ev.created_at : 'Just now';
+      
+      const timeStr = ev.created_at ? (ev.created_at.includes(' ') ? ev.created_at.split(' ')[1] : ev.created_at) : 'Just now';
+
+      // Match worker data
+      const matchedWorker = cachedWorkers.find(w => w.worker_id === ev.worker_id);
+      const firstName = ev.first_name || (matchedWorker ? matchedWorker.first_name : '');
+      const lastName = ev.last_name || (matchedWorker ? matchedWorker.last_name : '');
+      const workerName = (firstName || lastName) ? `${firstName} ${lastName}`.trim() : (ev.worker_id ? `Worker ${ev.worker_id}` : 'Site Event');
+      const workerImg = ev.image_url || (matchedWorker ? matchedWorker.image_url : '');
+      const initials = ((firstName ? firstName[0] : '') + (lastName ? lastName[0] : '')).toUpperCase();
+
+      const ppeScore = ev.ppe_score !== null && ev.ppe_score !== undefined && ev.ppe_score !== '' ? Number(ev.ppe_score) : null;
+      const helmetId = ev.helmet_id || (matchedWorker ? matchedWorker.helmet_id : '');
 
       return `<div class="alert-item ${typeClass}">
         <div class="alert-header">
-          <div class="alert-badge" style="color:${isViol ? 'var(--error)' : (isMismatch ? 'var(--warning)' : 'var(--accent)')}">
-            <span class="material-symbols-outlined" style="font-size:13px;">${isViol ? 'warning' : (isMismatch ? 'gpp_maybe' : 'verified')}</span>
-            ${ev.event_type.replace('_', ' ')}
+          <div class="alert-worker-info">
+            <div class="alert-avatar">
+              ${workerImg ? `<img src="${workerImg}" alt="${workerName}"/>` : `<span>${initials || 'SS'}</span>`}
+            </div>
+            <div>
+              <div class="alert-worker-name">${workerName}</div>
+              ${ev.worker_id ? `<div class="alert-worker-id">ID: ${ev.worker_id}</div>` : ''}
+            </div>
           </div>
-          <span class="alert-time">${timeStr}</span>
+          <div style="text-align:right;">
+            <div class="alert-badge" style="color:${isViol ? 'var(--error)' : (isMismatch ? 'var(--warning)' : (isCheckin ? 'var(--accent)' : 'var(--secondary)'))}">
+              <span class="material-symbols-outlined" style="font-size:13px;">${isViol ? 'warning' : (isMismatch ? 'gpp_maybe' : (isCheckin ? 'verified' : 'info'))}</span>
+              ${(ev.event_type || 'INFO').replace(/_/g, ' ')}
+            </div>
+            <div class="alert-time">${timeStr}</div>
+          </div>
         </div>
+
         <div class="alert-desc">${ev.message}</div>
-        ${!ev.acknowledged ? `<div class="alert-footer"><button class="alert-ack-btn" onclick="acknowledgeAlert(${ev.id})">Acknowledge</button></div>` : ''}
+
+        <div class="alert-tags">
+          ${ppeScore !== null ? `<span class="alert-tag ${ppeScore === 100 ? 'pass' : 'fail'}">
+            <span class="material-symbols-outlined" style="font-size:12px;">${ppeScore === 100 ? 'check_circle' : 'cancel'}</span>
+            PPE: ${ppeScore}%
+          </span>` : ''}
+          ${helmetId ? `<span class="alert-tag">
+            <span class="material-symbols-outlined" style="font-size:12px;">engineering</span>
+            ${helmetId}
+          </span>` : ''}
+          <span class="alert-tag">
+            <span class="material-symbols-outlined" style="font-size:12px;">videocam</span>
+            ${ev.camera_id || 'Pi Camera 01'}
+          </span>
+        </div>
+
+        <div class="alert-footer">
+          ${matchedWorker ? `<button class="alert-ack-btn" onclick="openWorkerDetailModal(${matchedWorker.id})">Worker Profile</button>` : '<div></div>'}
+          ${!ev.acknowledged ? `<button class="alert-ack-btn" onclick="acknowledgeAlert(${ev.id})">Acknowledge</button>` : '<span style="font-size:10px;color:var(--text-3);font-family:\'JetBrains Mono\',monospace;">Acknowledged</span>'}
+        </div>
       </div>`;
     }).join('');
   }
@@ -1454,19 +1625,41 @@
     const label = document.getElementById('start-pi-label');
     const badge = document.getElementById('eval-status-badge');
     const statusText = document.getElementById('eval-status-text');
+    const previewContainer = document.getElementById('cam-preview-container');
 
     if (running) {
       btn.classList.add('running');
       icon.textContent = 'sensors';
-      label.textContent = 'Pi Stream Active';
+      label.textContent = 'Stream Active (Stop)';
       badge.className = 'eval-status-badge approved';
       statusText.textContent = 'Gate Evaluation: Active';
+
+      if (previewContainer && !document.getElementById('pi-live-img')) {
+        previewContainer.innerHTML = `
+          <img id="pi-live-img" src="/api/pi/stream?t=${Date.now()}" style="width:100%;height:100%;object-fit:contain;background:#05050a;border-radius:10px;display:block;" alt="Live Gate Stream" onerror="this.style.display='none'; document.getElementById('pi-stream-placeholder').style.display='flex';" onload="this.style.display='block'; const ph=document.getElementById('pi-stream-placeholder'); if(ph) ph.style.display='none';"/>
+          <div id="pi-stream-placeholder" class="cam-watermark" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;">
+            <span class="material-symbols-outlined">hourglass_top</span>
+            <p>Receiving Stream Frames...</p>
+            <span style="font-size:11px;color:var(--text-3);">AI Safety HUD is active</span>
+          </div>
+        `;
+      }
     } else {
       btn.classList.remove('running');
       icon.textContent = 'videocam';
-      label.textContent = 'Start Pi Stream';
+      label.textContent = 'Start Camera Stream';
       badge.className = 'eval-status-badge idle';
       statusText.textContent = 'Gate Evaluation: Offline';
+
+      if (previewContainer) {
+        previewContainer.innerHTML = `
+          <div class="cam-watermark">
+            <span class="material-symbols-outlined">videocam_off</span>
+            <p>Camera Stream Inactive</p>
+            <span style="font-size:11px;color:var(--text-3);">Click "Start Camera Stream" to launch AI single-worker evaluation</span>
+          </div>
+        `;
+      }
     }
   }
 
@@ -1676,10 +1869,40 @@
   fetch('/api/pi-ip').then(r => r.json()).then(d => {
     if (d.pi_ip) {
       document.getElementById('pi-ip-input').value = d.pi_ip;
-      document.getElementById('pi-btn-label').textContent = `Pi: ${d.pi_ip}`;
-      document.getElementById('hud-pi-ip').textContent = d.pi_ip;
+      document.getElementById('pi-btn-label').textContent = d.pi_ip === '0' || d.pi_ip === 'local' ? 'Camera: Local Webcam' : `Pi: ${d.pi_ip}`;
+      document.getElementById('hud-pi-ip').textContent = d.pi_ip === '0' || d.pi_ip === 'local' ? 'Local Webcam' : d.pi_ip;
     }
   });
+
+  async function testPiConnection() {
+    const ip = document.getElementById('pi-ip-input').value.trim();
+    const resultBox = document.getElementById('pi-test-result');
+    resultBox.style.display = 'block';
+    resultBox.style.background = 'rgba(255,255,255,0.05)';
+    resultBox.style.color = 'var(--text-2)';
+    resultBox.textContent = 'Testing connection...';
+    try {
+      const res = await fetch('/api/pi/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pi_ip: ip })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        resultBox.style.background = 'rgba(0, 220, 100, 0.15)';
+        resultBox.style.color = '#00dc64';
+        resultBox.innerHTML = `✓ ${data.message}`;
+      } else {
+        resultBox.style.background = 'rgba(255, 60, 60, 0.15)';
+        resultBox.style.color = '#ff5555';
+        resultBox.innerHTML = `✕ ${data.message}`;
+      }
+    } catch(e) {
+      resultBox.style.background = 'rgba(255, 60, 60, 0.15)';
+      resultBox.style.color = '#ff5555';
+      resultBox.textContent = '✕ Error contacting backend server.';
+    }
+  }
 
   async function savePiIp() {
     const ip = document.getElementById('pi-ip-input').value.trim();
@@ -1689,8 +1912,9 @@
       body: JSON.stringify({ pi_ip: ip })
     });
     if (res.ok) {
-      document.getElementById('pi-btn-label').textContent = ip ? `Pi: ${ip}` : 'Set Raspberry Pi IP';
-      document.getElementById('hud-pi-ip').textContent = ip || 'Not set';
+      const labelText = (!ip || ip === '0' || ip === 'local') ? 'Camera: Local Webcam' : `Pi: ${ip}`;
+      document.getElementById('pi-btn-label').textContent = labelText;
+      document.getElementById('hud-pi-ip').textContent = (!ip || ip === '0' || ip === 'local') ? 'Local Webcam' : ip;
       document.getElementById('piModal').classList.remove('open');
     }
   }

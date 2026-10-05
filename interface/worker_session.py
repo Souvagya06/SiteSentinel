@@ -37,9 +37,10 @@ class WorkerSessionManager:
         self.finalized_helmet_id = ""
         self.ocr_reads = deque(maxlen=5) # Consensus buffer for OCR
         self.finalized_at: float = 0.0
+        self.worker_cooldowns = {}       # worker_id -> timestamp to avoid immediate re-triggering
 
         # UI / HUD Message & Metrics
-        self.hud_message = "Gate Ready — Waiting for worker"
+        self.hud_message = "Gate Ready | Waiting for worker"
         self.crowding_warning = False
         self.elapsed_verify_time = 0.0
 
@@ -67,7 +68,7 @@ class WorkerSessionManager:
         self.finalized_at = 0.0
         self.crowding_warning = False
         self.elapsed_verify_time = 0.0
-        self.hud_message = "Gate Ready — Waiting for worker"
+        self.hud_message = "Gate Ready | Waiting for worker"
 
     def get_gate_roi(self, frame_w: int, frame_h: int):
         """
@@ -98,7 +99,7 @@ class WorkerSessionManager:
         # ── State: IDLE ──
         if self.state == SessionState.IDLE:
             if num_in_gate == 0:
-                self.hud_message = "Gate Ready — Waiting for worker"
+                self.hud_message = "Gate Ready | Waiting for worker"
                 self.crowding_warning = False
                 return
 
@@ -215,6 +216,8 @@ class WorkerSessionManager:
         elif self.state == SessionState.CONFIRMING:
             # Immediate transition to COMPLETED (gives 1 tick for validation hooks)
             self.state = SessionState.COMPLETED
+            if self.active_worker and self.active_worker.get("worker_id"):
+                self.worker_cooldowns[self.active_worker["worker_id"]] = now
             worker_name = self.active_worker.get('name', 'Worker') if self.active_worker is not None else 'Worker'
             self.hud_message = f"Check Complete: {worker_name} | PPE: {self.finalized_ppe_score}%"
 
@@ -251,6 +254,10 @@ class WorkerSessionManager:
     def set_identified_worker(self, worker_dict: dict):
         """Thread-safe callback from Async Face Worker."""
         if self.state in [SessionState.LOCKED, SessionState.VERIFYING]:
+            wid = worker_dict.get("worker_id")
+            if wid and wid in self.worker_cooldowns and (time.time() - self.worker_cooldowns[wid]) < 10.0:
+                self.hud_message = f"Verified: {worker_dict.get('name', 'Worker')} (Active Cooldown)"
+                return
             self.active_worker = worker_dict
             if not self.finalized_helmet_id and worker_dict.get("helmet_id"):
                 # Use assigned helmet if physical OCR hasn't superseded it yet
