@@ -56,10 +56,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--user-id", required=True, help="Manager User ID")
 parser.add_argument("--camera-id", default="Pi Camera 01", help="Camera identifier")
 parser.add_argument("--imgsz", type=int, default=416, help="YOLO inference size (320 or 416)")
+parser.add_argument("--headless", action="store_true", help="Run without OpenCV display window (for dashboard streaming)")
 args = parser.parse_args()
 MANAGER_USER_ID = str(args.user_id)
 CAMERA_ID = str(args.camera_id)
 YOLO_IMGSZ = args.imgsz
+HEADLESS = args.headless
 
 print("=" * 65)
 print(f"  SiteSentinel Parallel CV Engine | Manager: {MANAGER_USER_ID} | Camera: {CAMERA_ID} | imgsz: {YOLO_IMGSZ}")
@@ -71,14 +73,11 @@ user_row = query_one(
     [{"type": "text", "value": MANAGER_USER_ID}]
 )
 
-if not user_row or not user_row.get("pi_ip"):
-    raise RuntimeError(f"No Raspberry Pi IP configured for manager {MANAGER_USER_ID}")
-
-PI_IP = user_row["pi_ip"]
-print(f"[Init] Connecting to Raspberry Pi at: {PI_IP}")
+PI_IP = (user_row.get("pi_ip") if user_row else None) or "0"
+print(f"[Init] Connecting to camera / Pi endpoint: {PI_IP}")
 
 # Initialize Subsystems
-stream = PiStream(PI_IP)
+stream = PiStream(PI_IP, fallback_to_local=True)
 pi = PiController(PI_IP)
 event_client = EventClient(BACKEND_URL, MANAGER_USER_ID)
 face_manager = FaceDataManager(BACKEND_URL, MANAGER_USER_ID, poll_interval=8.0)
@@ -121,6 +120,28 @@ current_fps = 0.0
 last_ocr_dispatch_time = 0.0
 last_face_dispatch_time = 0.0
 
+_push_session = requests.Session()
+_last_push_time = 0.0
+_PUSH_INTERVAL = 0.05  # ~20 fps max push rate
+
+def _push_frame_to_dashboard(frame_bgr):
+    """JPEG-encode the annotated frame and POST it to the Flask frame buffer."""
+    global _last_push_time
+    now = time.time()
+    if now - _last_push_time < _PUSH_INTERVAL:
+        return
+    _last_push_time = now
+    try:
+        ok, buf = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        if ok:
+            _push_session.post(
+                f"{BACKEND_URL}/api/pi/frame/push",
+                data=buf.tobytes(),
+                headers={'Content-Type': 'application/octet-stream'},
+                timeout=0.3
+            )
+    except Exception:
+        pass
 
 # ── Centroid Tracker for Worker Lock ───────────────────
 class SimpleCentroidTracker:
@@ -253,13 +274,21 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
         worker_id = worker_dict.get("worker_id", "")
         worker_name = worker_dict.get("name", worker_id)
         assigned_helmet = worker_dict.get("helmet_id", "")
-        current_status = worker_dict.get("status", "Off-Site")
 
-        print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_id}) | PPE: {final_ppe_score}% | Assigned Helmet: {assigned_helmet or 'None'} | Scanned: {scanned_helmet_id or 'None'}")
+        # Fetch latest status from database for reliable checkin/checkout transition
+        w_row = query_one(
+            "SELECT status FROM workers WHERE worker_id = ? AND user_id = ?",
+            [{"type": "text", "value": worker_id}, {"type": "text", "value": MANAGER_USER_ID}]
+        )
+        current_status = (w_row.get("status") if w_row else None) or worker_dict.get("status", "Off-Site")
 
-        # Determine attendance transition
+        # Determine attendance transition:
+        # Off-Site -> Check-in (Green LED)
+        # Active/On-Site -> Check-out (Red LED)
         new_status = "Off-Site" if current_status in ["Active", "On-Site"] else "Active"
         action_type = "Check-in" if new_status == "Active" else "Check-out"
+
+        print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_id}) | Action: {action_type} | PPE: {final_ppe_score}% | Helmet: {scanned_helmet_id or assigned_helmet or 'None'}")
 
         # Validate helmet assignment
         if assigned_helmet and scanned_helmet_id and assigned_helmet.upper() != scanned_helmet_id.upper() and worker_id != "UNKNOWN":
@@ -281,14 +310,27 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
             )
 
         # Hardware Feedback
-        if final_ppe_score >= 100 and worker_id != "UNKNOWN":
+        if worker_id != "UNKNOWN":
             if action_type == "Check-in":
+                print(f"[Hardware] 🟢 Check-in verified for {worker_name}: Triggering GREEN LED (GPIO 17)")
                 pi.checkin()
             else:
+                print(f"[Hardware] 🔴 Check-out verified for {worker_name}: Triggering RED LED (GPIO 27)")
                 pi.checkout()
+            
             pi.show_score(final_ppe_score)
+            
+            # If PPE violation, also sound warning buzzer
+            if final_ppe_score < 100:
+                print(f"[Hardware] ⚠️ PPE Violation ({final_ppe_score}%): Actuating warning buzzer")
+                def _warn_buzzer():
+                    pi.buzzer_on()
+                    time.sleep(1.2)
+                    pi.buzzer_off()
+                Thread(target=_warn_buzzer, daemon=True).start()
         else:
-            # PPE Violation or Unknown feedback
+            # Unknown person: warn with buzzer
+            print("[Hardware] ⚠️ Unknown person detected at gate: Actuating buzzer")
             pi.show_score(final_ppe_score)
             def _warn_buzzer():
                 pi.buzzer_on()
@@ -304,6 +346,13 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
 
 # ── Main Video Processing Loop ──────────────────────────
 print("\n[SiteSentinel] Starting live camera parallel processing loop. Press 'q' to exit.\n")
+
+if not HEADLESS:
+    try:
+        cv2.namedWindow("SiteSentinel - Live Gate Inspection", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("SiteSentinel - Live Gate Inspection", 960, 540)
+    except Exception as e:
+        print(f"[OpenCV Window Warning]: {e}")
 
 try:
     while True:
@@ -451,13 +500,13 @@ try:
             cv2.putText(annotated, lbl, (dx1, max(12, dy1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, d_color, 1, cv2.LINE_AA)
 
         # Top Header Bar Overlay
-        cv2.rectangle(annotated, (0, 0), (frame_w, 48), (12, 12, 20), -1)
-        cv2.line(annotated, (0, 48), (frame_w, 48), (50, 50, 70), 1)
+        cv2.rectangle(annotated, (0, 0), (frame_w, 42), (12, 12, 20), -1)
+        cv2.line(annotated, (0, 42), (frame_w, 42), (50, 50, 70), 1)
 
-        cv2.putText(annotated, "SiteSentinel AI [Parallel]", (14, 30), cv2.FONT_HERSHEY_DUPLEX, 0.72, (255, 107, 43), 2, cv2.LINE_AA)
+        cv2.putText(annotated, "SiteSentinel AI", (12, 27), cv2.FONT_HERSHEY_DUPLEX, 0.56, (255, 107, 43), 1, cv2.LINE_AA)
         
         status_text = f"FPS: {current_fps:.1f} | Pi: {PI_IP}"
-        cv2.putText(annotated, status_text, (230, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+        cv2.putText(annotated, status_text, (190, 27), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (190, 190, 190), 1, cv2.LINE_AA)
 
         # State Badge (Top Right)
         state_colors = {
@@ -471,38 +520,43 @@ try:
         }
         st_color = state_colors.get(session_mgr.state, (200, 200, 200))
         st_label = f"[{session_mgr.state}]"
-        cv2.putText(annotated, st_label, (frame_w - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.52, st_color, 2, cv2.LINE_AA)
+        cv2.putText(annotated, st_label, (frame_w - 140, 27), cv2.FONT_HERSHEY_DUPLEX, 0.50, st_color, 1, cv2.LINE_AA)
 
         # Bottom Information Card Overlay
-        cv2.rectangle(annotated, (0, frame_h - 75), (frame_w, frame_h), (12, 12, 20), -1)
-        cv2.line(annotated, (0, frame_h - 75), (frame_w, frame_h - 75), (50, 50, 70), 1)
+        cv2.rectangle(annotated, (0, frame_h - 70), (frame_w, frame_h), (12, 12, 20), -1)
+        cv2.line(annotated, (0, frame_h - 70), (frame_w, frame_h - 70), (50, 50, 70), 1)
 
         # HUD Message
-        cv2.putText(annotated, session_mgr.hud_message, (16, frame_h - 45), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
+        clean_msg = session_mgr.hud_message.replace("—", "|").replace("•", "|")
+        cv2.putText(annotated, clean_msg, (14, frame_h - 44), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255, 255, 255), 1, cv2.LINE_AA)
 
         # Worker Details (Bottom Left)
         if session_mgr.active_worker:
             w_info = f"Worker: {session_mgr.active_worker['name']} ({session_mgr.active_worker['worker_id']})"
             h_info = f"Helmet: {session_mgr.finalized_helmet_id or session_mgr.active_worker.get('helmet_id') or 'Scanning...'}"
-            cv2.putText(annotated, f"{w_info}  |  {h_info}", (16, frame_h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 212, 170), 1, cv2.LINE_AA)
+            cv2.putText(annotated, f"{w_info}  |  {h_info}", (14, frame_h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 212, 170), 1, cv2.LINE_AA)
 
         # PPE Score Gauge (Bottom Right)
         score_val = session_mgr.get_smoothed_ppe_score()
         if score_val is not None:
             score_color = (0, 220, 100) if score_val >= 100 else ((0, 200, 255) if score_val >= 50 else (50, 50, 240))
-            cv2.putText(annotated, f"PPE: {score_val}%", (frame_w - 200, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, score_color, 2, cv2.LINE_AA)
+            cv2.putText(annotated, f"PPE: {score_val}%", (frame_w - 170, frame_h - 26), cv2.FONT_HERSHEY_DUPLEX, 0.65, score_color, 2, cv2.LINE_AA)
         else:
-            cv2.putText(annotated, "PPE: --", (frame_w - 200, frame_h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.7, (140, 140, 140), 1, cv2.LINE_AA)
+            cv2.putText(annotated, "PPE: --", (frame_w - 170, frame_h - 26), cv2.FONT_HERSHEY_DUPLEX, 0.65, (140, 140, 140), 1, cv2.LINE_AA)
 
         # Crowding warning overlay banner
         if session_mgr.crowding_warning:
-            cv2.rectangle(annotated, (gx1, 60), (gx2, 100), (0, 0, 180), -1)
-            cv2.putText(annotated, "! CROWDING: ONE WORKER AT A TIME !", (gx1 + 20, 88), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.rectangle(annotated, (gx1, 50), (gx2, 90), (0, 0, 180), -1)
+            cv2.putText(annotated, "! CROWDING: ONE WORKER AT A TIME !", (gx1 + 15, 78), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # Display window
-        cv2.imshow("SiteSentinel — Live Gate Inspection", annotated)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # Always push annotated frame to the dashboard MJPEG stream
+        _push_frame_to_dashboard(annotated)
+
+        # Also show OpenCV window for local monitoring (press q to quit)
+        if not HEADLESS:
+            cv2.imshow("SiteSentinel - Live Gate Inspection", annotated)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
 except KeyboardInterrupt:
     print("\n[SiteSentinel] Interrupted by user.")
