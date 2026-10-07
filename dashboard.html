@@ -13,6 +13,7 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
+    color-scheme: dark;
     --bg: #080810;
     --surface: rgba(255,255,255,0.03);
     --surface-hover: rgba(255,255,255,0.06);
@@ -33,6 +34,7 @@
     --error-glow: rgba(255,71,87,0.28);
     --error-dim: rgba(255,71,87,0.12);
     --text: #f0f0f8;
+    --text-1: #f0f0f8;
     --text-2: #a0a0b8;
     --text-3: #5a5a72;
     --radius: 14px;
@@ -509,14 +511,50 @@
   .modal-body { padding: 22px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field-label { font-size: 11px; font-weight: 600; color: var(--text-2); text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+  select {
+    color-scheme: dark;
+  }
+  select option {
+    background-color: #12121e;
+    color: #f0f0f8;
+  }
+  .filter-select {
+    padding: 4px 10px;
+    font-size: 11px;
+    height: 28px;
+    background-color: #141424;
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    outline: none;
+    font-family: 'Inter', sans-serif;
+    color-scheme: dark;
+    transition: border-color 0.2s, background-color 0.2s;
+  }
+  .filter-select:hover, .filter-select:focus {
+    border-color: var(--primary);
+    background-color: #1b1b2f;
+  }
+  .filter-select option {
+    background-color: #12121e;
+    color: #f0f0f8;
+    padding: 6px 10px;
+  }
   .field-input, .field-select {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 9px; padding: 10px 14px; font-size: 13px; color: var(--text);
     outline: none; transition: border-color 0.2s; font-family: 'Inter', sans-serif;
+    color-scheme: dark;
   }
   .field-input:focus, .field-select:focus { border-color: var(--primary); }
   .field-input.mono { font-family: 'JetBrains Mono', monospace; }
-  .field-select { background: #0c0c16; }
+  .field-select { background: #141424; }
+  .field-select option {
+    background-color: #12121e;
+    color: #f0f0f8;
+    padding: 8px 12px;
+  }
 
   .modal-footer {
     padding: 16px 24px; border-top: 1px solid var(--border);
@@ -825,10 +863,10 @@
                 <div class="panel-title-sub">Audit trail &amp; multi-worker logs</div>
               </div>
               <div style="display:flex;align-items:center;gap:6px;">
-                <select id="event-worker-filter" onchange="filterEvents()" style="padding:4px 8px;font-size:11px;height:28px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:6px;color:var(--text-1);cursor:pointer;outline:none;">
+                <select id="event-worker-filter" class="filter-select" onchange="filterEvents()">
                   <option value="">All Workers</option>
                 </select>
-                <select id="event-type-filter" onchange="filterEvents()" style="padding:4px 8px;font-size:11px;height:28px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:6px;color:var(--text-1);cursor:pointer;outline:none;">
+                <select id="event-type-filter" class="filter-select" onchange="filterEvents()">
                   <option value="">All Events</option>
                   <option value="VIOLATION">Violations Only</option>
                   <option value="CHECK">Check-ins/outs</option>
