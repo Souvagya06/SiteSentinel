@@ -57,6 +57,7 @@ parser.add_argument("--user-id", required=True, help="Manager User ID")
 parser.add_argument("--camera-id", default="Pi Camera 01", help="Camera identifier")
 parser.add_argument("--imgsz", type=int, default=416, help="YOLO inference size (320 or 416)")
 parser.add_argument("--headless", action="store_true", help="Run without OpenCV display window (for dashboard streaming)")
+parser.add_argument("--pi-ip", default=None, help="Explicit Raspberry Pi IP address override")
 args = parser.parse_args()
 MANAGER_USER_ID = str(args.user_id)
 CAMERA_ID = str(args.camera_id)
@@ -68,12 +69,15 @@ print(f"  SiteSentinel Parallel CV Engine | Manager: {MANAGER_USER_ID} | Camera:
 print("=" * 65)
 
 # ── Verify Raspberry Pi Configuration ───────────────────
-user_row = query_one(
-    "SELECT pi_ip FROM users WHERE id = ?",
-    [{"type": "text", "value": MANAGER_USER_ID}]
-)
+if args.pi_ip:
+    PI_IP = str(args.pi_ip).strip()
+else:
+    user_row = query_one(
+        "SELECT pi_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": MANAGER_USER_ID}]
+    )
+    PI_IP = (user_row.get("pi_ip") if user_row else None) or "0"
 
-PI_IP = (user_row.get("pi_ip") if user_row else None) or "0"
 print(f"[Init] Connecting to camera / Pi endpoint: {PI_IP}")
 
 # Initialize Subsystems
@@ -370,100 +374,117 @@ try:
             fps_counter = 0
             fps_start_time = time.time()
 
-        # 1. Run YOLO PPE Detection & Person Detection with optimized imgsz
-        results = model(frame, imgsz=YOLO_IMGSZ, conf=0.45, verbose=False)[0]
+        # ── Physical Button Gating ─────────────────────────
+        button_active = pi.is_button_pressed()
         
-        person_rects = []
-        ppe_detections = []
+        # If in completed/confirming state, allow session feedback to display
+        in_completion_state = session_mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED, SessionState.COOLDOWN]
 
-        for box in results.boxes:
-            cls_id = int(box.cls[0])
-            label = model.names[cls_id]
-            conf = float(box.conf[0])
-            x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+        if not button_active and not in_completion_state:
+            # Button is released -> Pause AI inference and remain in IDLE mode
+            if session_mgr.state in [SessionState.VERIFYING, SessionState.LOCKED, SessionState.CROWDED]:
+                print("[Session] Button released before verification complete -> Reset to IDLE")
+                session_mgr.reset_to_idle()
+            
+            session_mgr.hud_message = "Gate Ready | Press & Hold Button to Verify"
+            tracked_persons = []
+            ppe_detections = []
+        else:
+            # Button is actively PRESSED or finalizing transaction -> Run full parallel AI pipeline
+            # 1. Run YOLO PPE Detection & Person Detection with optimized imgsz
+            results = model(frame, imgsz=YOLO_IMGSZ, conf=0.45, verbose=False)[0]
+            
+            person_rects = []
+            ppe_detections = []
 
-            if label == "Person":
-                person_rects.append([x1, y1, x2, y2])
-            else:
-                ppe_detections.append({
-                    "label": label,
-                    "bbox": [x1, y1, x2, y2],
-                    "conf": conf
-                })
+            for box in results.boxes:
+                cls_id = int(box.cls[0])
+                label = model.names[cls_id]
+                conf = float(box.conf[0])
+                x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
 
-        # 2. Update Person Tracking
-        tracked_persons = tracker.update(person_rects)
+                if label == "Person":
+                    person_rects.append([x1, y1, x2, y2])
+                else:
+                    ppe_detections.append({
+                        "label": label,
+                        "bbox": [x1, y1, x2, y2],
+                        "conf": conf
+                    })
 
-        # 3. Update Single-Worker Evaluation State Machine
-        session_mgr.update_frame(tracked_persons, frame_w, frame_h)
+            # 2. Update Person Tracking
+            tracked_persons = tracker.update(person_rects)
 
-        # 4. Check Background Worker Results (Non-Blocking)
-        if face_future is not None and face_future.done():
-            try:
-                matched_worker = face_future.result()
-                if matched_worker:
-                    session_mgr.set_identified_worker(matched_worker)
-                    print(f"[Face Matched (Async)] {matched_worker['name']} ({session_mgr.elapsed_verify_time:.2f}s)")
-            except Exception as e:
-                print(f"[AsyncFace] Error reading result: {e}")
-            face_future = None
+            # 3. Update Single-Worker Evaluation State Machine
+            session_mgr.update_frame(tracked_persons, frame_w, frame_h)
 
-        if ocr_future is not None and ocr_future.done():
-            try:
-                scanned_hid = ocr_future.result()
-                if scanned_hid:
-                    session_mgr.record_ocr_reading(scanned_hid)
-                    print(f"[Helmet OCR (Async)] Detected: {scanned_hid} ({session_mgr.elapsed_verify_time:.2f}s)")
-            except Exception as e:
-                print(f"[AsyncOCR] Error reading result: {e}")
-            ocr_future = None
+            # 4. Check Background Worker Results (Non-Blocking)
+            if face_future is not None and face_future.done():
+                try:
+                    matched_worker = face_future.result()
+                    if matched_worker:
+                        session_mgr.set_identified_worker(matched_worker)
+                        print(f"[Face Matched (Async)] {matched_worker['name']} ({session_mgr.elapsed_verify_time:.2f}s)")
+                except Exception as e:
+                    print(f"[AsyncFace] Error reading result: {e}")
+                face_future = None
 
-        # 5. Dispatch Parallel Tasks When in VERIFYING State
-        if session_mgr.state == SessionState.VERIFYING and session_mgr.active_bbox is not None:
-            # A. Calculate Spatial PPE Attribution for current frame
-            ppe_obs = session_mgr.attribute_ppe_detections(ppe_detections)
+            if ocr_future is not None and ocr_future.done():
+                try:
+                    scanned_hid = ocr_future.result()
+                    if scanned_hid:
+                        session_mgr.record_ocr_reading(scanned_hid)
+                        print(f"[Helmet OCR (Async)] Detected: {scanned_hid} ({session_mgr.elapsed_verify_time:.2f}s)")
+                except Exception as e:
+                    print(f"[AsyncOCR] Error reading result: {e}")
+                ocr_future = None
 
-            bx1, by1, bx2, by2 = session_mgr.active_bbox
-            px1, py1 = max(0, bx1), max(0, by1)
-            px2, py2 = min(frame_w, bx2), min(frame_h, by2)
+            # 5. Dispatch Parallel Tasks When in VERIFYING State
+            if session_mgr.state == SessionState.VERIFYING and session_mgr.active_bbox is not None:
+                # A. Calculate Spatial PPE Attribution for current frame
+                ppe_obs = session_mgr.attribute_ppe_detections(ppe_detections)
 
-            # B. Dispatch Face Recognition asynchronously if identity not resolved yet
-            if session_mgr.active_worker is None and face_future is None and (time.time() - last_face_dispatch_time) > 0.25:
-                person_crop_bgr = frame[py1:py2, px1:px2]
-                if person_crop_bgr.size > 0:
-                    person_crop_rgb = cv2.cvtColor(person_crop_bgr, cv2.COLOR_BGR2RGB)
-                    face_future = face_executor.submit(async_face_recognition_task, person_crop_rgb)
-                    last_face_dispatch_time = time.time()
+                bx1, by1, bx2, by2 = session_mgr.active_bbox
+                px1, py1 = max(0, bx1), max(0, by1)
+                px2, py2 = min(frame_w, bx2), min(frame_h, by2)
 
-            # C. Dispatch Helmet OCR asynchronously
-            bh = py2 - py1
-            if ocr_future is None and (time.time() - last_ocr_dispatch_time) > 0.4:
-                head_crop_bgr = frame[py1:min(frame_h, int(py1 + bh * 0.38)), px1:px2]
-                if head_crop_bgr.size > 0:
-                    ocr_future = ocr_executor.submit(async_helmet_ocr_task, head_crop_bgr)
-                    last_ocr_dispatch_time = time.time()
+                # B. Dispatch Face Recognition asynchronously if identity not resolved yet
+                if session_mgr.active_worker is None and face_future is None and (time.time() - last_face_dispatch_time) > 0.25:
+                    person_crop_bgr = frame[py1:py2, px1:px2]
+                    if person_crop_bgr.size > 0:
+                        person_crop_rgb = cv2.cvtColor(person_crop_bgr, cv2.COLOR_BGR2RGB)
+                        face_future = face_executor.submit(async_face_recognition_task, person_crop_rgb)
+                        last_face_dispatch_time = time.time()
 
-        # 6. State: COMPLETED (Trigger backend & GPIO asynchronously once)
-        if session_mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED] and session_mgr.finalized_action is None:
-            if session_mgr.active_worker is not None:
-                final_score = session_mgr.finalized_ppe_score if session_mgr.finalized_ppe_score is not None else 0
-                session_mgr.finalized_action = "DONE"
-                commit_evaluation_session(
-                    worker_dict=session_mgr.active_worker,
-                    final_ppe_score=final_score,
-                    scanned_helmet_id=session_mgr.finalized_helmet_id,
-                    elapsed_time=session_mgr.elapsed_verify_time
-                )
+                # C. Dispatch Helmet OCR asynchronously
+                bh = py2 - py1
+                if ocr_future is None and (time.time() - last_ocr_dispatch_time) > 0.4:
+                    head_crop_bgr = frame[py1:min(frame_h, int(py1 + bh * 0.38)), px1:px2]
+                    if head_crop_bgr.size > 0:
+                        ocr_future = ocr_executor.submit(async_helmet_ocr_task, head_crop_bgr)
+                        last_ocr_dispatch_time = time.time()
 
-        # 7. Real-Time Violation Buzzer
-        current_score = session_mgr.get_smoothed_ppe_score()
-        has_active_violation = (session_mgr.state == SessionState.VERIFYING and current_score is not None and current_score < 100)
-        if has_active_violation != last_buzzer_state:
-            if has_active_violation:
-                Thread(target=pi.buzzer_on, daemon=True).start()
-            else:
-                Thread(target=pi.buzzer_off, daemon=True).start()
-            last_buzzer_state = has_active_violation
+            # 6. State: COMPLETED (Trigger backend & GPIO asynchronously once)
+            if session_mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED] and session_mgr.finalized_action is None:
+                if session_mgr.active_worker is not None:
+                    final_score = session_mgr.finalized_ppe_score if session_mgr.finalized_ppe_score is not None else 0
+                    session_mgr.finalized_action = "DONE"
+                    commit_evaluation_session(
+                        worker_dict=session_mgr.active_worker,
+                        final_ppe_score=final_score,
+                        scanned_helmet_id=session_mgr.finalized_helmet_id,
+                        elapsed_time=session_mgr.elapsed_verify_time
+                    )
+
+            # 7. Real-Time Violation Buzzer
+            current_score = session_mgr.get_smoothed_ppe_score()
+            has_active_violation = (session_mgr.state == SessionState.VERIFYING and current_score is not None and current_score < 100)
+            if has_active_violation != last_buzzer_state:
+                if has_active_violation:
+                    Thread(target=pi.buzzer_on, daemon=True).start()
+                else:
+                    Thread(target=pi.buzzer_off, daemon=True).start()
+                last_buzzer_state = has_active_violation
 
         # ───────────────────────────────────────────────────
         # 8. Render Rich HUD Annotations
