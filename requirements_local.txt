@@ -25,3 +25,6 @@ matplotlib==3.10.3
 seaborn==0.13.2
 scipy==1.17.1
 reportlab>=4.0.0
+
+# Presentation generation (build_presentation.py)
+python-pptx==1.0.2

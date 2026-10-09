@@ -226,26 +226,6 @@
   }
   .hero-card-wrap:hover .hero-img { opacity: 0.65; transform: scale(1.02); }
 
-  /* bounding boxes */
-  .bb {
-    position: absolute; border-radius: 6px;
-    border: 1.5px dashed; animation: bbPulse 3s ease-in-out infinite;
-  }
-  .bb-ok { top: 25%; left: 15%; width: 110px; height: 170px; border-color: var(--accent); }
-  .bb-err { top: 45%; right: 25%; width: 85px; height: 130px; border-color: var(--error); }
-  .bb-label {
-    position: absolute; top: -1px; right: -1px;
-    font-size: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
-    padding: 2px 6px; border-radius: 0 6px 0 4px;
-    letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap;
-  }
-  .bb-ok .bb-label { background: var(--accent); color: #002a22; }
-  .bb-err .bb-label { background: var(--error); color: white; }
-  @keyframes bbPulse {
-    0%, 100% { opacity: 0.85; }
-    50%       { opacity: 1; }
-  }
-
   /* stats overlay */
   .hero-stats-overlay {
     position: absolute; bottom: 16px; left: 16px; right: 16px;
@@ -413,8 +393,9 @@
     .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
   }
 </style>
+<link rel="stylesheet" href="/assets/site-theme.css"/>
 </head>
-<body>
+<body class="landing-page">
 
 <!-- Background layers -->
 <div class="mesh-bg"></div>
@@ -450,14 +431,14 @@
     <div class="hero-text">
       <div class="hero-badge fade-up">
         <span class="badge-dot"></span>
-        <span class="badge-text">v2.4 &nbsp;·&nbsp; Deployed Globally</span>
+        <span class="badge-text">Working prototype &nbsp;·&nbsp; In development</span>
       </div>
       <h1 class="hero-title fade-up">
         AI-Powered Construction<br/>
         Site <span class="highlight">Safety Monitoring</span>
       </h1>
       <p class="hero-desc fade-up">
-        Monitor PPE compliance, worker attendance, safety violations, and site risks in real-time using advanced Computer Vision and IoT integration. Achieve zero-incident sites with predictive analytics.
+        Explore a practical prototype that connects camera-based PPE checks, worker attendance, a site dashboard, and optional Raspberry Pi alerts.
       </p>
       <div class="hero-ctas fade-up">
         <a class="btn-primary" href="/login" id="hero-getstarted-btn">
@@ -469,12 +450,8 @@
         </button>
       </div>
       <div class="hero-social-proof fade-up">
-        <div class="hero-avatars">
-          <img alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDonJfIEE0zBhTJW9lsZtqRdtYSA3t_ftyjc1_DJXS7t8zQavArxoy0ZzL3nZlQge-5eiPkMOwlPhBOh4dh93VX7arq3-k4uFiQQUHpr5Q1PoYHIFyOFnBlCSuii_E9IF9_jbL_PykKJDr613tQ_SNfcA5UaUApzyScQsQar1CiBUVV8kVd-kivtP-E67H9MUIjSugHrtP1D7sy-MjuTzZgS7I8VVkU58DvGdIFkgcrC9IJAb9d8Z3UMQ-ZmaE1ZY5bAwVKwKGGgeo"/>
-          <img alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2b5JCcwdxDyMakZ6E2YstQ_RMZjnadWilhnbVv4SsIyOBZjLyspA6LO6XqsNrKkFK70XmWNMnvXQBdAbYEI1-7Og3b2bS7IoUwE_d5743HzMPESRtaIasKmt1SI1xuxPfIYoXuNDQWvxwGMOzFahWzsLtrp5lAticC2BMIkqlP7x2zxy1tZbXJf6zQe5K1eNwDcxYNf5GEEfYi-9JyDt3SehvMkzs1FIPSp4_1I8D3Q78cyAe5X8FYU72FwUzOMDkcu1c9ugTW4w"/>
-          <img alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDB-iuDnZHx-ufR4eraywl9ySAAiFKh3a2D_NCn_Fq12SNSin42dgSXFlt3jZdBNNPHYapybKrU1aPkF-onQ62Noz-VohYk2yM3npMQG-r3I79gMPJRu8_-e-0Ayzmjzc2MDdRUruNwuenxKuVMAv4o_LHLXQTP0G9uDBGGNBUwngf4clu9A53e5cjUlqMHfz8ck3Kmrr_BvH1PsrWZigc84sG80tx71o_JB-XLSAbJISBIDYnE8246fIx-z_5Bozf1kiqxONtCTkI"/>
-        </div>
-        <p class="hero-proof-text">Trusted by <strong>500+</strong> site managers globally.</p>
+        <div class="prototype-mark"><span class="material-symbols-outlined">precision_manufacturing</span></div>
+        <p class="hero-proof-text"><strong>Built as a working student prototype</strong><br/>Computer vision meets a Raspberry Pi gate device.</p>
       </div>
     </div>
 
@@ -485,28 +462,21 @@
         <div class="corner-accent ca-tr"></div>
         <div class="corner-accent ca-bl"></div>
         <div class="corner-accent ca-br"></div>
-        <img alt="AI-monitored construction site with real-time tracking overlays" class="hero-img"
-          src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQYO27I8unP3DKZLIOlvhDU2nI9sWC1MJr_m-DqmmyoszZ-RH0i4-M5SBCtaq4QmjWqUl1i4Mis2vqFIJVHGD84LX9TXMOiFXyNKwZQ6H3gBb-6J3qBqNrZDbHHFnUt039Q87cJrbAYN-pWTMiUXDUPOBZRKtRsKkqoG_9PpsovVg4DCOqA7PtByeAXMruTSrIpxcPHysa7yeqEAmmMwmEY3UZd5FHM5XybIW25szN6uAymkGWZ60f9r36N5HHXIZIwu1hnKZFUcA"/>
-        <!-- Bounding boxes -->
-        <div class="bb bb-ok">
-          <span class="bb-label">PPE: OK 98%</span>
-        </div>
-        <div class="bb bb-err">
-          <span class="bb-label">No Helmet</span>
-        </div>
+        <img alt="Illustrative construction site safety scene" class="hero-img"
+          src="/assets/sitesentinel-cover.png"/>
         <!-- Stats overlay -->
         <div class="hero-stats-overlay">
           <div>
-            <div class="live-dot"><span class="dot"></span><span class="txt">Live</span></div>
-            <div class="stat-label">Feed Alpha</div>
+            <div class="live-dot"><span class="dot"></span><span class="txt">Prototype</span></div>
+            <div class="stat-label">Camera + AI</div>
           </div>
           <div>
-            <div class="stat-label">Active Workers</div>
-            <div class="stat-value orange">142</div>
+            <div class="stat-label">PPE Classes</div>
+            <div class="stat-value orange">10</div>
           </div>
           <div>
-            <div class="stat-label">Safety Score</div>
-            <div class="stat-value green">94%</div>
+            <div class="stat-label">Gate Feedback</div>
+            <div class="stat-value green">Pi</div>
           </div>
         </div>
       </div>
@@ -517,20 +487,20 @@
   <div class="stats-bar">
     <div class="stats-bar-inner">
       <div class="stat-block">
-        <div class="stat-block-num">500<span>+</span></div>
-        <div class="stat-block-label">Site Managers Worldwide</div>
+        <div class="stat-block-num">10</div>
+        <div class="stat-block-label">PPE detection classes</div>
       </div>
       <div class="stat-block">
-        <div class="stat-block-num">99.9<span>%</span></div>
-        <div class="stat-block-label">System Uptime SLA</div>
+        <div class="stat-block-num">AI</div>
+        <div class="stat-block-label">YOLOv8 PPE detection</div>
       </div>
       <div class="stat-block">
-        <div class="stat-block-num">12.4<span>k</span></div>
-        <div class="stat-block-label">Hazards Prevented</div>
+        <div class="stat-block-num">IN / OUT</div>
+        <div class="stat-block-label">Worker attendance records</div>
       </div>
       <div class="stat-block">
-        <div class="stat-block-num">&lt;50<span>ms</span></div>
-        <div class="stat-block-label">Real-time Alert Latency</div>
+        <div class="stat-block-num">Pi</div>
+        <div class="stat-block-label">Camera and gate feedback</div>
       </div>
     </div>
   </div>
@@ -538,50 +508,50 @@
   <!-- Features Section -->
   <section class="features-section">
     <p class="section-eyebrow">Core Platform</p>
-    <h2 class="section-title">Everything your site needs to stay safe</h2>
-    <p class="section-desc">Comprehensive AI-driven monitoring for modern construction sites, from PPE compliance to real-time attendance logging.</p>
+    <h2 class="section-title">One practical workflow for the site gate</h2>
+    <p class="section-desc">A working project prototype for camera-based PPE detection, worker records, and on-site feedback.</p>
     <div class="features-grid">
       <div class="feature-card">
         <div class="feature-icon">
           <span class="material-symbols-outlined">videocam</span>
         </div>
         <h3 class="feature-title">Real-time Computer Vision</h3>
-        <p class="feature-desc">Advanced AI detects PPE violations, unauthorized entries, and safety hazards across all camera feeds simultaneously.</p>
+        <p class="feature-desc">YOLOv8 checks people and selected PPE classes, including hardhats, safety vests, and masks.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon teal">
           <span class="material-symbols-outlined">face</span>
         </div>
         <h3 class="feature-title">Biometric Attendance</h3>
-        <p class="feature-desc">Facial recognition-based check-in and check-out with helmet OCR verification for accurate, tamper-proof records.</p>
+        <p class="feature-desc">Face matching supports worker check-in and check-out, with attendance events recorded in the system.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">
           <span class="material-symbols-outlined">analytics</span>
         </div>
-        <h3 class="feature-title">Predictive Analytics</h3>
-        <p class="feature-desc">Spot safety trends before incidents happen. Generate compliance reports with a single click for audit readiness.</p>
+        <h3 class="feature-title">Site Manager Dashboard</h3>
+        <p class="feature-desc">Review worker status, attendance history, and logged safety events from one dashboard.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon teal">
           <span class="material-symbols-outlined">memory</span>
         </div>
         <h3 class="feature-title">IoT Edge Integration</h3>
-        <p class="feature-desc">Seamlessly connect Raspberry Pi and ESP32-CAM devices for distributed, low-latency site monitoring at scale.</p>
+        <p class="feature-desc">A Raspberry Pi provides the camera stream and can trigger local LED, matrix, and buzzer feedback.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">
           <span class="material-symbols-outlined">construction</span>
         </div>
         <h3 class="feature-title">Smart Helmet Tracking</h3>
-        <p class="feature-desc">Each helmet is registered and tracked via OCR. Know which worker is wearing which helmet in real-time.</p>
+        <p class="feature-desc">Register helmet IDs and associate inventory with worker records for gate-side tracking.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon teal">
           <span class="material-symbols-outlined">notifications_active</span>
         </div>
         <h3 class="feature-title">Instant Violation Alerts</h3>
-        <p class="feature-desc">Managers receive immediate alerts on PPE non-compliance, restricted zone breaches, and unsafe behaviors.</p>
+        <p class="feature-desc">Logged safety events and PPE results are available for supervisor review in the dashboard.</p>
       </div>
     </div>
   </section>
@@ -591,7 +561,7 @@
 <footer>
   <div>
     <div class="footer-logo">Site<span>Sentinel</span></div>
-    <div class="footer-copy">© 2024 SiteSentinel. Industrial Safety Redefined.</div>
+    <div class="footer-copy">SiteSentinel · Student project prototype</div>
   </div>
   <nav class="footer-links">
     <a class="footer-link" href="#">Privacy Policy</a>
