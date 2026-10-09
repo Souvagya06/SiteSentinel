@@ -1,38 +1,46 @@
 #!/usr/bin/env python3
 """
 SiteSentinel — Raspberry Pi Camera + GPIO Server
-Streams MJPEG video and handles LED/buzzer/matrix via HTTP.
+Handles:
+- MJPEG video streaming from Pi Camera
+- Push-and-Hold physical verification button (GPIO 22 with internal pull-up)
+- Verification state tracking (IDLE, ACTIVE, COMPLETED)
+- Independent LED indicators (Green: Check-in, Red: Check-out)
+- Independent Safety Buzzer (GPIO 18)
+- MAX7219 8x8 LED Matrix PPE score display (SPI0)
+- JSON Status and Control REST API
+
 Run this ONLY on the Raspberry Pi.
 """
 
 import io
 import time
+import json
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
-import socket
 
-# ── GPIO ──────────────────────────────────────────────
+# ── GPIO Initialization ───────────────────────────────
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
-    print("WARNING: RPi.GPIO not available")
+    print("WARNING: RPi.GPIO not available (Running in simulation mode)")
 
-# ── Pi Camera ─────────────────────────────────────────
+# ── Pi Camera Initialization ──────────────────────────
 try:
     from picamera2 import Picamera2
     from picamera2.encoders import JpegEncoder
     from picamera2.outputs import FileOutput
     PICAMERA_AVAILABLE = True
-except ImportError:
+except Exception as e:
     PICAMERA_AVAILABLE = False
-    print("ERROR: picamera2 not available")
-    exit(1)
+    print(f"ERROR: picamera2 not available ({e})")
 
-# ── LED Matrix ────────────────────────────────────────
+# ── LED Matrix Initialization ─────────────────────────
 try:
     from luma.led_matrix.device import max7219
     from luma.core.interface.serial import spi, noop
@@ -41,23 +49,41 @@ try:
     from luma.core.legacy.font import proportional, CP437_FONT
     MATRIX_AVAILABLE = True
     print("LED Matrix library loaded")
-except ImportError:
+except Exception as e:
     MATRIX_AVAILABLE = False
-    print("WARNING: luma.led_matrix not available — matrix disabled")
+    print(f"WARNING: luma.led_matrix not available ({e}) — matrix disabled")
 
-# ── GPIO Pin config ───────────────────────────────────
-GREEN_PIN  = 17
-RED_PIN    = 27
-BUZZER_PIN = 18
+# ── GPIO Pin Configuration ────────────────────────────
+GREEN_PIN  = 17   # Check-in LED (Physical Pin 11)
+RED_PIN    = 27   # Check-out LED (Physical Pin 13)
+BUZZER_PIN = 18   # Safety Buzzer (Physical Pin 12)
+BUTTON_PIN = 22   # Verification Push Button (Physical Pin 15, GND Pin 14)
+
+# ── Global Hardware & Verification State ──────────────
+gpio_lock          = threading.Lock()
+button_pressed     = False
+verification_state = "IDLE"  # "IDLE", "ACTIVE", "COMPLETED"
+press_start_time   = 0.0
+last_state_change  = time.time()
+server_start_time  = time.time()
+
+green_off_at       = 0.0
+red_off_at         = 0.0
+matrix_off_at      = 0.0
+buzzer_state       = False
 
 if GPIO_AVAILABLE:
     GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
     GPIO.setup(GREEN_PIN,  GPIO.OUT, initial=GPIO.LOW)
     GPIO.setup(RED_PIN,    GPIO.OUT, initial=GPIO.LOW)
     GPIO.setup(BUZZER_PIN, GPIO.OUT, initial=GPIO.LOW)
-    print(f"GPIO initialized — Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}")
+    # Button wired between GPIO 22 and GND -> Internal Pull-Up Resistor
+    # Pressed = LOW (0), Released = HIGH (1)
+    GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    print(f"GPIO initialized — Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}, Button={BUTTON_PIN}")
 
-# ── LED Matrix init ───────────────────────────────────
+# ── MAX7219 Hardware Device Setup ─────────────────────
 matrix_device = None
 if MATRIX_AVAILABLE:
     try:
@@ -72,34 +98,105 @@ if MATRIX_AVAILABLE:
         print(f"Matrix init failed: {e}")
         matrix_device = None
 
-# ── Non-blocking timers ───────────────────────────────
-green_off_at  = 0
-red_off_at    = 0
-matrix_off_at = 0
-gpio_lock     = threading.Lock()
+# ── Button Debounce & State Monitor Loop ──────────────
+def button_monitor_loop():
+    """
+    Dedicated background thread to monitor physical button.
+    Uses multi-sample consensus debounce to eliminate electrical jitter/floating noise.
+    """
+    global button_pressed, verification_state, press_start_time, last_state_change
 
-def gpio_timer():
-    global green_off_at, red_off_at, matrix_off_at
+    stable_state = 1  # 1 = HIGH (Released), 0 = LOW (Pressed)
+    sample_history = [1] * 5
+
+    while True:
+        if GPIO_AVAILABLE:
+            try:
+                raw = GPIO.input(BUTTON_PIN)
+            except Exception:
+                raw = 1
+        else:
+            raw = 1  # Simulated unpressed
+
+        sample_history.pop(0)
+        sample_history.append(raw)
+
+        # Require all 5 consecutive samples (over 50ms) to agree
+        if all(s == 0 for s in sample_history):
+            new_state = 0  # Solid LOW (Pressed)
+        elif all(s == 1 for s in sample_history):
+            new_state = 1  # Solid HIGH (Released)
+        else:
+            new_state = stable_state  # Transitioning / noisy jitter
+
+        now = time.time()
+        if new_state != stable_state:
+            stable_state = new_state
+            with gpio_lock:
+                if stable_state == 0:
+                    # Button is PRESSED
+                    button_pressed = True
+                    press_start_time = now
+                    last_state_change = now
+                    if verification_state != "ACTIVE":
+                        verification_state = "ACTIVE"
+                        print("[Button] -> PRESSED: Verification state changed to ACTIVE")
+                else:
+                    # Button is RELEASED
+                    button_pressed = False
+                    press_start_time = 0.0
+                    last_state_change = now
+                    if verification_state == "ACTIVE":
+                        verification_state = "IDLE"
+                        print("[Button] -> RELEASED: Verification cancelled, return to IDLE")
+                    else:
+                        print("[Button] -> RELEASED")
+
+        time.sleep(0.01)
+
+threading.Thread(target=button_monitor_loop, daemon=True).start()
+
+# ── Non-blocking GPIO Timers & Auto-Reset ─────────────
+def gpio_timer_loop():
+    """
+    Handles automatic timeout turn-off for Green LED, Red LED, matrix,
+    and returns verification state to IDLE after transaction feedback ends.
+    """
+    global green_off_at, red_off_at, matrix_off_at, verification_state
     while True:
         now = time.time()
         with gpio_lock:
+            # Green LED Timeout
             if green_off_at and now > green_off_at:
-                if GPIO_AVAILABLE: GPIO.output(GREEN_PIN, GPIO.LOW)
-                green_off_at = 0
+                if GPIO_AVAILABLE:
+                    GPIO.output(GREEN_PIN, GPIO.LOW)
+                green_off_at = 0.0
+                if verification_state == "COMPLETED" and not button_pressed:
+                    verification_state = "IDLE"
+                    print("[Timer] Check-in feedback complete -> Verification state reset to IDLE")
 
+            # Red LED Timeout
             if red_off_at and now > red_off_at:
-                if GPIO_AVAILABLE: GPIO.output(RED_PIN, GPIO.LOW)
-                red_off_at = 0
+                if GPIO_AVAILABLE:
+                    GPIO.output(RED_PIN, GPIO.LOW)
+                red_off_at = 0.0
+                if verification_state == "COMPLETED" and not button_pressed:
+                    verification_state = "IDLE"
+                    print("[Timer] Check-out feedback complete -> Verification state reset to IDLE")
 
+            # Matrix Display Timeout
             if matrix_off_at and now > matrix_off_at:
                 if matrix_device:
-                    matrix_device.clear()
-                matrix_off_at = 0
+                    try:
+                        matrix_device.clear()
+                    except Exception:
+                        pass
+                matrix_off_at = 0.0
         time.sleep(0.05)
 
-threading.Thread(target=gpio_timer, daemon=True).start()
+threading.Thread(target=gpio_timer_loop, daemon=True).start()
 
-# ── Camera streaming output ───────────────────────────
+# ── Camera Streaming Output Setup ─────────────────────
 class StreamOutput(io.BufferedIOBase):
     def __init__(self):
         self.frame     = None
@@ -111,124 +208,193 @@ class StreamOutput(io.BufferedIOBase):
             self.condition.notify_all()
 
 output = StreamOutput()
-picam2 = Picamera2()
-config = picam2.create_video_configuration(
-    main={"size": (640, 480), "format": "RGB888"},
-    controls={"FrameRate": 30}
-)
-picam2.configure(config)
-picam2.start_recording(JpegEncoder(), FileOutput(output))
-print("Pi Camera started (640x480 @ 30fps)")
+picam2 = None
+
+if PICAMERA_AVAILABLE:
+    try:
+        picam2 = Picamera2()
+        config = picam2.create_video_configuration(
+            main={"size": (640, 480), "format": "RGB888"},
+            controls={"FrameRate": 30}
+        )
+        picam2.configure(config)
+        picam2.start_recording(JpegEncoder(), FileOutput(output))
+        print("Pi Camera started (640x480 @ 30fps)")
+    except Exception as e:
+        print(f"Error starting Pi Camera: {e}")
+        picam2 = None
+else:
+    print("WARNING: Pi Camera not started because picamera2 library is unavailable.")
 
 # ── HTTP Handler ──────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        pass  # suppress logs
+        pass  # suppress normal request logs to keep terminal clean
 
     def do_GET(self):
+        global green_off_at, red_off_at, matrix_off_at, buzzer_state, verification_state
+
         parsed = urlparse(self.path)
         path   = parsed.path
         params = parse_qs(parsed.query)
 
-        # ── MJPEG stream ──────────────────────────────
+        # ── MJPEG Video Stream ─────────────────────────
         if path == "/stream":
             self.send_response(200)
             self.send_header("Age", "0")
             self.send_header("Cache-Control", "no-cache, private")
             self.send_header("Pragma", "no-cache")
-            self.send_header("Content-Type",
-                "multipart/x-mixed-replace; boundary=FRAME")
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=FRAME")
             self.end_headers()
             try:
                 while True:
                     with output.condition:
                         output.condition.wait()
                         frame = output.frame
-                    self.wfile.write(b"--FRAME\r\n")
-                    self.send_header("Content-Type",   "image/jpeg")
-                    self.send_header("Content-Length", len(frame))
-                    self.end_headers()
-                    self.wfile.write(frame)
-                    self.wfile.write(b"\r\n")
-            except:
+                    if frame is not None:
+                        self.wfile.write(b"--FRAME\r\n")
+                        self.send_header("Content-Type",   "image/jpeg")
+                        self.send_header("Content-Length", len(frame))
+                        self.end_headers()
+                        self.wfile.write(frame)
+                        self.wfile.write(b"\r\n")
+            except Exception:
                 pass
 
-        # ── Green LED — check-in ──────────────────────
+        # ── Status & Button Endpoint ──────────────────
+        elif path in ["/status", "/button"]:
+            now = time.time()
+            with gpio_lock:
+                status_payload = {
+                    "button_pressed": button_pressed,
+                    "state": verification_state,
+                    "press_duration": round(now - press_start_time, 2) if button_pressed else 0.0,
+                    "green": bool(green_off_at > now),
+                    "red": bool(red_off_at > now),
+                    "buzzer": buzzer_state,
+                    "uptime": round(now - server_start_time, 1)
+                }
+            self._json(status_payload)
+
+        # ── State Override / Acknowledgment ───────────
+        elif path == "/state":
+            set_state = params.get("set", [""])[0].upper()
+            with gpio_lock:
+                if set_state in ["IDLE", "ACTIVE", "COMPLETED"]:
+                    verification_state = set_state
+                    print(f"[API] Verification state explicitly set to: {verification_state}")
+                    self._json({"status": "ok", "state": verification_state})
+                else:
+                    self._json({"status": "error", "message": "Invalid state. Use IDLE, ACTIVE, or COMPLETED"}, status=400)
+
+        # ── Reset Endpoint ────────────────────────────
+        elif path == "/reset":
+            with gpio_lock:
+                verification_state = "IDLE"
+                green_off_at = 0.0
+                red_off_at = 0.0
+                buzzer_state = False
+                if GPIO_AVAILABLE:
+                    GPIO.output(GREEN_PIN,  GPIO.LOW)
+                    GPIO.output(RED_PIN,    GPIO.LOW)
+                    GPIO.output(BUZZER_PIN, GPIO.LOW)
+                if matrix_device:
+                    try:
+                        matrix_device.clear()
+                    except Exception:
+                        pass
+            print("[API] Hardware and Verification State RESET")
+            self._ok("RESET OK")
+
+        # ── Green LED — Check-in ──────────────────────
         elif path == "/checkin":
-            global green_off_at
             with gpio_lock:
                 if GPIO_AVAILABLE:
                     GPIO.output(GREEN_PIN, GPIO.HIGH)
                     GPIO.output(RED_PIN,   GPIO.LOW)
-                green_off_at = time.time() + 3
+                green_off_at = time.time() + 3.0
+                verification_state = "COMPLETED"
+            print("[API] 🟢 Check-in granted -> GREEN LED ON for 3s")
             self._ok("Green ON")
 
-        # ── Red LED — check-out ───────────────────────
+        # ── Red LED — Check-out ───────────────────────
         elif path == "/checkout":
-            global red_off_at
             with gpio_lock:
                 if GPIO_AVAILABLE:
                     GPIO.output(RED_PIN,   GPIO.HIGH)
                     GPIO.output(GREEN_PIN, GPIO.LOW)
-                red_off_at = time.time() + 3
+                red_off_at = time.time() + 3.0
+                verification_state = "COMPLETED"
+            print("[API] 🔴 Check-out confirmed -> RED LED ON for 3s")
             self._ok("Red ON")
 
-        # ── Buzzer ON ─────────────────────────────────
+        # ── Buzzer ON (Independent) ───────────────────
         elif path == "/on":
-            if GPIO_AVAILABLE:
-                GPIO.output(BUZZER_PIN, GPIO.HIGH)
+            with gpio_lock:
+                buzzer_state = True
+                if GPIO_AVAILABLE:
+                    GPIO.output(BUZZER_PIN, GPIO.HIGH)
+            print("[API] 🔊 BUZZER ON")
             self._ok("Buzzer ON")
 
-        # ── Buzzer OFF ────────────────────────────────
+        # ── Buzzer OFF (Independent) ──────────────────
         elif path == "/off":
-            if GPIO_AVAILABLE:
-                GPIO.output(BUZZER_PIN, GPIO.LOW)
+            with gpio_lock:
+                buzzer_state = False
+                if GPIO_AVAILABLE:
+                    GPIO.output(BUZZER_PIN, GPIO.LOW)
+            print("[API] 🔇 BUZZER OFF")
             self._ok("Buzzer OFF")
 
-        # ── LED Matrix — PPE score ─────────────────────
+        # ── LED Matrix — PPE score ────────────────────
         elif path == "/ppe":
             try:
                 score = int(params.get("score", ["0"])[0])
-            except:
+            except Exception:
                 score = 0
-            if matrix_device:
+            if matrix_device and MATRIX_AVAILABLE:
                 try:
-                    brightness = 200 if score == 100 else 200 if score == 50 else 200
+                    brightness = 200
                     matrix_device.contrast(brightness)
-                    #Scorll the score text accross the matrix
+                    
                     def scroll_score(s):
+                        global matrix_off_at
                         msg = f"PPE:{s} "
-                        show_until = time.time() + 4
-                        #Each character is ~6px wide, scroll accross 8px display
+                        show_until = time.time() + 4.0
                         max_pos = len(msg) * 8
                         pos = 8
                         while time.time() < show_until:
                             with canvas(matrix_device) as draw:
                                 text(draw, (pos, 0), msg,
-                                    fill="White",
-                                    font =proportional(CP437_FONT))
+                                     fill="White",
+                                     font=proportional(CP437_FONT))
                             pos -= 1
                             if pos < -max_pos:
                                 pos = 8
                             time.sleep(0.08)
                         matrix_device.clear()
+
                     threading.Thread(
                         target=scroll_score,
                         args=(score,),
                         daemon=True
                     ).start()
-                    print (f"Matrixscrolling: {score}")
+                    print(f"[API] 📊 Matrix scrolling PPE score: {score}")
                 except Exception as e:
-                    print (f"Matrix draw error: {e}")
+                    print(f"[API] Matrix draw error: {e}")
             else:
-                print (f"Matrix not available - score={score}")
+                print(f"[API] Matrix not available — score={score}")
             self._ok(f"Score {score}")
-
 
         # ── Health check ──────────────────────────────
         elif path == "/health":
-            self._ok("SiteSentinel Pi OK")
+            self._json({
+                "status": "online",
+                "service": "SiteSentinel Pi Server",
+                "button_pressed": button_pressed,
+                "state": verification_state
+            })
 
         else:
             self.send_response(404)
@@ -237,43 +403,67 @@ class Handler(BaseHTTPRequestHandler):
     def _ok(self, msg="OK"):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         try:
             self.wfile.write(msg.encode())
-        except:
+        except Exception:
+            pass
+
+    def _json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        try:
+            self.wfile.write(json.dumps(data).encode())
+        except Exception:
             pass
 
 # ── Multi-threaded server ─────────────────────────────
 class ThreadedServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
-# ── Start ─────────────────────────────────────────────
+# ── Main Entrypoint ───────────────────────────────────
 PORT     = 8080
 server   = ThreadedServer(("0.0.0.0", PORT), Handler)
 hostname = socket.gethostname()
 try:
     local_ip = socket.gethostbyname(hostname)
-except:
+except Exception:
     local_ip = "check with: hostname -I"
 
-print(f"\n{'='*50}")
-print(f"SiteSentinel Pi Server")
-print(f"Stream  → http://{local_ip}:{PORT}/stream")
-print(f"Health  → http://{local_ip}:{PORT}/health")
-print(f"GPIO    → /checkin /checkout /on /off /ppe?score=N")
-print(f"{'='*50}\n")
+print(f"\n{'='*55}")
+print(f"  SiteSentinel Pi Server — Push & Hold Ready")
+print(f"  Stream   -> http://{local_ip}:{PORT}/stream")
+print(f"  Health   -> http://{local_ip}:{PORT}/health")
+print(f"  Status   -> http://{local_ip}:{PORT}/status (or /button)")
+print(f"  State    -> http://{local_ip}:{PORT}/state?set=IDLE|ACTIVE|COMPLETED")
+print(f"  GPIO     -> /checkin /checkout /on /off /ppe?score=N /reset")
+print(f"  Pins     -> Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}, Button={BUTTON_PIN}")
+print(f"{'='*55}\n")
 
 try:
     server.serve_forever()
 except KeyboardInterrupt:
-    print("\nStopping...")
+    print("\nStopping Pi server...")
 finally:
-    picam2.stop_recording()
+    if picam2:
+        try:
+            picam2.stop_recording()
+        except Exception:
+            pass
     if GPIO_AVAILABLE:
-        GPIO.output(GREEN_PIN,  GPIO.LOW)
-        GPIO.output(RED_PIN,    GPIO.LOW)
-        GPIO.output(BUZZER_PIN, GPIO.LOW)
-        GPIO.cleanup()
+        try:
+            GPIO.output(GREEN_PIN,  GPIO.LOW)
+            GPIO.output(RED_PIN,    GPIO.LOW)
+            GPIO.output(BUZZER_PIN, GPIO.LOW)
+            GPIO.cleanup()
+        except Exception:
+            pass
     if matrix_device:
-        matrix_device.clear()
-    print("Stopped")
+        try:
+            matrix_device.clear()
+        except Exception:
+            pass
+    print("SiteSentinel Pi Server Stopped safely.")

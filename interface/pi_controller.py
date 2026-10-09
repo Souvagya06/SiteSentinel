@@ -1,7 +1,7 @@
 """
-PiController — sends HTTP commands to the Raspberry Pi GPIO server.
+PiController — sends HTTP commands and queries button/verification state from the Raspberry Pi.
 Controls Check-in Green LED, Check-out Red LED, Safety Buzzer, and 8x8 LED Matrix.
-All calls are non-blocking with clear console diagnostics.
+All calls are non-blocking with real-time status polling.
 """
 import requests
 import threading
@@ -14,7 +14,55 @@ class PiController:
         self.port = port
         self.is_simulated = self.raw_ip in ["", "0", "1", "local", "webcam", "usb"] or self.raw_ip.isdigit()
         self.base = f"http://{self.raw_ip}:{self.port}" if not self.is_simulated else "simulated"
+        
+        self._button_pressed = False
+        self._verification_state = "IDLE"
+        self._last_poll_time = 0.0
+        self._lock = threading.Lock()
+        self._stop = False
+        
         print(f"[PiController] Controller initialized: {'Simulated GPIO' if self.is_simulated else self.base}")
+
+        if not self.is_simulated:
+            self._session = requests.Session()
+            self._poller_thread = threading.Thread(target=self._status_poller, daemon=True)
+            self._poller_thread.start()
+
+    def _status_poller(self):
+        """Continuously polls Raspberry Pi /status endpoint at ~15Hz for zero-latency button response."""
+        while not self._stop:
+            try:
+                r = self._session.get(f"{self.base}/status", timeout=0.8)
+                if r.status_code == 200:
+                    data = r.json()
+                    with self._lock:
+                        self._button_pressed = bool(data.get("button_pressed", False))
+                        self._verification_state = str(data.get("state", "IDLE"))
+                        self._last_poll_time = time.time()
+            except Exception:
+                pass
+            time.sleep(0.06)
+
+    def is_button_pressed(self) -> bool:
+        """Returns True if physical push button is currently held down."""
+        if self.is_simulated:
+            return True  # Always active in simulation mode
+        with self._lock:
+            # If we haven't received a poll update in 2.5s, assume released
+            if time.time() - self._last_poll_time > 2.5:
+                return False
+            return self._button_pressed
+
+    def get_verification_state(self) -> str:
+        """Returns current verification state ('IDLE', 'ACTIVE', 'COMPLETED')."""
+        if self.is_simulated:
+            return "ACTIVE"
+        with self._lock:
+            return self._verification_state
+
+    def set_state(self, state: str):
+        """Notifies Pi of state changes."""
+        self._fire("/state", params={"set": state})
 
     def _get(self, endpoint: str, params: dict | None = None):
         """Internal: non-blocking HTTP GET to Pi."""
@@ -79,3 +127,6 @@ class PiController:
             return r.ok
         except:
             return False
+
+    def close(self):
+        self._stop = True
