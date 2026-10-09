@@ -45,6 +45,11 @@ _frame_updated_at: float = 0.0
 FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../frontend/pages")
 )
+ASSET_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets"))
+
+@app.route("/assets/<path:filename>")
+def frontend_asset(filename):
+    return send_from_directory(ASSET_DIR, filename)
 
 def bump_face_data_version(user_id):
     """Increments the face_data_version for the user so live CV processes hot-reload embeddings."""

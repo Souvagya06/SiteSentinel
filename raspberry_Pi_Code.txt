@@ -134,7 +134,7 @@ def button_monitor_loop():
             stable_state = new_state
             with gpio_lock:
                 if stable_state == 0:
-                    # Button is PRESSED
+                    # Button is PRESSED#
                     button_pressed = True
                     press_start_time = now
                     last_state_change = now
