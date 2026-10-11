@@ -156,3 +156,19 @@ class FaceDataManager:
         if best_dist < threshold:
             return True, snapshot[min_idx], best_dist
         return False, None, best_dist
+
+    def get_worker_by_helmet_id(self, helmet_id: str):
+        """Looks up worker by assigned helmet ID (normalizing alphanumeric characters)."""
+        if not helmet_id:
+            return None
+        import re
+        hid_clean = re.sub(r'[^A-Za-z0-9]', '', str(helmet_id)).upper()
+        if not hid_clean:
+            return None
+        with self._lock:
+            for item in self._known_faces:
+                stored = re.sub(r'[^A-Za-z0-9]', '', str(item.get("helmet_id", ""))).upper()
+                if stored and stored == hid_clean:
+                    return dict(item)
+        return None
+

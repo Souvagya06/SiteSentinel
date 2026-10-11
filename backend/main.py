@@ -443,7 +443,7 @@ def add_worker():
 
     if helmet_id:
         execute(
-            "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+            "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
             [
                 {"type": "text", "value": helmet_id},
                 {"type": "text", "value": str(session["user_id"])}
@@ -723,9 +723,12 @@ def update_worker_helmet(worker_id):
     )
 
     if new_hid:
+        worker_status = worker.get("status", "Off-Site")
+        target_status = "Occupied" if worker_status in ["Active", "On-Site"] else "Available"
         execute(
-            "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+            "UPDATE helmets SET status = ? WHERE helmet_id = ? AND user_id = ?",
             [
+                {"type": "text", "value": target_status},
                 {"type": "text", "value": new_hid},
                 {"type": "text", "value": str(session["user_id"])}
             ]
@@ -820,9 +823,12 @@ def assign_helmet():
         if not current_owner or current_owner.get("worker_id") != worker_id:
             return jsonify({"error": "Helmet already occupied"}), 409
 
+    w_status = worker.get("status", "Off-Site")
+    target_status = "Occupied" if w_status in ["Active", "On-Site"] else "Available"
     execute(
-        "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+        "UPDATE helmets SET status = ? WHERE helmet_id = ? AND user_id = ?",
         [
+            {"type": "text", "value": target_status},
             {"type": "text", "value": helmet_id},
             {"type": "text", "value": str(worker["user_id"])}
         ]
@@ -1023,14 +1029,21 @@ def worker_checkin():
     if not worker_id:
         return jsonify({"error": "worker_id required"}), 400
 
-    worker = query_one(
-        "SELECT * FROM workers WHERE worker_id = ? AND (user_id = ? OR ? IS NULL)",
-        [
-            {"type": "text", "value": worker_id},
-            {"type": "text", "value": str(user_id_req) if user_id_req else ""},
-            {"type": "text", "value": str(user_id_req) if user_id_req else None}
-        ]
-    )
+    if user_id_req:
+        worker = query_one(
+            "SELECT * FROM workers WHERE worker_id = ? AND user_id = ?",
+            [
+                {"type": "text", "value": worker_id},
+                {"type": "text", "value": str(user_id_req)}
+            ]
+        )
+    else:
+        worker = query_one(
+            "SELECT * FROM workers WHERE worker_id = ?",
+            [
+                {"type": "text", "value": worker_id}
+            ]
+        )
     if not worker:
         return jsonify({"error": f"Worker {worker_id} not found."}), 404
 
@@ -1068,7 +1081,7 @@ def worker_checkin():
         worker_update_sql = "UPDATE workers SET checkout_time = ?, ppe_score = ?, status = ?"
         worker_update_args = [
             {"type": "text", "value": time_str},
-            {"type": "text", "value": str(ppe_score)},
+            {"type": "text", "value": "0"},
             {"type": "text", "value": new_status},
         ]
 
@@ -1119,9 +1132,9 @@ def worker_checkin():
 
     # Automatically generate structured safety event
     worker_full_name = f"{worker.get('first_name', '')} {worker.get('last_name', '')}".strip()
-    if ppe_score < 100:
+    if event == "CHECK-IN" and ppe_score < 100:
         event_type = "PPE_VIOLATION"
-        msg = f"{worker_full_name} ({worker_id}) {event.lower()} with non-compliant PPE score {ppe_score}%"
+        msg = f"{worker_full_name} ({worker_id}) check-in with non-compliant PPE score {ppe_score}%"
     else:
         event_type = "CHECK_IN" if event == "CHECK-IN" else "CHECK_OUT"
         msg = f"{worker_full_name} ({worker_id}) completed {event.lower()} · PPE: {ppe_score}%"

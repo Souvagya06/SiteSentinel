@@ -1275,15 +1275,6 @@
       safetyEl.textContent = `${formatted}%`;
       safetyEl.style.fontSize = '';
       safetyBar.style.width = `${avg}%`;
-    } else if (total > 0) {
-      const scoredWorkers = workers.filter(w => w.ppe_score !== null && w.ppe_score !== undefined);
-      const avg = scoredWorkers.length > 0 
-        ? scoredWorkers.reduce((acc, w) => acc + (parseInt(w.ppe_score) || 0), 0) / scoredWorkers.length
-        : 100;
-      const formatted = avg % 1 === 0 ? avg : avg.toFixed(1);
-      safetyEl.textContent = `${formatted}%`;
-      safetyEl.style.fontSize = '';
-      safetyBar.style.width = `${avg}%`;
     } else {
       safetyEl.textContent = 'No worker detected';
       safetyEl.style.fontSize = '18px';
@@ -1299,9 +1290,9 @@
     }
 
     tbody.innerHTML = workers.map(w => {
-      const score = w.ppe_score !== null && w.ppe_score !== undefined ? parseInt(w.ppe_score) : 0;
-      const scoreClass = score >= 80 ? 'high' : (score >= 50 ? 'mid' : 'low');
       const isActive = w.status === 'Active';
+      const score = isActive && w.ppe_score !== null && w.ppe_score !== undefined ? parseInt(w.ppe_score) : 0;
+      const scoreClass = score >= 80 ? 'high' : (score >= 50 ? 'mid' : 'low');
       const avatarHtml = w.image_url ? `<img src="${w.image_url}" alt="${w.first_name}"/>` : `${(w.first_name[0]||'')+(w.last_name[0]||'')}`;
 
       return `<tr>
@@ -1328,7 +1319,7 @@
           </div>
         </td>
         <td>
-          ${w.helmet_id ? `<span class="helmet-badge ${isActive ? 'scanned' : 'assigned'}"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.helmet_id}</span>` : `<span style="color:var(--text-3);">—</span>`}
+          ${isActive && w.helmet_id ? `<span class="helmet-badge scanned"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.helmet_id}</span>` : `<span style="color:var(--text-3);" title="${w.helmet_id ? 'Assigned: ' + w.helmet_id + ' (Not currently occupied)' : ''}">—</span>`}
         </td>
         <td>
           <div class="action-group">

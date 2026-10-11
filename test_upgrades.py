@@ -44,7 +44,18 @@ def test_worker_session():
     for _ in range(3):
         mgr.attribute_ppe_detections(ppe_dets)
         mgr.update_frame([p1], 640, 480)
-        
+
+    # Since Souvagya is assigned helmet H001 and Hardhat is detected, state remains VERIFYING until helmet is cross-checked
+    assert mgr.state == SessionState.VERIFYING, f"Expected VERIFYING while waiting for helmet crosscheck, got {mgr.state}"
+    assert not mgr.helmet_crosscheck_passed
+
+    # 6. Simulate Helmet ID OCR/QR read matching assigned H001
+    mgr.record_ocr_reading("H001")
+    assert mgr.helmet_crosscheck_passed, "Expected helmet crosscheck to pass"
+    assert mgr.finalized_helmet_id == "H001"
+
+    # Frame update now proceeds to CONFIRMING / COMPLETED
+    mgr.update_frame([p1], 640, 480)
     assert mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED], f"Expected CONFIRMING or COMPLETED, got {mgr.state}"
     assert mgr.finalized_ppe_score == 100, f"Expected score 100, got {mgr.finalized_ppe_score}"
     print("[PASS] WorkerSessionManager test passed!")

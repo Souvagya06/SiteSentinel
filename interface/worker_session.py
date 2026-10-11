@@ -35,6 +35,9 @@ class WorkerSessionManager:
         self.finalized_ppe_score = None  # None, 0, 50, or 100
         self.finalized_action = None     # 'DONE' once dispatched
         self.finalized_helmet_id = ""
+        self.scanned_helmet_id = ""
+        self.helmet_crosscheck_passed = False
+        self.helmet_mismatch = False
         self.ocr_reads = deque(maxlen=5) # Consensus buffer for OCR
         self.finalized_at: float = 0.0
         self.worker_cooldowns = {}       # worker_id -> timestamp to avoid immediate re-triggering
@@ -65,6 +68,9 @@ class WorkerSessionManager:
         self.finalized_ppe_score = None
         self.finalized_action = None
         self.finalized_helmet_id = ""
+        self.scanned_helmet_id = ""
+        self.helmet_crosscheck_passed = False
+        self.helmet_mismatch = False
         self.finalized_at = 0.0
         self.crowding_warning = False
         self.elapsed_verify_time = 0.0
@@ -172,30 +178,69 @@ class WorkerSessionManager:
 
         # ── State: VERIFYING (Parallel Checks) ──
         if self.state == SessionState.VERIFYING:
-            # Check for fast convergence:
-            # 1. Face identified
-            # 2. PPE buffer has sufficient stable observations (>= 3 frames with consistent majority)
             has_identity = self.active_worker is not None
             ppe_ready = self._check_ppe_convergence()
+            has_hardhat = any(obs.get("has_hardhat_det", False) or obs.get("hardhat", False) for obs in self.ppe_observations)
 
-            # Dynamic message update
+            # Worker metadata
             if self.active_worker is not None:
                 id_str = f"ID: {self.active_worker.get('name', 'Worker')}"
+                assigned_hid = str(self.active_worker.get("helmet_id", "") or "").strip()
             else:
                 id_str = "ID: Scanning..."
+                assigned_hid = ""
 
             ppe_cur = self.get_smoothed_ppe_score()
             ppe_str = f"PPE: {ppe_cur}%" if ppe_cur is not None else "PPE: Evaluating..."
-            helm_str = f"Helmet: {self.finalized_helmet_id}" if self.finalized_helmet_id else "Helmet: Scanning..."
+
+            # Helmet status indicator
+            if self.helmet_crosscheck_passed:
+                helm_str = f"Helmet: {self.finalized_helmet_id} (Verified)"
+            elif self.helmet_mismatch:
+                helm_str = f"Helmet: MISMATCH ({self.scanned_helmet_id} != {assigned_hid})"
+            elif self.scanned_helmet_id:
+                helm_str = f"Helmet: {self.scanned_helmet_id}"
+            elif has_hardhat:
+                helm_str = "Helmet: Scanning ID..." + (f" [Assigned: {assigned_hid}]" if assigned_hid else "")
+            else:
+                helm_str = "Helmet: None"
+
             self.hud_message = f"Verifying ({self.elapsed_verify_time:.1f}s) | {id_str} | {ppe_str} | {helm_str}"
 
             if has_identity and ppe_ready:
-                # Both face and PPE verified! Proceed to CONFIRMING
-                self.finalized_ppe_score = self.get_smoothed_ppe_score()
-                self.state = SessionState.CONFIRMING
-                self.finalized_at = now
-                self.hud_message = f"Verified in {self.elapsed_verify_time:.2f}s! Validating results..."
-                return
+                # If hardhat is detected and worker has assigned helmet:
+                if has_hardhat and assigned_hid:
+                    if self.helmet_crosscheck_passed:
+                        # Cross-check passed! Ready to check in
+                        self.finalized_ppe_score = self.get_smoothed_ppe_score()
+                        self.state = SessionState.CONFIRMING
+                        self.finalized_at = now
+                        self.hud_message = f"Verified: {self.active_worker.get('name')} | Helmet {self.finalized_helmet_id} Approved! Checking in..."
+                        return
+                    elif self.helmet_mismatch:
+                        # Helmet mismatch detected
+                        if (now - self.session_started_at) > 1.8:
+                            self.finalized_ppe_score = self.get_smoothed_ppe_score()
+                            self.state = SessionState.CONFIRMING
+                            self.finalized_at = now
+                            self.hud_message = f"⚠️ Helmet Mismatch for {self.active_worker.get('name')}! Assigned: {assigned_hid}, Scanned: {self.scanned_helmet_id}"
+                            return
+                    else:
+                        # Waiting to read helmet ID
+                        if (now - self.session_started_at) > self.max_verify_sec:
+                            # Reached timeout waiting for helmet OCR
+                            self.finalized_ppe_score = self.get_smoothed_ppe_score()
+                            self.state = SessionState.CONFIRMING
+                            self.finalized_at = now
+                            self.hud_message = f"Verification finished ({self.elapsed_verify_time:.2f}s). Finalizing..."
+                            return
+                else:
+                    # No hardhat or worker has no specific assigned helmet requirement
+                    self.finalized_ppe_score = self.get_smoothed_ppe_score()
+                    self.state = SessionState.CONFIRMING
+                    self.finalized_at = now
+                    self.hud_message = f"Verified in {self.elapsed_verify_time:.2f}s! Validating results..."
+                    return
 
             # If max timeout reached without face match, complete with Unknown Worker
             if (now - self.session_started_at) > self.max_verify_sec:
@@ -251,6 +296,33 @@ class WorkerSessionManager:
 
         return False
 
+    def _evaluate_helmet_crosscheck(self, scanned_id: str):
+        """Cross-checks scanned helmet ID with active worker's stored helmet ID."""
+        if not self.active_worker or not scanned_id:
+            return
+        assigned_hid = str(self.active_worker.get("helmet_id", "") or "").strip()
+        if not assigned_hid:
+            # Worker has no specific assigned helmet in DB; accepted
+            self.helmet_crosscheck_passed = True
+            self.helmet_mismatch = False
+            self.finalized_helmet_id = scanned_id
+            return
+
+        import re
+        scanned_clean = re.sub(r'[^A-Za-z0-9]', '', scanned_id).upper()
+        assigned_clean = re.sub(r'[^A-Za-z0-9]', '', assigned_hid).upper()
+
+        if scanned_clean and (scanned_clean == assigned_clean or assigned_clean in scanned_clean or scanned_clean in assigned_clean):
+            self.helmet_crosscheck_passed = True
+            self.helmet_mismatch = False
+            self.finalized_helmet_id = scanned_id
+            print(f"[WorkerSession] [OK] Helmet Cross-Check PASSED: Scanned '{scanned_id}' matches assigned '{assigned_hid}'")
+        else:
+            self.helmet_crosscheck_passed = False
+            self.helmet_mismatch = True
+            self.finalized_helmet_id = scanned_id
+            print(f"[WorkerSession] [MISMATCH] Helmet MISMATCH: Scanned '{scanned_id}' != Assigned '{assigned_hid}'")
+
     def set_identified_worker(self, worker_dict: dict):
         """Thread-safe callback from Async Face Worker."""
         if self.state in [SessionState.LOCKED, SessionState.VERIFYING]:
@@ -259,21 +331,20 @@ class WorkerSessionManager:
                 self.hud_message = f"Verified: {worker_dict.get('name', 'Worker')} (Active Cooldown)"
                 return
             self.active_worker = worker_dict
-            if not self.finalized_helmet_id and worker_dict.get("helmet_id"):
-                # Use assigned helmet if physical OCR hasn't superseded it yet
-                self.finalized_helmet_id = worker_dict["helmet_id"]
+            # If a physical helmet has already been scanned, cross-check immediately
+            if self.scanned_helmet_id:
+                self._evaluate_helmet_crosscheck(self.scanned_helmet_id)
 
     def record_ocr_reading(self, scanned_id: str):
-        """Thread-safe callback from Async OCR Worker."""
+        """Thread-safe callback from Async OCR / QR Worker."""
         if not scanned_id or self.state not in [SessionState.LOCKED, SessionState.VERIFYING]:
             return
         self.ocr_reads.append(scanned_id)
-        # Consensus: if 2 identical reads or 1 matching the worker's assigned helmet
-        if self.active_worker and scanned_id.upper() == str(self.active_worker.get("helmet_id", "")).upper():
-            self.finalized_helmet_id = scanned_id
-        elif len(self.ocr_reads) >= 2 and self.ocr_reads[-1] == self.ocr_reads[-2]:
-            self.finalized_helmet_id = scanned_id
-        elif not self.finalized_helmet_id:
+        self.scanned_helmet_id = scanned_id
+
+        if self.active_worker:
+            self._evaluate_helmet_crosscheck(scanned_id)
+        else:
             self.finalized_helmet_id = scanned_id
 
     def attribute_ppe_detections(self, ppe_detections: list) -> dict:

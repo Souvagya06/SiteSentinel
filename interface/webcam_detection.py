@@ -99,7 +99,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 print(f"[Init] YOLO PPE Model loaded on device: {device.upper()} (Inference Size: {YOLO_IMGSZ}x{YOLO_IMGSZ})")
 
-# ── Initialize OCR ────────────────────────────────────
+# ── Initialize OCR & Barcode / QR Readers ────────────────
 ocr_reader = None
 if easyocr is not None:
     try:
@@ -108,7 +108,13 @@ if easyocr is not None:
     except Exception as e:
         print(f"[Init] EasyOCR init warning: {e}")
 
-HELMET_ID_PATTERN = re.compile(r'[A-Za-z]{1,6}[_\-]?\d{1,6}', re.IGNORECASE)
+qr_detector = cv2.QRCodeDetector()
+try:
+    barcode_detector = cv2.barcode.BarcodeDetector()
+except Exception:
+    barcode_detector = None
+
+HELMET_ID_PATTERN = re.compile(r'\b[A-Za-z]{1,6}[_\-\s]?\d{1,6}\b|\b\d{2,6}\b', re.IGNORECASE)
 
 # ── Thread Pools for Concurrent Verification Workers ──
 face_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="FaceWorker")
@@ -251,26 +257,83 @@ def async_face_recognition_task(person_crop_rgb):
     return None
 
 
-def async_helmet_ocr_task(head_crop_bgr):
-    """Worker task: Runs OCR on cropped helmet region."""
-    if ocr_reader is None or head_crop_bgr is None or head_crop_bgr.size == 0:
+def async_helmet_ocr_task(head_crop_bgr, known_helmets=None):
+    """Worker task: Runs QR code, barcode, and enhanced multi-pass OCR on cropped helmet region."""
+    if head_crop_bgr is None or head_crop_bgr.size == 0:
         return ""
+
+    # 1. High-speed QR Code detection (<2ms)
     try:
-        gray = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (0, 0), fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC)
-        results = ocr_reader.readtext(gray, detail=0)
+        val, _, _ = qr_detector.detectAndDecode(head_crop_bgr)
+        if val:
+            clean = re.sub(r'[^A-Za-z0-9_\-]', '', val).strip().upper()
+            if clean:
+                print(f"[Helmet Scanner] [QR] QR Code detected: {clean}")
+                return clean
+    except Exception:
+        pass
+
+    # 2. Barcode detection
+    if barcode_detector is not None:
+        try:
+            ok, decoded_info, _, _ = barcode_detector.detectAndDecode(head_crop_bgr)
+            if ok and decoded_info:
+                val = decoded_info[0] if isinstance(decoded_info, (list, tuple)) else decoded_info
+                clean = re.sub(r'[^A-Za-z0-9_\-]', '', str(val)).strip().upper()
+                if clean:
+                    print(f"[Helmet Scanner] [Barcode] Barcode detected: {clean}")
+                    return clean
+        except Exception:
+            pass
+
+    # 3. EasyOCR Text Recognition
+    if ocr_reader is None:
+        return ""
+
+    try:
+        # Pass 1: Direct color inference (CRAFT works best on BGR/RGB)
+        results = ocr_reader.readtext(head_crop_bgr, detail=0)
+
+        # Pass 2: Grayscale with CLAHE contrast enhancement & scaling
+        if not results:
+            gray = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            enhanced = cv2.resize(enhanced, (0, 0), fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC)
+            results = ocr_reader.readtext(enhanced, detail=0)
+
+        # Pass 3: Otsu thresholding
+        if not results:
+            gray = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            results = ocr_reader.readtext(thresh, detail=0)
+
         for text in results:
             clean = re.sub(r'[^A-Za-z0-9]', '', text).upper()
+            if not clean:
+                continue
+
+            # Prioritize matching against known database helmet IDs (e.g. H1, H2, H3, H4)
+            if known_helmets:
+                for kh in known_helmets:
+                    kh_clean = re.sub(r'[^A-Za-z0-9]', '', str(kh)).upper()
+                    if kh_clean and (clean == kh_clean or kh_clean in clean):
+                        print(f"[Helmet Scanner] [OCR Match] Matched Known Helmet: {kh.upper()}")
+                        return kh.upper()
+
+            # Pattern match
             match = HELMET_ID_PATTERN.search(clean)
             if match:
-                return match.group(0)
+                matched_id = match.group(0).upper()
+                print(f"[Helmet Scanner] [OCR Pattern] Detected: {matched_id}")
+                return matched_id
     except Exception as e:
         pass
     return ""
 
 
 # ── Finalize Session Action ────────────────────────────
-def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str, elapsed_time: float):
+def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str, elapsed_time: float, is_mismatch: bool = False):
     """
     Submits finalized attendance and validation to backend and actuates Pi hardware asynchronously.
     """
@@ -294,8 +357,15 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
 
         print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_id}) | Action: {action_type} | PPE: {final_ppe_score}% | Helmet: {scanned_helmet_id or assigned_helmet or 'None'}")
 
-        # Validate helmet assignment
-        if assigned_helmet and scanned_helmet_id and assigned_helmet.upper() != scanned_helmet_id.upper() and worker_id != "UNKNOWN":
+        # Check for helmet mismatch (only strictly enforced on Check-in entry)
+        has_mismatch = (action_type == "Check-in") and (is_mismatch or (
+            bool(assigned_helmet) and bool(scanned_helmet_id) and 
+            assigned_helmet.upper() != scanned_helmet_id.upper() and 
+            worker_id != "UNKNOWN"
+        ))
+
+        if has_mismatch:
+            print(f"[Validation] [HELMET MISMATCH] {worker_name} assigned {assigned_helmet}, but scanned {scanned_helmet_id}!")
             event_client.log_safety_event(
                 event_type="HELMET_MISMATCH",
                 message=f"Helmet mismatch for {worker_name}: Assigned {assigned_helmet}, scanned {scanned_helmet_id}",
@@ -304,29 +374,37 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
                 helmet_id=scanned_helmet_id,
                 camera_id=CAMERA_ID
             )
+            # Actuate buzzer and abort check-in on mismatch
+            def _mismatch_alert():
+                pi.buzzer_on()
+                time.sleep(1.8)
+                pi.buzzer_off()
+            Thread(target=_mismatch_alert, daemon=True).start()
+            return
 
-        # Record attendance in database
+        # Record attendance in database when valid
         if worker_id != "UNKNOWN":
             event_client.record_attendance(
                 worker_id=worker_id,
                 ppe_score=final_ppe_score,
-                helmet_id=scanned_helmet_id or assigned_helmet
+                helmet_id=scanned_helmet_id or assigned_helmet,
+                status=new_status
             )
 
         # Hardware Feedback
         if worker_id != "UNKNOWN":
             if action_type == "Check-in":
-                print(f"[Hardware] 🟢 Check-in verified for {worker_name}: Triggering GREEN LED (GPIO 17)")
+                print(f"[Hardware] [Check-in] Verified for {worker_name} with Helmet {scanned_helmet_id or assigned_helmet}: GREEN LED (GPIO 17)")
                 pi.checkin()
             else:
-                print(f"[Hardware] 🔴 Check-out verified for {worker_name}: Triggering RED LED (GPIO 27)")
+                print(f"[Hardware] [Check-out] Verified for {worker_name}: RED LED (GPIO 27)")
                 pi.checkout()
             
             pi.show_score(final_ppe_score)
             
             # If PPE violation, also sound warning buzzer
             if final_ppe_score < 100:
-                print(f"[Hardware] ⚠️ PPE Violation ({final_ppe_score}%): Actuating warning buzzer")
+                print(f"[Hardware] [PPE Violation] ({final_ppe_score}%): Actuating warning buzzer")
                 def _warn_buzzer():
                     pi.buzzer_on()
                     time.sleep(1.2)
@@ -334,7 +412,7 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
                 Thread(target=_warn_buzzer, daemon=True).start()
         else:
             # Unknown person: warn with buzzer
-            print("[Hardware] ⚠️ Unknown person detected at gate: Actuating buzzer")
+            print("[Hardware] [Unknown Worker] Gate buzzer triggered")
             pi.show_score(final_ppe_score)
             def _warn_buzzer():
                 pi.buzzer_on()
@@ -433,8 +511,12 @@ try:
                 try:
                     scanned_hid = ocr_future.result()
                     if scanned_hid:
+                        if session_mgr.active_worker is None:
+                            w_by_hid = face_manager.get_worker_by_helmet_id(scanned_hid)
+                            if w_by_hid:
+                                print(f"[Helmet Pre-Match] Detected Helmet {scanned_hid} belongs to {w_by_hid['name']}")
                         session_mgr.record_ocr_reading(scanned_hid)
-                        print(f"[Helmet OCR (Async)] Detected: {scanned_hid} ({session_mgr.elapsed_verify_time:.2f}s)")
+                        print(f"[Helmet OCR/QR (Async)] Detected: {scanned_hid} ({session_mgr.elapsed_verify_time:.2f}s)")
                 except Exception as e:
                     print(f"[AsyncOCR] Error reading result: {e}")
                 ocr_future = None
@@ -456,12 +538,33 @@ try:
                         face_future = face_executor.submit(async_face_recognition_task, person_crop_rgb)
                         last_face_dispatch_time = time.time()
 
-                # C. Dispatch Helmet OCR asynchronously
+                # C. Dispatch Helmet OCR/QR asynchronously
                 bh = py2 - py1
-                if ocr_future is None and (time.time() - last_ocr_dispatch_time) > 0.4:
-                    head_crop_bgr = frame[py1:min(frame_h, int(py1 + bh * 0.38)), px1:px2]
-                    if head_crop_bgr.size > 0:
-                        ocr_future = ocr_executor.submit(async_helmet_ocr_task, head_crop_bgr)
+                if ocr_future is None and (time.time() - last_ocr_dispatch_time) > 0.25:
+                    helmet_crop_bgr = None
+                    matched_boxes = ppe_obs.get("matched_boxes", []) if ppe_obs else []
+                    hardhat_boxes = [b for b in matched_boxes if b.get("label") == "Hardhat"]
+                    if not hardhat_boxes:
+                        hardhat_boxes = [b for b in ppe_detections if b.get("label") == "Hardhat" and py1 <= (b["bbox"][1] + b["bbox"][3]) / 2 <= py1 + bh * 0.45]
+
+                    if hardhat_boxes:
+                        best_h = max(hardhat_boxes, key=lambda b: b.get("conf", 0))
+                        hx1, hy1, hx2, hy2 = best_h["bbox"]
+                        hw_pad = int((hx2 - hx1) * 0.15)
+                        hh_pad = int((hy2 - hy1) * 0.15)
+                        hx1 = max(0, hx1 - hw_pad)
+                        hy1 = max(0, hy1 - hh_pad)
+                        hx2 = min(frame_w, hx2 + hw_pad)
+                        hy2 = min(frame_h, hy2 + hh_pad)
+                        if (hy2 - hy1) > 10 and (hx2 - hx1) > 10:
+                            helmet_crop_bgr = frame[hy1:hy2, hx1:hx2]
+
+                    if helmet_crop_bgr is None or helmet_crop_bgr.size == 0:
+                        helmet_crop_bgr = frame[py1:min(frame_h, int(py1 + bh * 0.40)), px1:px2]
+
+                    if helmet_crop_bgr is not None and helmet_crop_bgr.size > 0:
+                        known_hids = [w.get("helmet_id") for w in face_manager.get_snapshot() if w.get("helmet_id")]
+                        ocr_future = ocr_executor.submit(async_helmet_ocr_task, helmet_crop_bgr, known_hids)
                         last_ocr_dispatch_time = time.time()
 
             # 6. State: COMPLETED (Trigger backend & GPIO asynchronously once)
@@ -473,7 +576,8 @@ try:
                         worker_dict=session_mgr.active_worker,
                         final_ppe_score=final_score,
                         scanned_helmet_id=session_mgr.finalized_helmet_id,
-                        elapsed_time=session_mgr.elapsed_verify_time
+                        elapsed_time=session_mgr.elapsed_verify_time,
+                        is_mismatch=session_mgr.helmet_mismatch
                     )
 
             # 7. Real-Time Violation Buzzer

@@ -21,7 +21,13 @@ def execute(sql, args=[]):
     if not response.ok:
         print("Turso error:", response.text)
     response.raise_for_status()
-    return response.json()
+    data = response.json()
+    for item in data.get("results", []):
+        if item.get("type") == "error":
+            err_msg = item.get("error", {}).get("message", "Turso SQL execution error")
+            print(f"[Turso DB Error] {err_msg} | Query: {sql}")
+            raise RuntimeError(f"Database error: {err_msg}")
+    return data
 
 def query_one(sql, args=[]):
     """Returns first row as a dict, or None."""
