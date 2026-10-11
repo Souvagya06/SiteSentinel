@@ -46,10 +46,22 @@ FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../frontend/pages")
 )
 ASSET_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets"))
+IMAGES_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../frontend/images")
+)
 
 @app.route("/assets/<path:filename>")
 def frontend_asset(filename):
     return send_from_directory(ASSET_DIR, filename)
+
+@app.route("/frontend/images/<path:filename>")
+@app.route("/images/<path:filename>")
+def frontend_image(filename):
+    return send_from_directory(IMAGES_DIR, filename)
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(IMAGES_DIR, "favicon.png", mimetype="image/png")
 
 def bump_face_data_version(user_id):
     """Increments the face_data_version for the user so live CV processes hot-reload embeddings."""
