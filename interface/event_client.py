@@ -40,7 +40,7 @@ class EventClient:
 
         threading.Thread(target=_send, daemon=True).start()
 
-    def record_attendance(self, worker_id: str, ppe_score: int, helmet_id: str = ""):
+    def record_attendance(self, worker_id: str, ppe_score: int, helmet_id: str = "", status: str = ""):
         """
         Sends an attendance action to /api/attendance.
         Returns the parsed JSON response or None on error.
@@ -52,6 +52,8 @@ class EventClient:
                 "ppe_score": ppe_score,
                 "helmet_id": helmet_id
             }
+            if status:
+                payload["status"] = status
             resp = requests.post(
                 f"{self.backend_url}/api/attendance",
                 json=payload,
