@@ -87,18 +87,36 @@ try:
     print("Added helmet_id to attendance_log")
 except: pass
 
+try:
+    execute("ALTER TABLE workers ADD COLUMN occupation TEXT DEFAULT 'Labourer / Construction'")
+    print("Added occupation column to workers")
+except: pass
+
 execute("""
 CREATE TABLE IF NOT EXISTS helmets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     helmet_id TEXT NOT NULL,
     status TEXT DEFAULT 'Available',
+    helmet_type TEXT DEFAULT 'Labourer, Heavy-duty operations, & Construction tasks',
+    color TEXT DEFAULT 'Yellow',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id),
     UNIQUE(user_id, helmet_id)
 )
 """)
 print("Helmets table created successfully")
+
+try:
+    execute("ALTER TABLE helmets ADD COLUMN helmet_type TEXT DEFAULT 'Labourer, Heavy-duty operations, & Construction tasks'")
+    print("Added helmet_type column to helmets")
+except: pass
+
+try:
+    execute("ALTER TABLE helmets ADD COLUMN color TEXT DEFAULT 'Yellow'")
+    print("Added color column to helmets")
+except: pass
+
 
 
 try:

@@ -48,6 +48,7 @@ from worker_session import WorkerSessionManager, SessionState
 from database import query_one, execute
 from face__utils import get_embedding_from_frame
 from ultralytics import YOLO
+from helmet_color_classifier import classify_helmet_color, get_expected_color_for_occupation
 
 try:
     import easyocr
@@ -349,7 +350,17 @@ def async_helmet_ocr_task(head_crop_bgr, known_helmets=None):
 
 
 # ── Finalize Session Action ────────────────────────────
-def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str, elapsed_time: float, is_mismatch: bool = False, has_hardhat: bool = False):
+def commit_evaluation_session(
+    worker_dict: dict,
+    final_ppe_score: int,
+    scanned_helmet_id: str,
+    elapsed_time: float,
+    is_mismatch: bool = False,
+    has_hardhat: bool = False,
+    is_color_mismatch: bool = False,
+    detected_color: str = "",
+    expected_color: str = ""
+):
     """
     Submits finalized attendance and validation to backend and actuates Pi hardware asynchronously.
     """
@@ -357,6 +368,7 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
         worker_id = worker_dict.get("worker_id", "")
         worker_name = worker_dict.get("name", worker_id)
         assigned_helmet = worker_dict.get("helmet_id", "")
+        worker_occ = worker_dict.get("occupation", "Worker")
 
         # Fetch latest status from database for reliable checkin/checkout transition
         w_row = query_one(
@@ -372,13 +384,34 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
         action_type = "Check-in" if new_status == "Active" else "Check-out"
 
         # A helmet is ONLY registered/occupied if a hardhat was detected or a helmet code was scanned!
+        effective_helmet = (scanned_helmet_id or session_mgr.finalized_helmet_id or session_mgr.scanned_helmet_id or assigned_helmet or "").strip().upper()
         registered_helmet = ""
-        if action_type == "Check-in" and (has_hardhat or scanned_helmet_id):
-            registered_helmet = (scanned_helmet_id or assigned_helmet or "").strip().upper()
+        if action_type == "Check-in" and (has_hardhat or effective_helmet):
+            registered_helmet = effective_helmet
 
-        print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_id}) | Action: {action_type} | PPE: {final_ppe_score}% | Helmet: {registered_helmet or 'None (Not detected)'}")
+        color_info = f" | Color: {detected_color}" if detected_color else ""
+        print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_occ}) | Action: {action_type} | PPE: {final_ppe_score}%{color_info} | Helmet: {registered_helmet or 'None (Not detected)'}")
 
-        # Check for helmet mismatch (only strictly enforced on Check-in entry when helmet is worn)
+        # Check for helmet color mismatch vs occupation role
+        if action_type == "Check-in" and is_color_mismatch and worker_id != "UNKNOWN":
+            print(f"[Validation] [HELMET COLOR MISMATCH] {worker_name} ({worker_occ}) wore {detected_color} helmet, expected {expected_color}!")
+            event_client.log_safety_event(
+                event_type="HELMET_COLOR_MISMATCH",
+                message=f"Occupation/Helmet Mismatch for {worker_name} ({worker_occ}): Wore {detected_color} helmet, expected {expected_color}",
+                worker_id=worker_id,
+                ppe_score=final_ppe_score,
+                helmet_id=registered_helmet or scanned_helmet_id,
+                camera_id=CAMERA_ID
+            )
+            # Actuate buzzer and abort check-in on color mismatch
+            def _color_mismatch_alert():
+                pi.buzzer_on()
+                time.sleep(1.8)
+                pi.buzzer_off()
+            Thread(target=_color_mismatch_alert, daemon=True).start()
+            return
+
+        # Check for helmet ID mismatch (only strictly enforced on Check-in entry when helmet is worn)
         has_mismatch = (action_type == "Check-in") and (is_mismatch or (
             bool(assigned_helmet) and bool(scanned_helmet_id) and 
             assigned_helmet.upper() != scanned_helmet_id.upper() and 
@@ -589,6 +622,11 @@ try:
                         helmet_crop_bgr = frame[py1:min(frame_h, int(py1 + bh * 0.40)), px1:px2]
 
                     if helmet_crop_bgr is not None and helmet_crop_bgr.size > 0:
+                        # Classify helmet color in real-time
+                        color_det, color_conf = classify_helmet_color(helmet_crop_bgr)
+                        if color_det != "Unknown":
+                            session_mgr.record_helmet_color(color_det)
+
                         known_hids = [w.get("helmet_id") for w in face_manager.get_snapshot() if w.get("helmet_id")]
                         ocr_future = ocr_executor.submit(async_helmet_ocr_task, helmet_crop_bgr, known_hids)
                         last_ocr_dispatch_time = time.time()
@@ -601,10 +639,13 @@ try:
                     commit_evaluation_session(
                         worker_dict=session_mgr.active_worker,
                         final_ppe_score=final_score,
-                        scanned_helmet_id=session_mgr.finalized_helmet_id,
+                        scanned_helmet_id=session_mgr.finalized_helmet_id or session_mgr.scanned_helmet_id,
                         elapsed_time=session_mgr.elapsed_verify_time,
                         is_mismatch=session_mgr.helmet_mismatch,
-                        has_hardhat=session_mgr.has_detected_hardhat()
+                        has_hardhat=session_mgr.has_detected_hardhat(),
+                        is_color_mismatch=session_mgr.helmet_color_mismatch,
+                        detected_color=session_mgr.detected_helmet_color,
+                        expected_color=session_mgr.expected_helmet_color
                     )
 
             # 7. Real-Time Violation Buzzer
@@ -686,8 +727,10 @@ try:
 
         # Worker Details (Bottom Left)
         if session_mgr.active_worker:
-            w_info = f"Worker: {session_mgr.active_worker['name']} ({session_mgr.active_worker['worker_id']})"
-            h_info = f"Helmet: {session_mgr.finalized_helmet_id or session_mgr.active_worker.get('helmet_id') or 'Scanning...'}"
+            w_occ = session_mgr.active_worker.get('occupation', 'Worker')
+            w_info = f"Worker: {session_mgr.active_worker['name']} ({w_occ})"
+            h_color_tag = f"[{session_mgr.detected_helmet_color}]" if session_mgr.detected_helmet_color else ""
+            h_info = f"Helmet: {session_mgr.finalized_helmet_id or session_mgr.active_worker.get('helmet_id') or 'ID: Scanning'} {h_color_tag}"
             cv2.putText(annotated, f"{w_info}  |  {h_info}", (14, frame_h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 212, 170), 1, cv2.LINE_AA)
 
         # PPE Score Gauge (Bottom Right)
@@ -702,6 +745,11 @@ try:
         if session_mgr.crowding_warning:
             cv2.rectangle(annotated, (gx1, 50), (gx2, 90), (0, 0, 180), -1)
             cv2.putText(annotated, "! CROWDING: ONE WORKER AT A TIME !", (gx1 + 15, 78), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+
+        # Helmet Color Mismatch warning banner
+        if session_mgr.helmet_color_mismatch:
+            cv2.rectangle(annotated, (gx1, 95), (gx2, 135), (0, 0, 180), -1)
+            cv2.putText(annotated, f"! COLOR MISMATCH: {session_mgr.detected_helmet_color} != Exp {session_mgr.expected_helmet_color} !", (gx1 + 10, 122), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 255), 2, cv2.LINE_AA)
 
         # Always push annotated frame to the dashboard MJPEG stream
         _push_frame_to_dashboard(annotated)

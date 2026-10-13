@@ -105,6 +105,9 @@ class FaceDataManager:
                         "name": w_name,
                         "worker_db_id": item.get("id"),
                         "helmet_id": item.get("helmet_id", ""),
+                        "occupation": item.get("occupation", "Labourer / Construction") or "Labourer / Construction",
+                        "helmet_color": item.get("helmet_color", "") or "",
+                        "helmet_type": item.get("helmet_type", "") or "",
                         "status": item.get("status", "Off-Site"),
                         "embedding": emb_arr
                     })

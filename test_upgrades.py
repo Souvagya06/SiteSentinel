@@ -79,7 +79,82 @@ def test_reports():
     assert len(pdf_out) > 500, "PDF output is empty or too short"
     print("[PASS] ReportService test passed!")
 
+from helmet_color_classifier import (
+    get_expected_color_for_occupation,
+    is_color_matching_occupation,
+    classify_helmet_color,
+    OCCUPATION_TO_COLOR
+)
+
+def test_helmet_color_classification():
+    print("[Test] Testing Helmet Color Classifier...")
+    # Verify Grey & White combination per user instruction:
+    assert get_expected_color_for_occupation("Manager / Supervisor / Visitor") == "White"
+    assert get_expected_color_for_occupation("Site Visitor") == "White"
+    assert get_expected_color_for_occupation("Foreman") == "White"
+    assert get_expected_color_for_occupation("Engineer") == "White"
+    assert get_expected_color_for_occupation("Labourer / Construction") == "Yellow"
+    assert get_expected_color_for_occupation("Firefighter") == "Red"
+    assert get_expected_color_for_occupation("Welder / High Heat") == "Brown"
+    assert get_expected_color_for_occupation("Electrician / Technical") == "Blue"
+    assert get_expected_color_for_occupation("Safety Officer") == "Green"
+    assert get_expected_color_for_occupation("Female Worker / Additional") == "Pink"
+
+    # Match evaluations
+    assert is_color_matching_occupation("White", "Manager / Supervisor / Visitor")
+    assert is_color_matching_occupation("Grey", "Manager / Supervisor / Visitor") # Grey combined into White
+    assert is_color_matching_occupation("Yellow", "Labourer / Construction")
+    assert not is_color_matching_occupation("Yellow", "Manager / Supervisor / Visitor")
+    assert not is_color_matching_occupation("White", "Labourer / Construction")
+    assert is_color_matching_occupation("Blue", "Electrician / Technical")
+    assert is_color_matching_occupation("Green", "Safety Officer")
+    assert is_color_matching_occupation("Red", "Firefighter")
+    assert is_color_matching_occupation("Brown", "Welder / High Heat")
+    assert is_color_matching_occupation("Pink", "Female Worker / Additional")
+    print("[PASS] Helmet color classifier test passed!")
+
+def test_occupation_crosscheck():
+    print("[Test] Testing Occupation & Helmet Color Cross-Check in Session...")
+    mgr = WorkerSessionManager(required_ppe_frames=2, grace_period_sec=1.5)
+    p1 = {"track_id": 1, "bbox": [200, 100, 300, 400], "conf": 0.9}
+    mgr.update_frame([p1], 640, 480)
+
+    # Worker identified as Labourer (expected Yellow helmet)
+    mgr.set_identified_worker({
+        "worker_id": "007",
+        "name": "Ramesh Kumar",
+        "helmet_id": "H002",
+        "occupation": "Labourer / Construction",
+        "status": "Off-Site"
+    })
+    assert mgr.expected_helmet_color == "Yellow"
+
+    # Simulating PPE detections
+    ppe_dets = [
+        {"label": "Hardhat", "bbox": [210, 105, 290, 160], "conf": 0.85},
+        {"label": "Safety Vest", "bbox": [205, 180, 295, 340], "conf": 0.90}
+    ]
+    mgr.attribute_ppe_detections(ppe_dets)
+    mgr.record_ocr_reading("H002")
+
+    # If camera detects White helmet instead of expected Yellow -> mismatch!
+    mgr.record_helmet_color("White")
+    assert mgr.detected_helmet_color == "White"
+    assert mgr.helmet_color_mismatch is True
+    assert mgr.helmet_color_match is False
+
+    # Now if worker wears expected Yellow helmet -> match!
+    for _ in range(5):
+        mgr.record_helmet_color("Yellow")
+    assert mgr.detected_helmet_color == "Yellow"
+    assert mgr.helmet_color_match is True
+    assert mgr.helmet_color_mismatch is False
+    print("[PASS] Occupation & Helmet Color Cross-Check test passed!")
+
 if __name__ == "__main__":
+    test_helmet_color_classification()
+    test_occupation_crosscheck()
     test_worker_session()
     test_reports()
     print("\nALL UPGRADE VERIFICATIONS PASSED!")
+

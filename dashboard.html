@@ -396,6 +396,24 @@
   .helmet-badge.scanned { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,212,170,0.2); }
   .helmet-badge.assigned { background: rgba(255,255,255,0.04); color: var(--text-2); border: 1px solid var(--border); }
 
+  .role-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 8px; border-radius: 6px; font-size: 11px;
+    font-weight: 600; background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border); color: var(--text-2);
+    white-space: nowrap;
+  }
+  .color-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+  }
+  .color-dot.yellow { background: #eab308; box-shadow: 0 0 6px rgba(234, 179, 8, 0.5); }
+  .color-dot.white { background: #f8fafc; box-shadow: 0 0 6px rgba(248, 250, 252, 0.5); }
+  .color-dot.red { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+  .color-dot.brown { background: #8b5a2b; box-shadow: 0 0 6px rgba(139, 90, 43, 0.5); }
+  .color-dot.blue { background: #3b82f6; box-shadow: 0 0 6px rgba(59, 130, 246, 0.5); }
+  .color-dot.green { background: #22c55e; box-shadow: 0 0 6px rgba(34, 197, 94, 0.5); }
+  .color-dot.pink { background: #ec4899; box-shadow: 0 0 6px rgba(236, 72, 153, 0.5); }
+
   .action-group { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
   .action-btn {
     width: 28px; height: 28px; border-radius: 7px; background: none; border: 1px solid transparent;
@@ -489,7 +507,7 @@
     box-shadow: 0 20px 60px rgba(0,0,0,0.7); overflow: hidden;
     display: flex; flex-direction: column; max-height: 90vh;
   }
-  .modal.wide { max-width: 680px; }
+  .modal.wide { width: 100%; max-width: 740px; }
   .modal-header {
     padding: 20px 24px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
@@ -631,7 +649,7 @@
         <span class="material-symbols-outlined">construction</span>
         Helmet Inventory
       </button>
-      <button class="nav-item" onclick="document.getElementById('addWorkerModal').classList.add('open')">
+      <button class="nav-item" onclick="openAddWorkerModal()">
         <span class="material-symbols-outlined">person_add</span>
         Add Worker
       </button>
@@ -738,7 +756,7 @@
           </div>
           <div class="quick-actions-body" style="padding:16px 18px;display:flex;flex-direction:column;gap:10px;flex:1;justify-content:space-between;">
             <div style="display:flex;flex-direction:column;gap:8px;">
-              <button class="qa-btn primary" onclick="document.getElementById('addWorkerModal').classList.add('open')">
+              <button class="qa-btn primary" onclick="openAddWorkerModal()">
                 <span class="material-symbols-outlined fill">person_add</span> Register New Worker
               </button>
               <button class="qa-btn accent" onclick="openHelmetsModal()">
@@ -831,7 +849,7 @@
               <div class="panel-title">Worker Roster &amp; Gate Status</div>
               <div class="panel-title-sub">Click any worker row for deep attendance &amp; PPE history</div>
             </div>
-            <button class="qa-btn primary" style="width:auto;padding:7px 12px;" onclick="document.getElementById('addWorkerModal').classList.add('open')">
+            <button class="qa-btn primary" style="width:auto;padding:7px 12px;" onclick="openAddWorkerModal()">
               <span class="material-symbols-outlined" style="font-size:16px;">person_add</span> Add Worker
             </button>
           </div>
@@ -841,6 +859,7 @@
                 <tr>
                   <th>ID</th>
                   <th>Worker</th>
+                  <th>Occupation</th>
                   <th>Status</th>
                   <th>Check-In</th>
                   <th>Check-Out</th>
@@ -851,7 +870,7 @@
                 </tr>
               </thead>
               <tbody id="workers-tbody">
-                <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-3);">Loading worker records…</td></tr>
+                <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-3);">Loading worker records…</td></tr>
               </tbody>
             </table>
           </div>
@@ -925,6 +944,21 @@
           <input class="field-input mono" id="w-workerid" placeholder="e.g. 003" type="text"/>
         </div>
         <div class="field">
+          <label class="field-label" for="w-occupation">Worker Occupation / Role</label>
+          <select class="field-select" id="w-occupation">
+            <option value="Labourer / Construction">🟡 Labourer, Heavy-duty operations, & Construction tasks (Yellow Helmet)</option>
+            <option value="Manager / Supervisor / Visitor">⚪ Managers, Engineers, Supervisors, Foreman, & Site Visitors (White Helmet)</option>
+            <option value="Firefighter">🔴 Firefighters (Red Helmet)</option>
+            <option value="Welder / High Heat">🟤 Welders, high heat operations (Brown Helmet)</option>
+            <option value="Electrician / Technical">🔵 Electricians and Technical operators (Blue Helmet)</option>
+            <option value="Safety Officer">🟢 Safety officers (Green Helmet)</option>
+            <option value="Female Worker / Additional">🌸 Female workers* / Additional helmet (Pink Helmet)</option>
+          </select>
+          <div style="font-size:11px;color:var(--text-3);margin-top:4px;">
+            Gate camera verifies helmet color against this assigned role.
+          </div>
+        </div>
+        <div class="field">
           <label class="field-label" for="w-helmetid">Assign Helmet (Optional)</label>
           <select class="field-select" id="w-helmetid">
             <option value="">— No helmet assigned yet —</option>
@@ -971,6 +1005,7 @@
             <div style="font-size:18px;font-weight:700;" id="dt-full-name">—</div>
             <div class="profile-badge-strip">
               <span class="status-badge active" id="dt-status-badge">Active</span>
+              <span class="role-badge" id="dt-occupation-badge"><span class="color-dot yellow"></span><span>Labourer / Construction</span></span>
               <span class="helmet-badge assigned" id="dt-helmet-badge">Helmet: None</span>
               <span class="status-badge offsite" id="dt-face-badge">Face: Registered</span>
             </div>
@@ -1094,11 +1129,20 @@
       </div>
       <div class="modal-body">
         <div class="field">
-          <label class="field-label">Register New Helmet ID</label>
-          <div style="display:flex;gap:10px;">
-            <input class="field-input mono" id="new-helmet-id-input" placeholder="e.g. H001" type="text" style="text-transform:uppercase"/>
-            <button class="btn-modal-primary teal" onclick="addHelmet()" style="white-space:nowrap;">
-              <span class="material-symbols-outlined">add</span> Register
+          <label class="field-label">Register New Helmet</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input class="field-input mono" id="new-helmet-id-input" placeholder="ID (e.g. H001)" type="text" style="width:130px;flex-shrink:0;text-transform:uppercase;" onkeydown="if(event.key==='Enter') addHelmet()"/>
+            <select class="field-select" id="new-helmet-type-input" style="flex:1;min-width:0;">
+              <option value="Yellow" data-type="Labourer, Heavy-duty operations, & Construction tasks">🟡 Yellow — Labourer & Construction</option>
+              <option value="White" data-type="Managers, Engineers, Supervisors, Foreman & Site Visitors">⚪ White — Managers, Supervisors & Visitors</option>
+              <option value="Red" data-type="Firefighters">🔴 Red — Firefighters</option>
+              <option value="Brown" data-type="Welders, high heat operations">🟤 Brown — Welders & High Heat</option>
+              <option value="Blue" data-type="Electricians and Technical operators">🔵 Blue — Electricians & Technical</option>
+              <option value="Green" data-type="Safety officers">🟢 Green — Safety Officers</option>
+              <option value="Pink" data-type="Female workers* / Additional helmet">🌸 Pink — Female Workers & Additional</option>
+            </select>
+            <button class="btn-modal-primary teal" id="btn-add-helmet" onclick="addHelmet()" style="white-space:nowrap;flex-shrink:0;padding:9px 18px;">
+              <span class="material-symbols-outlined" style="font-size:18px;">add</span> Register
             </button>
           </div>
         </div>
@@ -1107,7 +1151,12 @@
           <div class="table-wrap" style="max-height:240px;">
             <table>
               <thead>
-                <tr><th>Helmet ID</th><th>Status</th><th style="text-align:right;">Action</th></tr>
+                <tr>
+                  <th>Helmet ID</th>
+                  <th>Color &amp; Type</th>
+                  <th>Status</th>
+                  <th style="text-align:right;">Action</th>
+                </tr>
               </thead>
               <tbody id="helmets-tbody"></tbody>
             </table>
@@ -1209,6 +1258,18 @@
           <label class="field-label">Worker ID</label>
           <input class="field-input mono" id="edit-w-workerid" type="text"/>
         </div>
+        <div class="field">
+          <label class="field-label" for="edit-w-occupation">Occupation / Role</label>
+          <select class="field-select" id="edit-w-occupation">
+            <option value="Labourer / Construction">🟡 Labourer, Heavy-duty operations, & Construction tasks (Yellow Helmet)</option>
+            <option value="Manager / Supervisor / Visitor">⚪ Managers, Engineers, Supervisors, Foreman, & Site Visitors (White Helmet)</option>
+            <option value="Firefighter">🔴 Firefighters (Red Helmet)</option>
+            <option value="Welder / High Heat">🟤 Welders, high heat operations (Brown Helmet)</option>
+            <option value="Electrician / Technical">🔵 Electricians and Technical operators (Blue Helmet)</option>
+            <option value="Safety Officer">🟢 Safety officers (Green Helmet)</option>
+            <option value="Female Worker / Additional">🌸 Female workers* / Additional helmet (Pink Helmet)</option>
+          </select>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn-modal-cancel" onclick="closeEditWorkerModal()">Cancel</button>
@@ -1282,10 +1343,22 @@
     }
   }
 
+  function getOccupationColorClass(occ) {
+    if (!occ) return 'yellow';
+    const o = occ.toLowerCase();
+    if (o.includes('manager') || o.includes('visitor') || o.includes('supervisor') || o.includes('engineer') || o.includes('white')) return 'white';
+    if (o.includes('firefighter') || o.includes('red')) return 'red';
+    if (o.includes('weld') || o.includes('heat') || o.includes('brown')) return 'brown';
+    if (o.includes('electric') || o.includes('tech') || o.includes('blue')) return 'blue';
+    if (o.includes('safety') || o.includes('green')) return 'green';
+    if (o.includes('female') || o.includes('pink') || o.includes('additional')) return 'pink';
+    return 'yellow';
+  }
+
   function renderWorkers(workers) {
     const tbody = document.getElementById('workers-tbody');
     if (!workers.length) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-3);">No registered workers found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-3);">No registered workers found.</td></tr>`;
       return;
     }
 
@@ -1294,6 +1367,7 @@
       const score = isActive && w.ppe_score !== null && w.ppe_score !== undefined ? parseInt(w.ppe_score) : 0;
       const scoreClass = score >= 80 ? 'high' : (score >= 50 ? 'mid' : 'low');
       const avatarHtml = w.image_url ? `<img src="${w.image_url}" alt="${w.first_name}"/>` : `${(w.first_name[0]||'')+(w.last_name[0]||'')}`;
+      const occ = w.occupation || 'Labourer / Construction';
 
       return `<tr>
         <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">${w.worker_id}</td>
@@ -1301,6 +1375,12 @@
           <div class="worker-cell" onclick="openWorkerDetailModal(${w.id})">
             <div class="worker-avatar">${avatarHtml}</div>
             <span class="worker-name">${w.first_name} ${w.last_name}</span>
+          </div>
+        </td>
+        <td>
+          <div class="role-badge">
+            <span class="color-dot ${getOccupationColorClass(occ)}"></span>
+            <span>${occ}</span>
           </div>
         </td>
         <td><span class="status-badge ${isActive ? 'active' : 'offsite'}"><span class="dot"></span>${isActive ? 'Active' : 'Off-Site'}</span></td>
@@ -1319,12 +1399,12 @@
           </div>
         </td>
         <td>
-          ${isActive && (w.active_helmet || (w.helmet_id && w.ppe_score >= 50)) ? `<span class="helmet-badge scanned"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.active_helmet || w.helmet_id}</span>` : `<span style="color:var(--text-3);" title="${w.helmet_id ? 'Assigned: ' + w.helmet_id + ' (Not worn / Not occupied)' : 'No helmet assigned'}">—</span>`}
+          ${(isActive && (w.active_helmet || (w.helmet_id && w.ppe_score >= 50))) ? `<span class="helmet-badge scanned" title="Occupied on-site"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.active_helmet || w.helmet_id}</span>` : (w.helmet_id ? `<span class="helmet-badge assigned" title="Assigned: ${w.helmet_id} (Available)"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.helmet_id}</span>` : `<span style="color:var(--text-3);" title="No helmet assigned">—</span>`)}
         </td>
         <td>
           <div class="action-group">
             <button class="action-btn teal" onclick="openAssignHelmetModal('${w.worker_id}', '${w.first_name} ${w.last_name}', '${w.helmet_id||''}')" title="Assign Helmet"><span class="material-symbols-outlined">construction</span></button>
-            <button class="action-btn edit" onclick="openEditWorkerModal(${w.id}, '${w.first_name}', '${w.last_name}', '${w.worker_id}')" title="Edit Worker"><span class="material-symbols-outlined">edit</span></button>
+            <button class="action-btn edit" onclick="openEditWorkerModal(${w.id}, '${w.first_name}', '${w.last_name}', '${w.worker_id}', '${(w.occupation||'').replace(/'/g, "\\'")}')" title="Edit Worker"><span class="material-symbols-outlined">edit</span></button>
             <button class="action-btn danger" onclick="deleteWorker(${w.id})" title="Delete"><span class="material-symbols-outlined">delete</span></button>
           </div>
         </td>
@@ -1338,7 +1418,8 @@
     const filtered = cachedWorkers.filter(w => 
       w.worker_id.toLowerCase().includes(q) ||
       `${w.first_name} ${w.last_name}`.toLowerCase().includes(q) ||
-      (w.helmet_id || '').toLowerCase().includes(q)
+      (w.helmet_id || '').toLowerCase().includes(q) ||
+      (w.occupation || '').toLowerCase().includes(q)
     );
     renderWorkers(filtered);
   }
@@ -1548,6 +1629,11 @@
         stBadge.className = `status-badge ${w.status === 'Active' ? 'active' : 'offsite'}`;
         stBadge.textContent = w.status || 'Off-Site';
 
+        const occ = w.occupation || 'Labourer / Construction';
+        if (document.getElementById('dt-occupation-badge')) {
+          document.getElementById('dt-occupation-badge').innerHTML = `<span class="color-dot ${getOccupationColorClass(occ)}"></span><span>Role: ${occ}</span>`;
+        }
+
         const activeH = (w.status === 'Active' && (w.active_helmet || (w.helmet_id && w.ppe_score >= 50))) ? (w.active_helmet || w.helmet_id) : '';
         document.getElementById('dt-helmet-badge').textContent = activeH ? `Helmet: ${activeH} (Occupied)` : (w.helmet_id ? `Assigned: ${w.helmet_id} (Available)` : 'Helmet: None');
         document.getElementById('dt-face-badge').textContent = `Biometrics: ${data.face_status}`;
@@ -1734,7 +1820,25 @@
       </div>`).join('');
   }
 
-  // ── Register Worker ──
+  // ── Register Worker Modal & Helpers ──
+  function openAddWorkerModal() {
+    populateWorkerHelmetDropdown();
+    document.getElementById('addWorkerModal').classList.add('open');
+  }
+
+  function populateWorkerHelmetDropdown() {
+    fetch('/api/helmets').then(r => r.json()).then(d => {
+      const sel = document.getElementById('w-helmetid');
+      if (!sel) return;
+      const available = (d.helmets || []).filter(h => h.status === 'Available');
+      sel.innerHTML = `<option value="">— No helmet assigned yet —</option>` + available.map(h => {
+        const colorTag = h.color ? ` [${h.color}]` : '';
+        const roleTag = h.helmet_type ? ` - ${h.helmet_type}` : '';
+        return `<option value="${h.helmet_id}">${h.helmet_id}${colorTag}${roleTag}</option>`;
+      }).join('');
+    }).catch(() => {});
+  }
+
   async function registerWorker() {
     const btn = document.getElementById('register-btn');
     const err = document.getElementById('w-error');
@@ -1744,6 +1848,7 @@
     const last_name = document.getElementById('w-last').value.trim();
     const worker_id = document.getElementById('w-workerid').value.trim();
     const helmet_id = document.getElementById('w-helmetid').value.trim();
+    const occupation = document.getElementById('w-occupation') ? document.getElementById('w-occupation').value.trim() : 'Labourer / Construction';
 
     if (!first_name || !last_name || !worker_id) {
       err.textContent = 'First name, last name, and worker ID are required.';
@@ -1764,7 +1869,7 @@
     const response = await fetch('/api/workers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ first_name, last_name, worker_id, images, helmet_id })
+      body: JSON.stringify({ first_name, last_name, worker_id, images, helmet_id, occupation })
     });
     const data = await response.json();
 
@@ -1774,6 +1879,7 @@
       document.getElementById('w-last').value = '';
       document.getElementById('w-workerid').value = '';
       document.getElementById('w-helmetid').value = '';
+      if (document.getElementById('w-occupation')) document.getElementById('w-occupation').value = 'Labourer / Construction';
       document.getElementById('image-preview').innerHTML = '';
       selectedFiles = [];
       loadWorkers();
@@ -1798,37 +1904,81 @@
     const tbody = document.getElementById('helmets-tbody');
     const helmets = data.helmets || [];
     if (!helmets.length) {
-      tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-3);">No registered helmets.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-3);">No registered helmets.</td></tr>`;
       return;
     }
-    tbody.innerHTML = helmets.map(h => `
-      <tr>
-        <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">${h.helmet_id}</td>
-        <td><span class="status-badge ${h.status === 'Occupied' ? 'offsite' : 'active'}">${h.status}</span></td>
-        <td style="text-align:right;">
-          <button class="action-btn danger" onclick="deleteHelmet('${h.helmet_id}')"><span class="material-symbols-outlined">delete</span></button>
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = helmets.map(h => {
+      const colorClass = (h.color || 'yellow').toLowerCase();
+      return `
+        <tr>
+          <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">${h.helmet_id}</td>
+          <td>
+            <div class="role-badge">
+              <span class="color-dot ${colorClass}"></span>
+              <span style="font-weight:600;">${h.color || 'Yellow'}</span>
+              <span style="color:var(--text-3);font-size:11px;margin-left:4px;">(${h.helmet_type || 'Standard'})</span>
+            </div>
+          </td>
+          <td><span class="status-badge ${h.status === 'Occupied' ? 'offsite' : 'active'}">${h.status}</span></td>
+          <td style="text-align:right;">
+            <button class="action-btn danger" onclick="deleteHelmet('${h.helmet_id}')"><span class="material-symbols-outlined">delete</span></button>
+          </td>
+        </tr>
+      `;
+    }).join('');
   }
 
   async function addHelmet() {
     const input = document.getElementById('new-helmet-id-input');
     const hid = input.value.trim().toUpperCase();
-    if (!hid) return;
-    const res = await fetch('/api/helmets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ helmet_id: hid })
-    });
-    if (res.ok) { input.value = ''; loadHelmets(); }
-    else { const d = await res.json(); alert(d.error || 'Failed to add helmet'); }
+    if (!hid) {
+      input.focus();
+      input.style.borderColor = 'var(--error)';
+      setTimeout(() => { input.style.borderColor = ''; }, 1500);
+      return;
+    }
+
+    const btn = document.getElementById('btn-add-helmet');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span> Adding…';
+    }
+
+    const typeSelect = document.getElementById('new-helmet-type-input');
+    const color = typeSelect ? typeSelect.value : 'Yellow';
+    const helmet_type = (typeSelect && typeSelect.selectedOptions && typeSelect.selectedOptions[0])
+      ? typeSelect.selectedOptions[0].getAttribute('data-type')
+      : 'Labourer, Heavy-duty operations, & Construction tasks';
+
+    try {
+      const res = await fetch('/api/helmets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ helmet_id: hid, color, helmet_type })
+      });
+      if (res.ok) {
+        input.value = '';
+        loadHelmets();
+        populateWorkerHelmetDropdown();
+      } else {
+        const d = await res.json();
+        alert(d.error || 'Failed to add helmet');
+      }
+    } catch (e) {
+      alert('Network error adding helmet.');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">add</span> Register';
+      }
+    }
   }
 
   async function deleteHelmet(hid) {
     if (!confirm(`Delete helmet ${hid}?`)) return;
     await fetch(`/api/helmets/${hid}`, { method: 'DELETE' });
     loadHelmets();
+    populateWorkerHelmetDropdown();
   }
 
   // ── Helmet Assignment ──
@@ -1839,7 +1989,11 @@
     fetch('/api/helmets').then(r => r.json()).then(d => {
       const sel = document.getElementById('assign-helmet-select');
       const available = (d.helmets || []).filter(h => h.status === 'Available' || h.helmet_id === currentHelmet);
-      sel.innerHTML = `<option value="">— No helmet assigned —</option>` + available.map(h => `<option value="${h.helmet_id}" ${h.helmet_id === currentHelmet ? 'selected' : ''}>${h.helmet_id}</option>`).join('');
+      sel.innerHTML = `<option value="">— No helmet assigned —</option>` + available.map(h => {
+        const colorTag = h.color ? ` [${h.color}]` : '';
+        const roleTag = h.helmet_type ? ` - ${h.helmet_type}` : '';
+        return `<option value="${h.helmet_id}" ${h.helmet_id === currentHelmet ? 'selected' : ''}>${h.helmet_id}${colorTag}${roleTag}</option>`;
+      }).join('');
       document.getElementById('assignHelmetModal').classList.add('open');
     });
   }
@@ -1863,11 +2017,14 @@
 
   // ── Edit Worker ──
   let _editWorkerId = null;
-  function openEditWorkerModal(id, first, last, wid) {
+  function openEditWorkerModal(id, first, last, wid, occ) {
     _editWorkerId = id;
     document.getElementById('edit-w-first').value = first;
     document.getElementById('edit-w-last').value = last;
     document.getElementById('edit-w-workerid').value = wid;
+    if (document.getElementById('edit-w-occupation')) {
+      document.getElementById('edit-w-occupation').value = occ || 'Labourer / Construction';
+    }
     document.getElementById('editWorkerModal').classList.add('open');
   }
   function closeEditWorkerModal() { document.getElementById('editWorkerModal').classList.remove('open'); }
@@ -1877,11 +2034,12 @@
     const first_name = document.getElementById('edit-w-first').value.trim();
     const last_name = document.getElementById('edit-w-last').value.trim();
     const worker_id = document.getElementById('edit-w-workerid').value.trim();
+    const occupation = document.getElementById('edit-w-occupation') ? document.getElementById('edit-w-occupation').value.trim() : 'Labourer / Construction';
 
     const res = await fetch(`/api/workers/${_editWorkerId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ first_name, last_name, worker_id })
+      body: JSON.stringify({ first_name, last_name, worker_id, occupation })
     });
     if (res.ok) {
       closeEditWorkerModal();
