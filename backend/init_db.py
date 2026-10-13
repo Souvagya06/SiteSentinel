@@ -78,6 +78,11 @@ try:
 except: pass
 
 try:
+    execute("ALTER TABLE workers ADD COLUMN active_helmet TEXT DEFAULT ''")
+    print("Added active_helmet column")
+except: pass
+
+try:
     execute("ALTER TABLE attendance_log ADD COLUMN helmet_id TEXT DEFAULT ''")
     print("Added helmet_id to attendance_log")
 except: pass

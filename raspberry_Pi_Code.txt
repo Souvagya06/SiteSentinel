@@ -85,15 +85,17 @@ if GPIO_AVAILABLE:
 
 # ── MAX7219 Hardware Device Setup ─────────────────────
 matrix_device = None
+matrix_lock   = threading.Lock()
+matrix_token  = 0
 if MATRIX_AVAILABLE:
     try:
         serial        = spi(port=0, device=0, gpio=noop())
         matrix_device = max7219(serial, cascaded=1,
                                  block_orientation=90,
                                  rotate=0)
-        matrix_device.contrast(128)
+        matrix_device.contrast(32)  # Low current draw, bright and sharp
         matrix_device.clear()
-        print("LED Matrix initialized on SPI0")
+        print("LED Matrix initialized on SPI0 (Safe low-power contrast)")
     except Exception as e:
         print(f"Matrix init failed: {e}")
         matrix_device = None
@@ -102,12 +104,13 @@ if MATRIX_AVAILABLE:
 def button_monitor_loop():
     """
     Dedicated background thread to monitor physical button.
-    Uses multi-sample consensus debounce to eliminate electrical jitter/floating noise.
+    Uses multi-sample consensus debounce and a release-holdoff tolerance to eliminate electrical chatter.
     """
     global button_pressed, verification_state, press_start_time, last_state_change
 
     stable_state = 1  # 1 = HIGH (Released), 0 = LOW (Pressed)
-    sample_history = [1] * 5
+    sample_history = [1] * 8
+    last_pressed_time = 0.0
 
     while True:
         if GPIO_AVAILABLE:
@@ -121,7 +124,7 @@ def button_monitor_loop():
         sample_history.pop(0)
         sample_history.append(raw)
 
-        # Require all 5 consecutive samples (over 50ms) to agree
+        # Require samples to agree
         if all(s == 0 for s in sample_history):
             new_state = 0  # Solid LOW (Pressed)
         elif all(s == 1 for s in sample_history):
@@ -130,19 +133,20 @@ def button_monitor_loop():
             new_state = stable_state  # Transitioning / noisy jitter
 
         now = time.time()
-        if new_state != stable_state:
-            stable_state = new_state
-            with gpio_lock:
-                if stable_state == 0:
-                    # Button is PRESSED#
+        if new_state == 0:
+            last_pressed_time = now
+            if not button_pressed:
+                with gpio_lock:
                     button_pressed = True
                     press_start_time = now
                     last_state_change = now
                     if verification_state != "ACTIVE":
                         verification_state = "ACTIVE"
                         print("[Button] -> PRESSED: Verification state changed to ACTIVE")
-                else:
-                    # Button is RELEASED
+        else:
+            # Only mark as released if continuously unpressed for at least 0.8 seconds (eliminates chatter!)
+            if button_pressed and (now - last_pressed_time > 0.8):
+                with gpio_lock:
                     button_pressed = False
                     press_start_time = 0.0
                     last_state_change = now
@@ -152,7 +156,8 @@ def button_monitor_loop():
                     else:
                         print("[Button] -> RELEASED")
 
-        time.sleep(0.01)
+        stable_state = new_state
+        time.sleep(0.015)
 
 threading.Thread(target=button_monitor_loop, daemon=True).start()
 
@@ -349,38 +354,61 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── LED Matrix — PPE score ────────────────────
         elif path == "/ppe":
+            global matrix_token
             try:
                 score = int(params.get("score", ["0"])[0])
             except Exception:
                 score = 0
+
+            # Score-specific default durations (seconds)
+            # 100% has 8 chars ("PPE:100 "), takes ~5.8s for 1 full pass
+            # 50%  has 7 chars ("PPE:50 "),  takes ~4.5s for 1 full pass
+            # 0%   has 6 chars ("PPE:0 "),   takes ~3.5s for 1 full pass
+            score_durations = {100: 6.0, 50: 4.5, 0: 3.5}
+            default_dur = score_durations.get(score, 5.0)
+
+            try:
+                duration = float(params.get("duration", [str(default_dur)])[0])
+            except Exception:
+                duration = default_dur
+
+            once_param = params.get("once", ["true"])[0].lower()
+            show_once = once_param in ["true", "1", "yes"]
+
             if matrix_device and MATRIX_AVAILABLE:
                 try:
-                    brightness = 200
-                    matrix_device.contrast(brightness)
+                    matrix_token += 1
+                    cur_token = matrix_token
                     
-                    def scroll_score(s):
-                        global matrix_off_at
-                        msg = f"PPE:{s} "
-                        show_until = time.time() + 4.0
-                        max_pos = len(msg) * 8
-                        pos = 8
-                        while time.time() < show_until:
-                            with canvas(matrix_device) as draw:
-                                text(draw, (pos, 0), msg,
-                                     fill="White",
-                                     font=proportional(CP437_FONT))
-                            pos -= 1
-                            if pos < -max_pos:
+                    def scroll_score(s, token, dur, single_pass=True):
+                        with matrix_lock:
+                            try:
+                                matrix_device.contrast(32)
+                                msg = f"PPE:{s} "
+                                show_until = time.time() + dur
+                                max_pos = len(msg) * 8
                                 pos = 8
-                            time.sleep(0.08)
-                        matrix_device.clear()
+                                while time.time() < show_until and matrix_token == token:
+                                    with canvas(matrix_device) as draw:
+                                        text(draw, (pos, 0), msg,
+                                             fill="White",
+                                             font=proportional(CP437_FONT))
+                                    pos -= 1
+                                    if pos < -max_pos:
+                                        if single_pass:
+                                            break  # Display exactly once and exit
+                                        pos = 8
+                                    time.sleep(0.08)
+                                matrix_device.clear()
+                            except Exception as err:
+                                print(f"[Matrix Worker] {err}")
 
                     threading.Thread(
                         target=scroll_score,
-                        args=(score,),
+                        args=(score, cur_token, duration, show_once),
                         daemon=True
                     ).start()
-                    print(f"[API] 📊 Matrix scrolling PPE score: {score}")
+                    print(f"[API] 📊 Matrix scrolling PPE score: {score} (duration={duration}s, once={show_once})")
                 except Exception as e:
                     print(f"[API] Matrix draw error: {e}")
             else:
@@ -423,6 +451,10 @@ class Handler(BaseHTTPRequestHandler):
 # ── Multi-threaded server ─────────────────────────────
 class ThreadedServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # Gracefully handle normal client disconnects (ConnectionResetError / BrokenPipe)
+        pass
 
 # ── Main Entrypoint ───────────────────────────────────
 PORT     = 8080

@@ -1070,51 +1070,64 @@ def worker_checkin():
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
     time_str  = now.strftime("%I:%M %p")
 
+    actual_helmet = (helmet_id or "").strip().upper() if event == "CHECK-IN" else ""
+
     if event == "CHECK-IN":
-        worker_update_sql = "UPDATE workers SET checkin_time = ?, checkout_time = '', ppe_score = ?, status = ?"
+        worker_update_sql = "UPDATE workers SET checkin_time = ?, checkout_time = '', ppe_score = ?, status = ?, active_helmet = ?"
         worker_update_args = [
             {"type": "text", "value": checkin_time or time_str},
             {"type": "text", "value": str(ppe_score)},
             {"type": "text", "value": new_status},
+            {"type": "text", "value": actual_helmet},
         ]
     else:
-        worker_update_sql = "UPDATE workers SET checkout_time = ?, ppe_score = ?, status = ?"
+        worker_update_sql = "UPDATE workers SET checkout_time = ?, ppe_score = ?, status = ?, active_helmet = ''"
         worker_update_args = [
             {"type": "text", "value": time_str},
             {"type": "text", "value": "0"},
             {"type": "text", "value": new_status},
         ]
 
-    if helmet_id:
-        worker_update_sql += ", helmet_id = ?"
-        worker_update_args.append({"type": "text", "value": helmet_id})
-
     worker_update_sql += " WHERE id = ?"
     worker_update_args.append({"type": "text", "value": str(worker["id"])})
 
     execute(worker_update_sql, worker_update_args)
 
-    # Sync helmets table status to match the worker's assignment
-    effective_helmet = helmet_id or (worker.get("helmet_id") or "")
-    if event == "CHECK-IN" and effective_helmet:
-        # Mark the assigned helmet as Occupied
-        execute(
-            "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
-            [
-                {"type": "text", "value": effective_helmet},
-                {"type": "text", "value": manager_id}
-            ]
-        )
-    elif event == "CHECK-OUT" and effective_helmet:
-        # Release the helmet back to Available when worker checks out
-        execute(
-            "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
-            [
-                {"type": "text", "value": effective_helmet},
-                {"type": "text", "value": manager_id}
-            ]
-        )
+    # Sync helmets table status to match whether a helmet is ACTUALLY occupied
+    if event == "CHECK-IN":
+        if actual_helmet:
+            # Helmet was actually worn & verified -> mark as Occupied
+            execute(
+                "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+                [
+                    {"type": "text", "value": actual_helmet},
+                    {"type": "text", "value": manager_id}
+                ]
+            )
+        else:
+            # NO helmet detected -> ensure worker's assigned helmet remains Available (not occupied)
+            assigned_h = (worker.get("helmet_id") or "").strip().upper()
+            if assigned_h:
+                execute(
+                    "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+                    [
+                        {"type": "text", "value": assigned_h},
+                        {"type": "text", "value": manager_id}
+                    ]
+                )
+    elif event == "CHECK-OUT":
+        # Release any helmet associated with this worker back to Available
+        prev_helm = (worker.get("active_helmet") or worker.get("helmet_id") or "").strip().upper()
+        if prev_helm:
+            execute(
+                "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+                [
+                    {"type": "text", "value": prev_helm},
+                    {"type": "text", "value": manager_id}
+                ]
+            )
 
+    # Log in attendance_log (only store helmet if actually detected/worn)
     execute(
         """INSERT INTO attendance_log
            (worker_id, user_id, event, ppe_score, timestamp, date, helmet_id)
@@ -1126,7 +1139,7 @@ def worker_checkin():
             {"type": "text", "value": str(ppe_score)},
             {"type": "text", "value": timestamp},
             {"type": "text", "value": date_str},
-            {"type": "text", "value": helmet_id or worker.get("helmet_id", "")},
+            {"type": "text", "value": actual_helmet},
         ]
     )
 
@@ -1148,7 +1161,7 @@ def worker_checkin():
             {"type": "text", "value": event_type},
             {"type": "text", "value": msg},
             {"type": "text", "value": str(ppe_score)},
-            {"type": "text", "value": helmet_id or worker.get("helmet_id", "")},
+            {"type": "text", "value": actual_helmet},
             {"type": "text", "value": "Pi Camera 01"},
         ]
     )
@@ -1159,7 +1172,7 @@ def worker_checkin():
         "event": event,
         "status": new_status,
         "ppe_score": ppe_score,
-        "helmet_id": helmet_id or worker.get("helmet_id", "")
+        "helmet_id": actual_helmet
     })
 
 @app.route("/api/attendance", methods=["GET"])
@@ -1486,8 +1499,19 @@ def api_pi_actuate(action):
         Thread(target=_buzz, daemon=True).start()
         return jsonify({"message": "Buzzer test command sent"})
     elif action == "ppe":
-        controller.show_score(100)
-        return jsonify({"message": "Matrix test command sent"})
+        score_val = 100
+        if request.is_json and request.json and "score" in request.json:
+            try:
+                score_val = int(request.json["score"])
+            except:
+                score_val = 100
+        elif request.args.get("score"):
+            try:
+                score_val = int(request.args.get("score"))
+            except:
+                score_val = 100
+        controller.show_score(score_val)
+        return jsonify({"message": f"Matrix test command sent for score {score_val}%"})
     return jsonify({"error": "Invalid action"}), 400
 
 @app.route("/api/pi/status", methods=["GET"])

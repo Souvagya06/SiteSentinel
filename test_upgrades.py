@@ -58,6 +58,11 @@ def test_worker_session():
     mgr.update_frame([p1], 640, 480)
     assert mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED], f"Expected CONFIRMING or COMPLETED, got {mgr.state}"
     assert mgr.finalized_ppe_score == 100, f"Expected score 100, got {mgr.finalized_ppe_score}"
+    assert mgr.get_score_display_sec() == 6.0, f"Expected 6.0s for score 100, got {mgr.get_score_display_sec()}"
+    mgr.finalized_ppe_score = 50
+    assert mgr.get_score_display_sec() == 4.5, f"Expected 4.5s for score 50, got {mgr.get_score_display_sec()}"
+    mgr.finalized_ppe_score = 0
+    assert mgr.get_score_display_sec() == 3.5, f"Expected 3.5s for score 0, got {mgr.get_score_display_sec()}"
     print("[PASS] WorkerSessionManager test passed!")
 
 def test_reports():

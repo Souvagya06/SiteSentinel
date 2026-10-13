@@ -21,7 +21,17 @@ import cv2
 import requests
 import json
 import torch
+
+# Fix PyTorch >= 2.6 default weights_only=True breaking Ultralytics YOLO & EasyOCR weights loading
+_orig_torch_load = torch.load
+def _safe_torch_load(*args, **kwargs):
+    if "weights_only" not in kwargs:
+        kwargs["weights_only"] = False
+    return _orig_torch_load(*args, **kwargs)
+torch.load = _safe_torch_load
+
 import numpy as np
+
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
@@ -87,7 +97,12 @@ event_client = EventClient(BACKEND_URL, MANAGER_USER_ID)
 face_manager = FaceDataManager(BACKEND_URL, MANAGER_USER_ID, poll_interval=8.0)
 face_manager.start_hot_reload()
 
-session_mgr = WorkerSessionManager(required_ppe_frames=4, grace_period_sec=2.0, max_verify_sec=4.0)
+session_mgr = WorkerSessionManager(
+    required_ppe_frames=4,
+    grace_period_sec=2.0,
+    max_verify_sec=4.0,
+    score_display_sec={100: 6.0, 50: 4.5, 0: 3.5}
+)
 
 # ── Load YOLO PPE Model ────────────────────────────────
 MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "best.pt"
@@ -129,6 +144,7 @@ fps_start_time = time.time()
 current_fps = 0.0
 last_ocr_dispatch_time = 0.0
 last_face_dispatch_time = 0.0
+last_button_active_time = 0.0
 
 _push_session = requests.Session()
 _last_push_time = 0.0
@@ -333,7 +349,7 @@ def async_helmet_ocr_task(head_crop_bgr, known_helmets=None):
 
 
 # ── Finalize Session Action ────────────────────────────
-def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str, elapsed_time: float, is_mismatch: bool = False):
+def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_helmet_id: str, elapsed_time: float, is_mismatch: bool = False, has_hardhat: bool = False):
     """
     Submits finalized attendance and validation to backend and actuates Pi hardware asynchronously.
     """
@@ -355,9 +371,14 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
         new_status = "Off-Site" if current_status in ["Active", "On-Site"] else "Active"
         action_type = "Check-in" if new_status == "Active" else "Check-out"
 
-        print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_id}) | Action: {action_type} | PPE: {final_ppe_score}% | Helmet: {scanned_helmet_id or assigned_helmet or 'None'}")
+        # A helmet is ONLY registered/occupied if a hardhat was detected or a helmet code was scanned!
+        registered_helmet = ""
+        if action_type == "Check-in" and (has_hardhat or scanned_helmet_id):
+            registered_helmet = (scanned_helmet_id or assigned_helmet or "").strip().upper()
 
-        # Check for helmet mismatch (only strictly enforced on Check-in entry)
+        print(f"\n[Session Finalized ({elapsed_time:.2f}s)] Worker: {worker_name} ({worker_id}) | Action: {action_type} | PPE: {final_ppe_score}% | Helmet: {registered_helmet or 'None (Not detected)'}")
+
+        # Check for helmet mismatch (only strictly enforced on Check-in entry when helmet is worn)
         has_mismatch = (action_type == "Check-in") and (is_mismatch or (
             bool(assigned_helmet) and bool(scanned_helmet_id) and 
             assigned_helmet.upper() != scanned_helmet_id.upper() and 
@@ -387,14 +408,14 @@ def commit_evaluation_session(worker_dict: dict, final_ppe_score: int, scanned_h
             event_client.record_attendance(
                 worker_id=worker_id,
                 ppe_score=final_ppe_score,
-                helmet_id=scanned_helmet_id or assigned_helmet,
+                helmet_id=registered_helmet,
                 status=new_status
             )
 
         # Hardware Feedback
         if worker_id != "UNKNOWN":
             if action_type == "Check-in":
-                print(f"[Hardware] [Check-in] Verified for {worker_name} with Helmet {scanned_helmet_id or assigned_helmet}: GREEN LED (GPIO 17)")
+                print(f"[Hardware] [Check-in] Verified for {worker_name} (Helmet: {registered_helmet or 'None'}): GREEN LED (GPIO 17)")
                 pi.checkin()
             else:
                 print(f"[Hardware] [Check-out] Verified for {worker_name}: RED LED (GPIO 27)")
@@ -452,47 +473,52 @@ try:
             fps_counter = 0
             fps_start_time = time.time()
 
-        # ── Physical Button Gating ─────────────────────────
-        button_active = pi.is_button_pressed()
+        # 1. Run YOLO PPE Detection & Person Detection continuously (camera stream never stops)
+        results = model(frame, imgsz=YOLO_IMGSZ, conf=0.45, verbose=False)[0]
         
-        # If in completed/confirming state, allow session feedback to display
-        in_completion_state = session_mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED, SessionState.COOLDOWN]
+        person_rects = []
+        ppe_detections = []
 
-        if not button_active and not in_completion_state:
-            # Button is released -> Pause AI inference and remain in IDLE mode
-            if session_mgr.state in [SessionState.VERIFYING, SessionState.LOCKED, SessionState.CROWDED]:
-                print("[Session] Button released before verification complete -> Reset to IDLE")
-                session_mgr.reset_to_idle()
-            
-            session_mgr.hud_message = "Gate Ready | Press & Hold Button to Verify"
-            tracked_persons = []
-            ppe_detections = []
+        for box in results.boxes:
+            cls_id = int(box.cls[0])
+            label = model.names[cls_id]
+            conf = float(box.conf[0])
+            x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+
+            if label == "Person":
+                person_rects.append([x1, y1, x2, y2])
+            elif "mask" in label.lower():
+                # Ignore Mask and NO-Mask detections (do not draw or track)
+                continue
+            else:
+                ppe_detections.append({
+                    "label": label,
+                    "bbox": [x1, y1, x2, y2],
+                    "conf": conf
+                })
+
+        # 2. Update Person Tracking
+        tracked_persons = tracker.update(person_rects)
+
+        # ── Physical Button State Trigger ──────────────────
+        button_active = pi.is_button_pressed()
+        if button_active:
+            last_button_active_time = time.time()
+        
+        # Clicking the button activates verification state window for 6.0 seconds
+        is_button_triggered = (time.time() - last_button_active_time < 6.0)
+        in_eval_process = session_mgr.state in [
+            SessionState.VERIFYING,
+            SessionState.CONFIRMING,
+            SessionState.COMPLETED,
+            SessionState.COOLDOWN
+        ]
+
+        if not is_button_triggered and not in_eval_process:
+            # Button not pressed yet -> Remain in IDLE mode, waiting for button press
+            session_mgr.state = SessionState.IDLE
+            session_mgr.hud_message = "Gate Ready | Press Button to Verify"
         else:
-            # Button is actively PRESSED or finalizing transaction -> Run full parallel AI pipeline
-            # 1. Run YOLO PPE Detection & Person Detection with optimized imgsz
-            results = model(frame, imgsz=YOLO_IMGSZ, conf=0.45, verbose=False)[0]
-            
-            person_rects = []
-            ppe_detections = []
-
-            for box in results.boxes:
-                cls_id = int(box.cls[0])
-                label = model.names[cls_id]
-                conf = float(box.conf[0])
-                x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
-
-                if label == "Person":
-                    person_rects.append([x1, y1, x2, y2])
-                else:
-                    ppe_detections.append({
-                        "label": label,
-                        "bbox": [x1, y1, x2, y2],
-                        "conf": conf
-                    })
-
-            # 2. Update Person Tracking
-            tracked_persons = tracker.update(person_rects)
-
             # 3. Update Single-Worker Evaluation State Machine
             session_mgr.update_frame(tracked_persons, frame_w, frame_h)
 
@@ -577,7 +603,8 @@ try:
                         final_ppe_score=final_score,
                         scanned_helmet_id=session_mgr.finalized_helmet_id,
                         elapsed_time=session_mgr.elapsed_verify_time,
-                        is_mismatch=session_mgr.helmet_mismatch
+                        is_mismatch=session_mgr.helmet_mismatch,
+                        has_hardhat=session_mgr.has_detected_hardhat()
                     )
 
             # 7. Real-Time Violation Buzzer
@@ -618,6 +645,8 @@ try:
         # Draw PPE Detection Boxes
         for det in ppe_detections:
             lbl = det["label"]
+            if "mask" in lbl.lower():
+                continue
             dx1, dy1, dx2, dy2 = det["bbox"]
             is_safe = lbl in ["Hardhat", "Safety Vest"]
             d_color = (0, 220, 100) if is_safe else (50, 50, 240)
@@ -679,9 +708,12 @@ try:
 
         # Also show OpenCV window for local monitoring (press q to quit)
         if not HEADLESS:
-            cv2.imshow("SiteSentinel - Live Gate Inspection", annotated)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            try:
+                cv2.imshow("SiteSentinel - Live Gate Inspection", annotated)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            except Exception:
+                pass
 
 except KeyboardInterrupt:
     print("\n[SiteSentinel] Interrupted by user.")
