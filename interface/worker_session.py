@@ -17,8 +17,21 @@ class SessionState:
     COOLDOWN = "COOLDOWN"
 
 
+DEFAULT_SCORE_DISPLAY_DURATIONS = {
+    100: 6.0,
+    50: 4.5,
+    0: 3.5,
+}
+
+
 class WorkerSessionManager:
-    def __init__(self, required_ppe_frames: int = 4, grace_period_sec: float = 2.0, max_verify_sec: float = 4.5):
+    def __init__(
+        self,
+        required_ppe_frames: int = 4,
+        grace_period_sec: float = 2.0,
+        max_verify_sec: float = 4.5,
+        score_display_sec: float | dict[int, float] = DEFAULT_SCORE_DISPLAY_DURATIONS
+    ):
         self.state = SessionState.IDLE
         self.active_track_id = None
         self.active_worker = None      # Dict of worker details once matched by face worker
@@ -28,6 +41,7 @@ class WorkerSessionManager:
         self.last_seen_at: float = 0.0
         self.grace_period_sec = grace_period_sec
         self.max_verify_sec = max_verify_sec
+        self.score_display_sec = score_display_sec
         self.required_ppe_frames = required_ppe_frames
         
         # Adaptive PPE smoothing buffer for the active locked worker (size 4)
@@ -268,13 +282,16 @@ class WorkerSessionManager:
 
         # ── State: COMPLETED ──
         elif self.state == SessionState.COMPLETED:
-            if (now - self.finalized_at) > 2.0:
+            disp_dur = self.get_score_display_sec()
+            if (now - self.finalized_at) > disp_dur:
                 self.state = SessionState.COOLDOWN
-                self.hud_message = "Evaluation complete. Please step forward."
+                self.hud_message = "Evaluation complete. Please clear the gate."
 
         # ── State: COOLDOWN ──
         elif self.state == SessionState.COOLDOWN:
-            if locked_person is None or not self.is_in_gate_roi(locked_person["bbox"], frame_w, frame_h):
+            disp_dur = self.get_score_display_sec()
+            # Keep in cooldown until gate is cleared OR timeout passed
+            if (now - self.finalized_at > disp_dur) and (num_in_gate == 0 or (now - self.finalized_at > disp_dur + 3.0)):
                 self.reset_to_idle()
 
     def _check_ppe_convergence(self) -> bool:
@@ -295,6 +312,11 @@ class WorkerSessionManager:
             return True
 
         return False
+
+    def has_detected_hardhat(self) -> bool:
+        """Returns True if any valid hardhat was detected in the active observations."""
+        return any(obs.get("has_hardhat_det", False) or obs.get("hardhat", False) for obs in self.ppe_observations)
+
 
     def _evaluate_helmet_crosscheck(self, scanned_id: str):
         """Cross-checks scanned helmet ID with active worker's stored helmet ID."""
@@ -328,7 +350,9 @@ class WorkerSessionManager:
         if self.state in [SessionState.LOCKED, SessionState.VERIFYING]:
             wid = worker_dict.get("worker_id")
             if wid and wid in self.worker_cooldowns and (time.time() - self.worker_cooldowns[wid]) < 10.0:
-                self.hud_message = f"Verified: {worker_dict.get('name', 'Worker')} (Active Cooldown)"
+                self.state = SessionState.COOLDOWN
+                self.finalized_at = time.time()
+                self.hud_message = f"{worker_dict.get('name', 'Worker')} already verified (Cooldown). Please clear gate."
                 return
             self.active_worker = worker_dict
             # If a physical helmet has already been scanned, cross-check immediately
@@ -430,3 +454,10 @@ class WorkerSessionManager:
         scores = [obs["score"] for obs in self.ppe_observations]
         median_score = int(np.median(scores))
         return 50 if 25 <= median_score < 75 else (100 if median_score >= 75 else 0)
+
+    def get_score_display_sec(self) -> float:
+        """Returns the score display duration in seconds based on finalized score."""
+        score = self.finalized_ppe_score if self.finalized_ppe_score is not None else 0
+        if isinstance(self.score_display_sec, dict):
+            return self.score_display_sec.get(score, 5.0)
+        return float(self.score_display_sec)

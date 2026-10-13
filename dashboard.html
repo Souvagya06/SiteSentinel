@@ -1319,7 +1319,7 @@
           </div>
         </td>
         <td>
-          ${isActive && w.helmet_id ? `<span class="helmet-badge scanned"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.helmet_id}</span>` : `<span style="color:var(--text-3);" title="${w.helmet_id ? 'Assigned: ' + w.helmet_id + ' (Not currently occupied)' : ''}">—</span>`}
+          ${isActive && (w.active_helmet || (w.helmet_id && w.ppe_score >= 50)) ? `<span class="helmet-badge scanned"><span class="material-symbols-outlined" style="font-size:12px;">construction</span>${w.active_helmet || w.helmet_id}</span>` : `<span style="color:var(--text-3);" title="${w.helmet_id ? 'Assigned: ' + w.helmet_id + ' (Not worn / Not occupied)' : 'No helmet assigned'}">—</span>`}
         </td>
         <td>
           <div class="action-group">
@@ -1469,7 +1469,7 @@
       const initials = ((firstName ? firstName[0] : '') + (lastName ? lastName[0] : '')).toUpperCase();
 
       const ppeScore = ev.ppe_score !== null && ev.ppe_score !== undefined && ev.ppe_score !== '' ? Number(ev.ppe_score) : null;
-      const helmetId = ev.helmet_id || (matchedWorker ? matchedWorker.helmet_id : '');
+      const helmetId = ev.helmet_id || '';
 
       return `<div class="alert-item ${typeClass}">
         <div class="alert-header">
@@ -1548,7 +1548,8 @@
         stBadge.className = `status-badge ${w.status === 'Active' ? 'active' : 'offsite'}`;
         stBadge.textContent = w.status || 'Off-Site';
 
-        document.getElementById('dt-helmet-badge').textContent = `Helmet: ${w.helmet_id || 'None'}`;
+        const activeH = (w.status === 'Active' && (w.active_helmet || (w.helmet_id && w.ppe_score >= 50))) ? (w.active_helmet || w.helmet_id) : '';
+        document.getElementById('dt-helmet-badge').textContent = activeH ? `Helmet: ${activeH} (Occupied)` : (w.helmet_id ? `Assigned: ${w.helmet_id} (Available)` : 'Helmet: None');
         document.getElementById('dt-face-badge').textContent = `Biometrics: ${data.face_status}`;
 
         // Render attendance logs
