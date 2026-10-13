@@ -428,9 +428,10 @@ def add_worker():
             return jsonify({"error": f"Image upload failed: {str(e)}"}), 500
 
     image_url = image_urls[0] if image_urls else ""
+    occupation = data.get("occupation", "Labourer / Construction").strip() or "Labourer / Construction"
 
     execute(
-        "INSERT INTO workers (user_id, worker_id, first_name, last_name, image_url, helmet_id) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO workers (user_id, worker_id, first_name, last_name, image_url, helmet_id, occupation) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             {"type": "text", "value": str(session["user_id"])},
             {"type": "text", "value": worker_id},
@@ -438,6 +439,7 @@ def add_worker():
             {"type": "text", "value": last_name},
             {"type": "text", "value": image_url},
             {"type": "text", "value": helmet_id},
+            {"type": "text", "value": occupation},
         ]
     )
 
@@ -541,16 +543,30 @@ def update_worker(worker_db_id):
         if conflict:
             return jsonify({"error": "Worker ID already in use by another worker."}), 409
 
-        execute(
-            "UPDATE workers SET first_name = ?, last_name = ?, worker_id = ? WHERE id = ? AND user_id = ?",
-            [
-                {"type": "text", "value": first_name},
-                {"type": "text", "value": last_name},
-                {"type": "text", "value": worker_id},
-                {"type": "text", "value": str(worker_db_id)},
-                {"type": "text", "value": str(session["user_id"])}
-            ]
-        )
+        occupation = (data.get("occupation") or "").strip()
+        if occupation:
+            execute(
+                "UPDATE workers SET first_name = ?, last_name = ?, worker_id = ?, occupation = ? WHERE id = ? AND user_id = ?",
+                [
+                    {"type": "text", "value": first_name},
+                    {"type": "text", "value": last_name},
+                    {"type": "text", "value": worker_id},
+                    {"type": "text", "value": occupation},
+                    {"type": "text", "value": str(worker_db_id)},
+                    {"type": "text", "value": str(session["user_id"])}
+                ]
+            )
+        else:
+            execute(
+                "UPDATE workers SET first_name = ?, last_name = ?, worker_id = ? WHERE id = ? AND user_id = ?",
+                [
+                    {"type": "text", "value": first_name},
+                    {"type": "text", "value": last_name},
+                    {"type": "text", "value": worker_id},
+                    {"type": "text", "value": str(worker_db_id)},
+                    {"type": "text", "value": str(session["user_id"])}
+                ]
+            )
         bump_face_data_version(session["user_id"])
         return jsonify({"message": "Worker updated."})
     except Exception as e:
@@ -745,9 +761,10 @@ def update_worker_helmet(worker_id):
 def get_helmets():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
+    manager_id = str(session["user_id"])
     result = execute(
         "SELECT * FROM helmets WHERE user_id = ? ORDER BY created_at DESC",
-        [{"type": "text", "value": str(session["user_id"])}]
+        [{"type": "text", "value": manager_id}]
     )
     try:
         cols    = [c["name"] for c in result["results"][0]["response"]["result"]["cols"]]
@@ -755,13 +772,42 @@ def get_helmets():
         helmets = [dict(zip(cols, [v.get("value") for v in row])) for row in rows]
     except (KeyError, IndexError):
         helmets = []
+
+    # Dynamically cross-check with active workers currently on site
+    try:
+        active_w_res = execute(
+            "SELECT active_helmet, helmet_id FROM workers WHERE user_id = ? AND status IN ('Active', 'On-Site')",
+            [{"type": "text", "value": manager_id}]
+        )
+        w_cols = [c["name"] for c in active_w_res["results"][0]["response"]["result"]["cols"]]
+        w_rows = active_w_res["results"][0]["response"]["result"]["rows"]
+        active_occupied_helmets = set()
+        for r in w_rows:
+            wd = dict(zip(w_cols, [v.get("value") for v in r]))
+            h = (wd.get("active_helmet") or wd.get("helmet_id") or "").strip().upper()
+            if h:
+                active_occupied_helmets.add(h)
+
+        for h in helmets:
+            hid = (h.get("helmet_id") or "").strip().upper()
+            if hid in active_occupied_helmets:
+                h["status"] = "Occupied"
+            elif h.get("status") == "Occupied" and hid not in active_occupied_helmets:
+                h["status"] = "Available"
+    except Exception:
+        pass
+
     return jsonify({"helmets": helmets})
 
 @app.route("/api/helmets", methods=["POST"])
 def add_helmet():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
-    helmet_id = request.get_json().get("helmet_id", "").strip().upper()
+    body = request.get_json() or {}
+    helmet_id = body.get("helmet_id", "").strip().upper()
+    helmet_type = body.get("helmet_type", "Labourer, Heavy-duty operations, & Construction tasks").strip()
+    color = body.get("color", "Yellow").strip()
+
     if not helmet_id:
         return jsonify({"error": "Helmet ID required"}), 400
     existing = query_one(
@@ -772,11 +818,15 @@ def add_helmet():
     if existing:
         return jsonify({"error": "Helmet ID already registered"}), 409
     execute(
-        "INSERT INTO helmets (user_id, helmet_id, status) VALUES (?, ?, 'Available')",
-        [{"type": "text", "value": str(session["user_id"])},
-         {"type": "text", "value": helmet_id}]
+        "INSERT INTO helmets (user_id, helmet_id, status, helmet_type, color) VALUES (?, ?, 'Available', ?, ?)",
+        [
+            {"type": "text", "value": str(session["user_id"])},
+            {"type": "text", "value": helmet_id},
+            {"type": "text", "value": helmet_type},
+            {"type": "text", "value": color}
+        ]
     )
-    return jsonify({"message": f"Helmet {helmet_id} registered"}), 201
+    return jsonify({"message": f"Helmet {helmet_id} registered ({color})"}), 201
 
 @app.route("/api/helmets/<helmet_id>", methods=["DELETE"])
 def delete_helmet(helmet_id):
@@ -886,9 +936,11 @@ def get_face_data():
     # Fetch all workers and their face embeddings for this manager
     rows = query_all(
         """
-        SELECT w.id, w.worker_id, w.first_name, w.last_name, w.helmet_id, w.status, wi.face_embedding
+        SELECT w.id, w.worker_id, w.first_name, w.last_name, w.helmet_id, w.occupation, w.status, wi.face_embedding,
+               h.color AS helmet_color, h.helmet_type
         FROM workers w
         JOIN worker_images wi ON w.worker_id = wi.worker_db_id
+        LEFT JOIN helmets h ON w.helmet_id = h.helmet_id AND w.user_id = h.user_id
         WHERE w.user_id = ? AND wi.face_embedding IS NOT NULL AND wi.face_embedding != ''
         """,
         [{"type": "text", "value": str(manager_id)}]
@@ -1071,6 +1123,8 @@ def worker_checkin():
     time_str  = now.strftime("%I:%M %p")
 
     actual_helmet = (helmet_id or "").strip().upper() if event == "CHECK-IN" else ""
+    if not actual_helmet and event == "CHECK-IN" and ppe_score >= 50:
+        actual_helmet = (worker.get("active_helmet") or worker.get("helmet_id") or "").strip().upper()
 
     if event == "CHECK-IN":
         worker_update_sql = "UPDATE workers SET checkin_time = ?, checkout_time = '', ppe_score = ?, status = ?, active_helmet = ?"
@@ -1080,6 +1134,9 @@ def worker_checkin():
             {"type": "text", "value": new_status},
             {"type": "text", "value": actual_helmet},
         ]
+        if actual_helmet and not (worker.get("helmet_id") or "").strip():
+            worker_update_sql += ", helmet_id = ?"
+            worker_update_args.append({"type": "text", "value": actual_helmet})
     else:
         worker_update_sql = "UPDATE workers SET checkout_time = ?, ppe_score = ?, status = ?, active_helmet = ''"
         worker_update_args = [
@@ -1098,7 +1155,7 @@ def worker_checkin():
         if actual_helmet:
             # Helmet was actually worn & verified -> mark as Occupied
             execute(
-                "UPDATE helmets SET status = 'Occupied' WHERE helmet_id = ? AND user_id = ?",
+                "UPDATE helmets SET status = 'Occupied' WHERE UPPER(helmet_id) = ? AND user_id = ?",
                 [
                     {"type": "text", "value": actual_helmet},
                     {"type": "text", "value": manager_id}
@@ -1109,7 +1166,7 @@ def worker_checkin():
             assigned_h = (worker.get("helmet_id") or "").strip().upper()
             if assigned_h:
                 execute(
-                    "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+                    "UPDATE helmets SET status = 'Available' WHERE UPPER(helmet_id) = ? AND user_id = ?",
                     [
                         {"type": "text", "value": assigned_h},
                         {"type": "text", "value": manager_id}
@@ -1117,10 +1174,10 @@ def worker_checkin():
                 )
     elif event == "CHECK-OUT":
         # Release any helmet associated with this worker back to Available
-        prev_helm = (worker.get("active_helmet") or worker.get("helmet_id") or "").strip().upper()
+        prev_helm = (actual_helmet or worker.get("active_helmet") or worker.get("helmet_id") or "").strip().upper()
         if prev_helm:
             execute(
-                "UPDATE helmets SET status = 'Available' WHERE helmet_id = ? AND user_id = ?",
+                "UPDATE helmets SET status = 'Available' WHERE UPPER(helmet_id) = ? AND user_id = ?",
                 [
                     {"type": "text", "value": prev_helm},
                     {"type": "text", "value": manager_id}
