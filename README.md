@@ -1,540 +1,413 @@
-# 🦺 SiteSentinel
+# SiteSentinel
 
 ## AI-Powered Construction Site Safety Monitoring & Smart Attendance System
 
-**SiteSentinel** is an AI, Computer Vision, and IoT-based construction site safety monitoring platform designed to improve worker safety and automate workforce attendance.
+**SiteSentinel** is an AI, Computer Vision, and IoT-based construction site gate-monitoring platform designed to enforce worker safety and automate workforce attendance in real time.
 
-The system combines **YOLOv8-based PPE detection**, **face recognition**, **Raspberry Pi camera streaming**, **GPU acceleration**, a **Turso database** to monitor workers in real time.
-
-A worker can be identified through face recognition, automatically checked in or checked out, and monitored for Personal Protective Equipment (PPE) compliance.
+The system combines a **custom-trained YOLOv8 PPE detection model**, **face recognition**, **helmet OCR/QR/barcode scanning**, **helmet color classification**, **Raspberry Pi IoT hardware integration**, **GPU-accelerated inference**, a **Turso cloud database**, and a **Flask web dashboard** -- all unified into a single parallel, event-driven computer vision pipeline operating at the construction site gate.
 
 ---
 
-# 🚀 Key Features
+# Key Features
 
-## 🦺 Real-Time PPE Detection
+## Parallel Event-Driven CV Engine
 
-SiteSentinel uses a custom-trained **YOLOv8 model** to detect safety-related objects in real time.
+The heart of SiteSentinel is the **High-Performance Parallel AI Computer Vision Gate Monitoring Engine** (`interface/webcam_detection.py`).
 
-Currently supported classes include:
+Core capabilities:
 
-* Hardhat
-* Mask
-* NO-Hardhat
-* NO-Mask
-* NO-Safety Vest
-* Person
-* Safety Cone
-* Safety Vest
-* Machinery
-* Vehicle
-
-The system processes the live camera stream and performs real-time object detection.
+- **Parallel Execution** -- Face recognition, helmet OCR/QR scanning, and helmet color classification run concurrently in background thread pools (ThreadPoolExecutor) without blocking the main YOLO inference loop.
+- **Single-Worker Gate Evaluation State Machine** -- A 7-state FSM (WorkerSessionManager) tracks one worker at a time through the gate: IDLE -> VERIFYING -> CONFIRMING -> COMPLETED -> COOLDOWN. Also handles CROWDED and LOCKED states.
+- **Physical Button Trigger** -- The Raspberry Pi has a physical push button. Pressing it activates a 6-second verification window, locking onto the first worker entering the gate zone.
+- **Centroid-Based Person Tracker** (SimpleCentroidTracker) -- Tracks multiple persons across frames using centroid distance matching and a disappearance timeout, maintaining stable per-person track IDs.
+- **4-Frame Temporal PPE Consensus Voting** -- PPE scores are smoothed over a sliding window of 4 observations; 3 consecutive identical readings trigger early convergence.
+- **Vectorized In-Memory Face Matching** -- Face embeddings are cached as a NumPy matrix for fast batch distance comparisons without repeated DB calls.
+- **Hot-Reloading Face Data** (FaceDataManager) -- Watches a backend version counter every 8 seconds and reloads face embeddings on-the-fly whenever a manager adds or removes a worker, without restarting the CV engine.
+- **Dashboard MJPEG Streaming** -- Annotated frames are JPEG-encoded and pushed to the Flask backend at up to 20 FPS via /api/pi/frame/push, powering the live dashboard feed.
 
 ---
 
-## ⚠️ PPE Compliance Monitoring
+## YOLOv8 PPE Detection
 
-The system evaluates PPE compliance based on detected safety equipment.
+SiteSentinel uses a **custom-trained YOLOv8 model** (`models/best.pt`) for real-time object detection.
 
-The current PPE monitoring workflow is:
+| Class | Description |
+|---|---|
+| Person | Worker detection trigger |
+| Hardhat | Helmet worn (PASS) |
+| NO-Hardhat | Helmet missing (FAIL) |
+| Safety Vest | Vest worn (PASS) |
+| NO-Safety Vest | Vest missing (FAIL) |
+| Safety Cone | Site equipment |
+| Machinery | Heavy machinery |
+| Vehicle | Vehicles on site |
 
-```text
-Camera Stream
-      ↓
-YOLOv8 Detection
-      ↓
-Person Detection
-      ↓
-Hardhat / Safety Vest Analysis
-      ↓
-PPE Score Calculation
-      ↓
-Dashboard / Backend Update
-```
+> Note: `Mask` and `NO-Mask` classes are intentionally filtered out from scoring and display.
 
-A PPE score is associated with the worker when a valid worker detection and attendance event occurs.
+### Spatial PPE Anatomical Attribution
 
-The system distinguishes between:
+PPE detections are not blindly applied. The system performs strict anatomical zone attribution:
 
-* Valid PPE detection
-* PPE violation
-* No valid person detected
+- Hardhat / NO-Hardhat detections must have their centroid fall within the head zone (top ~40% of person bounding box).
+- Safety Vest / NO-Safety Vest detections must fall within the torso zone (20%-80% of person height).
+- Only PPE attributed to the locked worker bounding box contributes to the score.
 
-This prevents incorrect PPE scores from being generated when no person is detected.
+### PPE Scoring
 
----
-
-# 👤 Smart Attendance System
-
-SiteSentinel integrates **face recognition with worker management**.
-
-The workflow is:
-
-```text
-Camera
-   ↓
-Face Detection
-   ↓
-Face Embedding Extraction
-   ↓
-Compare with Registered Workers
-   ↓
-Worker Identified
-   ↓
-Automatic Check-In / Check-Out
-```
-
-### Current Features
-
-* Face Recognition-Based Worker Identification
-* Automatic Worker Check-In
-* Automatic Worker Check-Out
-* Worker ID Identification
-* Worker Name Identification
-* Attendance Status Updates
-* Attendance Logging
-* Real-Time Worker Tracking
-* PPE Score Association with Attendance Events
-
-Example:
-
-```text
-Face Recognized
-        ↓
-Worker: Souvagya Karmakar
-Worker ID: 0002
-        ↓
-Checked IN
-        ↓
-Status Updated: Active
-        ↓
-PPE Score Recorded
-```
-
-When the same worker is detected again according to the attendance logic:
-
-```text
-Worker Identified
-        ↓
-Checked OUT
-        ↓
-Status Updated: Off-Site
-        ↓
-PPE Score Recorded
-```
+| Score | Meaning |
+|---|---|
+| 100% | Hardhat + Safety Vest both present |
+| 50% | One PPE item detected |
+| 0% | No PPE detected |
 
 ---
 
-# 🎥 Raspberry Pi Camera Streaming
+## Helmet ID Verification (QR / Barcode / OCR)
 
-The Raspberry Pi acts as a remote camera and IoT server.
+Each worker can be assigned a helmet ID in the database (e.g. H1, H2). During gate evaluation the system scans the helmet in 3 passes:
 
-The Pi camera provides a live MJPEG stream that is consumed by the main SiteSentinel AI system.
+1. **QR Code** -- high-speed (<2ms) using cv2.QRCodeDetector.
+2. **Barcode** -- using cv2.barcode.BarcodeDetector.
+3. **Multi-Pass EasyOCR** (GPU-accelerated when available):
+   - Pass 1: Direct color inference.
+   - Pass 2: Grayscale + CLAHE contrast enhancement + 1.8x upscaling.
+   - Pass 3: Otsu thresholding.
 
-Architecture:
-
-```text
-Raspberry Pi Camera
-        │
-        ▼
-Pi Camera Server
-        │
-        ├── /stream
-        ├── /health
-        ├── /checkin
-        ├── /checkout
-        ├── /on
-        ├── /off
-        └── /ppe?score=N
-        │
-        ▼
-Main Computer
-        │
-        ▼
-YOLOv8 + Face Recognition
-```
-
-The Raspberry Pi server handles:
-
-* Live Camera Streaming
-* Health Check
-* GPIO Control
-* IoT Communication
-* PPE Score Display Integration
+Scanned helmet IDs are cross-checked against the worker assigned helmet ID. On mismatch, check-in is aborted and the buzzer sounds.
 
 ---
 
-# 🖥️ GPU-Accelerated AI Detection
+## Helmet Color Classification & Occupation Cross-Check
 
-SiteSentinel supports NVIDIA GPU acceleration using **PyTorch CUDA**.
+SiteSentinel enforces industry-standard helmet color coding based on worker occupation using real-time HSV color analysis.
 
-The current system detects and uses:
+| Helmet Color | Occupation Role |
+|---|---|
+| Yellow | Labourer / Construction / Heavy-duty |
+| White + Grey | Manager / Engineer / Supervisor / Visitor |
+| Red | Firefighter |
+| Brown | Welder / High Heat |
+| Blue | Electrician / Technical |
+| Green | Safety Officer |
+| Pink | Female Worker / Additional |
 
-```text
-GPU: NVIDIA GeForce RTX 4050 Laptop GPU
-```
+The `classify_helmet_color()` function analyzes the upper-central dome region of the helmet crop in HSV space. The dominant color is selected by pixel count with a minimum 20% coverage threshold. Color observations are buffered over 6 frames and the most frequent result is selected via Counter.
 
-When CUDA is available:
-
-```text
-Using GPU: NVIDIA GeForce RTX 4050 Laptop GPU
-```
-
-Otherwise:
-
-```text
-Using CPU
-```
-
-GPU acceleration significantly improves real-time YOLO inference performance.
+If a color mismatch is detected between the worn helmet color and the worker occupation, check-in is aborted and a safety event is logged.
 
 ---
 
-# 🔊 IoT Safety Alerts
+## Face Recognition & Smart Attendance
 
-SiteSentinel integrates IoT hardware for real-time safety alerts.
+### Worker Registration Flow
 
-Current components include:
-
-* Raspberry Pi 4
-* Buzzer
-* LED Matrix Display
-
-The system can communicate PPE information to the IoT system.
-
-Example:
-
-```text
-AI Detection
-      ↓
-PPE Score Calculated
-      ↓
-HTTP Request
-      ↓
-Raspberry Pi
-      ↓
-Buzzer / LED Matrix Response
 ```
-
----
-
-# 📟 LED Matrix PPE Display
-
-The system can send PPE scores to an LED matrix connected to the Raspberry Pi.
-
-Example:
-
-```text
-PPE Score: 100
-```
-
-The score is displayed using scrolling text on the LED matrix.
-
-The scrolling speed can be configured in the Raspberry Pi camera server.
-
----
-
-# 👷 Worker Management
-
-The manager can manage workers through the SiteSentinel dashboard.
-
-Current worker management features include:
-
-* Manager Login
-* Manager Signup
-* Add New Worker
-* Worker ID Management
-* Worker Name Management
-* Upload Worker Face Image
-* Store Worker Information
-* Face Embedding Generation
-* Worker Status Tracking
-
-Worker information is stored in the database and used for face recognition.
-
----
-
-# 🧠 Face Recognition Workflow
-
-When a manager adds a worker:
-
-```text
-Manager Adds Worker
-        ↓
-Worker Information Stored
-        ↓
-Worker Image Uploaded
-        ↓
-Face Embedding Generated
-        ↓
-Embedding Stored in Database
-        ↓
+Manager Adds Worker (Dashboard)
+         |
+Worker Info + Photo Uploaded to Cloudinary
+         |
+128-d Face Embedding Generated (dlib / face_recognition)
+         |
+Embedding Stored in Turso Database
+         |
+face_data_version Incremented (triggers hot-reload in CV engine)
+         |
 Worker Ready for Recognition
 ```
 
-During live monitoring:
+### Live Recognition Flow
 
-```text
+```
 Camera Frame
-        ↓
-Face Detected
-        ↓
-Face Embedding Generated
-        ↓
-Compare with Registered Faces
-        ↓
-Best Match Selected
-        ↓
-Worker Identified
+         |
+YOLO: Person Detected -> Locked onto Track ID
+         |
+Face Crop Sent to Async Face Worker (ThreadPoolExecutor)
+         |
+128-d Embedding Extracted (dlib)
+         |
+Vectorized Distance Match Against Cached Embeddings (threshold: 0.52)
+         |
+Worker Identified -> set_identified_worker() callback
 ```
 
----
+### Attendance Transition Logic
 
-# 🗄️ Database
+| Current DB Status | Action |
+|---|---|
+| Off-Site | Check-in (Green LED) |
+| Active / On-Site | Check-out (Red LED) |
 
-SiteSentinel uses **Turso Database** for cloud-based data storage.
-
-The database manages:
-
-* Manager Accounts
-* Worker Information
-* Worker IDs
-* Worker Face Metadata
-* Face Embeddings
-* Attendance Information
-* Worker Status
-* PPE Score Data
-
-### Main Data Components
-
-#### `users`
-
-Stores manager authentication information.
-
-#### `workers`
-
-Stores worker details such as:
-
-* Worker ID
-* First Name
-* Last Name
-* Worker Status
-* Face Embedding
-
-#### `attendance_log`
-
-Stores worker attendance activity.
-
-#### Worker Face Data
-
-Stores face-related information required for worker identification.
+- A 10-second worker cooldown prevents immediate re-triggering of the same worker.
+- Unknown workers (face not matched within max_verify_sec) trigger a buzzer alert without recording attendance.
 
 ---
 
-# ☁️ Cloud Storage
+## Raspberry Pi Camera Streaming & IoT Integration
 
-Worker images are stored using **Cloudinary**.
+The Raspberry Pi serves as both a camera streaming server and an IoT actuator endpoint.
 
-Workflow:
+### Pi Server API Endpoints
 
-```text
-Worker Image
-      ↓
-Cloudinary Upload
-      ↓
-Image URL Stored
-      ↓
-Face Embedding Generated
-      ↓
-Worker Registered
-```
+| Endpoint | Method | Description |
+|---|---|---|
+| /stream | GET | Live MJPEG camera stream |
+| /health | GET | Server health check |
+| /status | GET | Button state + verification state (~5 Hz poll) |
+| /checkin | GET | Green LED ON for 3s |
+| /checkout | GET | Red LED ON for 3s |
+| /on | GET | Buzzer ON |
+| /off | GET | Buzzer OFF |
+| /ppe?score=N | GET | Scroll PPE score on 8x8 LED matrix |
+| /state?set=STATE | GET | Set verification state |
 
----
+All hardware commands from PiController are dispatched non-blocking via background threads. Simulated GPIO mode activates automatically when no valid Pi IP is configured, using a local webcam as fallback.
 
-# 🏗️ System Architecture
+### IoT Hardware
 
-```text
-                    ┌──────────────────────┐
-                    │   Raspberry Pi 4     │
-                    │                      │
-                    │   Pi Camera Server   │
-                    └──────────┬───────────┘
-                               │
-                         MJPEG Stream
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────┐
-│                  Main AI System                     │
-│                                                     │
-│              YOLOv8 Object Detection               │
-│                         +                           │
-│                 Face Recognition                   │
-│                                                     │
-└───────────────┬───────────────────┬─────────────────┘
-                │                   │
-                ▼                   ▼
-        PPE Detection        Worker Identification
-                │                   │
-                └─────────┬─────────┘
-                          │
-                          ▼
-                  Attendance System
-                          │
-                          ▼
-                     Turso Database
-                          │
-                          ▼
-                  SiteSentinel Dashboard
-
-                          │
-                          ▼
-
-                      IoT System
-                          │
-                 ┌────────┴────────┐
-                 ▼                 ▼
-              Buzzer           LED Matrix
-```
+| Component | GPIO | Role |
+|---|---|---|
+| Green LED | BCM 17 | Check-in confirmation |
+| Red LED | BCM 27 | Check-out confirmation |
+| Buzzer | BCM 18 | PPE violation / helmet mismatch alert |
+| 8x8 LED Matrix (MAX7219) | SPI0 CE0 | Scrolling PPE score display |
+| Physical Push Button | Pi GPIO | Activates 6-second gate verification window |
 
 ---
 
-# 🛠️ Tech Stack
+## Web Dashboard & Backend
 
-## Frontend
+The Flask backend (`backend/main.py`) serves the full web application and all REST API endpoints.
 
-* HTML
-* CSS
-* JavaScript
-* Tailwind CSS
+### Authentication
 
-## Backend
+- Email/Password signup and login with bcrypt password hashing.
+- Google OAuth 2.0 (sign in with Google) -- full authorization code flow with state CSRF protection, profile picture sync, and automatic account linking by email.
+- 7-day persistent sessions via Flask session cookies.
 
-* Python
-* Flask
+### Dashboard Features
 
-## AI & Computer Vision
+- **Live camera feed** -- MJPEG stream pushed from the CV engine via /api/pi/frame/push and served at /api/pi/frame/stream.
+- **Start / Stop CV Engine** -- Manager can launch or terminate the webcam_detection.py subprocess from the dashboard with one click.
+- **Worker Management** -- Add, edit, delete workers; upload face photos; assign helmet IDs and occupations.
+- **Helmet Management** -- Dedicated helmet registry tracking status (Available / In Use / Damaged), color, and type metadata.
+- **Real-time Attendance Table** -- Live view of worker statuses, check-in/check-out times, and PPE scores.
+- **Attendance Log** -- Filterable full history of all check-in / check-out events.
+- **Safety Events Log** -- Structured log of AI-detected violations: HELMET_MISMATCH, HELMET_COLOR_MISMATCH, PPE_VIOLATION.
+- **Compliance Reports** -- Export as CSV or PDF (ReportLab) with date range filtering.
+- **Raspberry Pi Configuration** -- Manager can configure and save the Pi IP from dashboard settings.
 
-* YOLOv8
-* OpenCV
-* PyTorch
-* CUDA
-* Face Recognition
-* Dlib
+---
 
-## Database
+## Database Schema
 
-* Turso
-* LibSQL
+SiteSentinel uses **Turso Database** (cloud SQLite / LibSQL).
+
+| Table | Purpose |
+|---|---|
+| users | Manager accounts (email, password hash, company, Google OAuth sub, Pi IP, face_data_version) |
+| workers | Worker roster (worker_id, name, occupation, helmet_id, status, check-in/out times, PPE score) |
+| worker_images | Face photo URLs and 128-d dlib face embeddings per worker |
+| attendance_log | Full log of all check-in / check-out events with PPE scores, helmet IDs, and timestamps |
+| helmets | Helmet registry (helmet_id, color, type, status) per manager |
+| safety_events | Safety violation events (type, message, worker_id, ppe_score, helmet_id, camera_id, evidence_url, acknowledged flag) |
+
+---
 
 ## Cloud Storage
 
-* Cloudinary
+Worker face photos are stored on **Cloudinary**.
 
-## IoT & Hardware
-
-* Raspberry Pi 4
-* Raspberry Pi Camera
-* Buzzer
-* LED Matrix
-
----
-
-# 📁 Project Structure
-
-```text
-SiteSentinel
-│
-├── backend
-│   ├── main.py
-│   ├── database.py
-│   ├── init_db.py
-│   └── face_utils.py
-│
-├── frontend
-│   ├── assets
-│   ├── css
-│   ├── js
-│   └── pages
-│       ├── index.html
-│       ├── login.html
-│       └── dashboard.html
-│
-├── interface
-│   ├── webcam_detection.py
-│   ├── pi_controller.py
-│   ├── stream_reader.py
-│   └── test_images
-│
-├── models
-│   ├── best.pt
-│   └── last.pt
-│
-├── datasets
-│
-├── .env
-├── .gitignore
-├── raspberry_Pi_Code.txt   ← Upload this file to your Raspberry Pi
-├── requirements.txt
-└── README.md
+```
+Worker Photo Upload (Dashboard)
+         |
+Cloudinary Upload -> Public Image URL Stored
+         |
+Face Embedding Generated from URL (dlib)
+         |
+Embedding Stored in worker_images Table
+         |
+face_data_version Incremented -> CV Hot-Reload Triggered
 ```
 
 ---
 
-# ⚙️ Requirements
+## GPU-Accelerated Inference
 
-## Recommended Python Version
-
-```text
-Python 3.11
-```
-
-Python 3.11 is recommended because some versions of the following libraries may have compatibility issues with newer Python versions:
-
-* dlib
-* face_recognition
+SiteSentinel uses PyTorch CUDA for GPU-accelerated YOLO inference and EasyOCR. Automatically falls back to CPU when no GPU is available.
 
 ---
 
-# 📦 Installation
+# Full System Architecture
 
-Clone the repository:
+```
++----------------------------------------------------------------------+
+|                        Raspberry Pi 4                               |
+|                                                                      |
+|  Pi Camera -> MJPEG Stream Server (Port 8080)                       |
+|  GPIO: Green LED | Red LED | Buzzer | 8x8 LED Matrix | Push Button  |
++----------------------------------+-----------------------------------+
+                                   | MJPEG + HTTP API
+                                   v
++----------------------------------------------------------------------+
+|          SiteSentinel Parallel CV Engine (Main Computer)             |
+|                                                                      |
+|  PiStream -> Frame Buffer                                            |
+|                    |                                                 |
+|                    v                                                 |
+|          YOLOv8 Inference (GPU/CPU)                                  |
+|          Person Detection + PPE Detection                            |
+|                    |                                                 |
+|                    v                                                 |
+|      SimpleCentroidTracker (Multi-Person)                            |
+|      Physical Button Press Trigger                                   |
+|                    v                                                 |
+|  WorkerSessionManager FSM                                            |
+|  IDLE -> VERIFYING -> CONFIRMING -> COMPLETED -> COOLDOWN            |
+|                    |                                                 |
+|      +-------------+--------------------+                           |
+|      v             v                    v                           |
+|  Face Worker   OCR/QR Worker     Color Classifier                   |
+|  (Async Pool)  (Async Pool)      (Real-Time HSV)                    |
+|      |             |                    |                           |
+|      +-------------+--------------------+                           |
+|                    v                                                 |
+|      Helmet Crosscheck + Color Occupation Crosscheck                 |
+|                    |                                                 |
+|      commit_evaluation_session()                                     |
+|      +-- EventClient -> /api/attendance                             |
+|      +-- EventClient -> /api/events (safety violations)             |
+|      +-- PiController -> Green/Red LED + Buzzer + Matrix            |
+|                                                                      |
+|      push_frame_to_dashboard() -> /api/pi/frame/push (~20 FPS)      |
++----------------------------------------------------------------------+
+                                   |
+                                   v
++----------------------------------------------------------------------+
+|                    Flask Backend (backend/main.py)                   |
+|                                                                      |
+|  REST API: Auth, Workers, Attendance, Events, Reports, Helmets       |
+|  Google OAuth 2.0 | bcrypt Auth | Cloudinary | ReportLab            |
+|  In-Process MJPEG Frame Buffer -> Dashboard Live Stream              |
+|  Database: Turso (LibSQL / Cloud SQLite)                             |
++----------------------------------------------------------------------+
+                                   |
+                                   v
++----------------------------------------------------------------------+
+|                       Web Dashboard (Frontend)                       |
+|                                                                      |
+|  HTML + CSS + JavaScript + Tailwind CSS                             |
+|  Live Camera Feed | Worker Management | Attendance Log               |
+|  Safety Events | Compliance Reports (CSV/PDF) | Helmet Registry      |
+|  Pi Configuration | Start/Stop CV Engine                             |
++----------------------------------------------------------------------+
+```
+
+---
+
+# Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | HTML, CSS, JavaScript, Tailwind CSS |
+| Backend | Python 3.11, Flask |
+| AI / CV | YOLOv8 (Ultralytics), OpenCV, PyTorch, CUDA, EasyOCR, face_recognition (dlib) |
+| Database | Turso (LibSQL / Cloud SQLite) |
+| Cloud Storage | Cloudinary |
+| IoT / Hardware | Raspberry Pi 4, picamera2, RPi.GPIO, luma.led_matrix |
+| Auth | bcrypt, Google OAuth 2.0 |
+| Reporting | ReportLab (PDF), csv (CSV) |
+
+---
+
+# Project Structure
+
+```
+SiteSentinel/
+|
++-- backend/
+|   +-- main.py                  Flask app (API + routes + MJPEG frame buffer)
+|   +-- database.py              Turso LibSQL query helpers
+|   +-- init_db.py               DB schema migration and initialization
+|   +-- face__utils.py           Face embedding extraction utilities
+|   +-- report_service.py        CSV and PDF compliance report generator
+|   +-- reset_admin_password.py  Utility to reset a manager password
+|
++-- interface/
+|   +-- webcam_detection.py      Main CV engine (YOLO + face + OCR + FSM + HUD)
+|   +-- worker_session.py        WorkerSessionManager FSM + PPE scoring + helmet crosscheck
+|   +-- helmet_color_classifier.py  Real-time HSV helmet color classifier + occupation mapping
+|   +-- pi_controller.py         Non-blocking Raspberry Pi HTTP hardware controller
+|   +-- stream_reader.py         MJPEG / local webcam stream reader (PiStream)
+|   +-- face_data_manager.py     In-memory face embedding cache + hot-reload
+|   +-- event_client.py          Async HTTP client for attendance and safety event logging
+|
++-- frontend/
+|   +-- pages/
+|   |   +-- index.html           Landing page
+|   |   +-- login.html           Login / Signup (email + Google OAuth)
+|   |   +-- dashboard.html       Main manager dashboard
+|   +-- images/                  Frontend static images
+|
++-- models/
+|   +-- best.pt                  Custom-trained YOLOv8 PPE detection weights
+|   +-- last.pt                  Last training checkpoint
+|
++-- assets/                      Shared static assets
++-- raspberry_Pi_Code.txt        Full Raspberry Pi server script
++-- requirements_local.txt       Full local dependencies
++-- requirements_render.txt      Render.com deployment dependencies
++-- render.yaml                  Render.com deployment config
++-- vercel.json                  Vercel deployment config
++-- .env                         Environment variables (never commit)
++-- README.md
+```
+
+---
+
+# Requirements
+
+Recommended Python Version: 3.11
+
+Python 3.11 is recommended for compatibility with dlib and face_recognition.
+
+---
+
+# Installation
 
 ```bash
 git clone <repository-url>
 cd SiteSentinel
-```
-
-Install the dependencies:
-
-```bash
-pip install -r requirements.txt
+pip install -r requirements_local.txt
 ```
 
 ---
 
-# 🔐 Environment Variables
+# Environment Variables
 
-Create a `.env` file.
+Create a `.env` file in the project root:
 
-Example:
-
-```env
+```
 TURSO_DATABASE_URL=
 TURSO_AUTH_TOKEN=
 
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+
+SECRET_KEY=
+BACKEND_URL=http://127.0.0.1:5000
 ```
 
-Never upload your `.env` file to GitHub.
+Never commit `.env` to version control.
 
 ---
 
-# 🗄️ Initialize the Database
-
-Run:
+# Initialize the Database
 
 ```bash
 python backend/init_db.py
@@ -542,222 +415,137 @@ python backend/init_db.py
 
 ---
 
-# ▶️ Run the Backend
+# Run the Backend
 
 ```bash
 cd backend
 python main.py
 ```
 
-The backend will start at:
-
-```text
-http://127.0.0.1:5000
-```
+Backend starts at: http://127.0.0.1:5000
 
 ---
 
-# 📷 Raspberry Pi Setup & Camera Server
+# Raspberry Pi Setup
 
-The file **`raspberry_Pi_Code.txt`** in the root of this repository contains the complete Raspberry Pi server script. You need to copy this file to your Raspberry Pi and run it there.
+The file `raspberry_Pi_Code.txt` in the root directory contains the full Raspberry Pi server script.
 
-> ⚠️ **Do NOT run this script on your main computer.** It uses hardware-specific libraries (`picamera2`, `RPi.GPIO`, `luma.led_matrix`) that are only available on a Raspberry Pi.
+> Do NOT run this on your main computer. It uses hardware-specific libraries (picamera2, RPi.GPIO, luma.led_matrix) only available on a Raspberry Pi.
 
----
-
-## 🔌 Hardware Requirements
+## Hardware Wiring
 
 | Component | Details |
 |---|---|
 | Raspberry Pi | Model 4 (recommended) |
-| Pi Camera Module | Connected via CSI ribbon cable |
-| Green LED | GPIO pin **17** (BCM) |
-| Red LED | GPIO pin **27** (BCM) |
-| Buzzer | GPIO pin **18** (BCM) |
-| LED Matrix (MAX7219) | Connected via **SPI0** (CE0) |
+| Pi Camera | Connected via CSI ribbon cable |
+| Green LED | GPIO pin 17 (BCM) |
+| Red LED | GPIO pin 27 (BCM) |
+| Buzzer | GPIO pin 18 (BCM) |
+| Push Button | Any GPIO with pull-up |
+| LED Matrix (MAX7219) | SPI0, CE0 |
 
----
-
-## 🛠️ Pi-Side Dependencies
-
-Install the following on your Raspberry Pi before running the server:
+## Pi-Side Dependencies
 
 ```bash
-# Update system packages
 sudo apt-get update && sudo apt-get upgrade -y
-
-# Install picamera2 (comes pre-installed on Raspberry Pi OS Bullseye+)
-# If missing:
-sudo apt-get install -y python3-picamera2
-
-# Install RPi.GPIO
-sudo apt-get install -y python3-rpi.gpio
-
-# Install luma LED matrix driver
-pip3 install luma.led_matrix
+sudo apt-get install -y python3-picamera2 python3-rpi.gpio
+pip3 install luma.led_matrix flask
 ```
 
-> **Note:** `picamera2` requires **Raspberry Pi OS Bullseye** or later. Make sure the camera interface is enabled via `sudo raspi-config` → Interface Options → Camera.
-
----
-
-## 🚀 Deploying the Script
-
-**Step 1 — Copy the file to your Pi**
-
-From your main computer, use `scp` to transfer the file:
+## Deploy to Pi
 
 ```bash
 scp raspberry_Pi_Code.txt pi@<PI_IP>:/home/pi/Pi_Camera.py
-```
-
-Or manually copy the contents of `raspberry_Pi_Code.txt` into a new file called `Pi_Camera.py` on your Pi.
-
-**Step 2 — SSH into your Raspberry Pi**
-
-```bash
 ssh pi@<PI_IP>
-```
-
-**Step 3 — Run the server**
-
-```bash
 python3 Pi_Camera.py
 ```
 
-On successful startup you will see:
-
-```text
-==================================================
-SiteSentinel Pi Server
-Stream  → http://<PI_IP>:8080/stream
-Health  → http://<PI_IP>:8080/health
-GPIO    → /checkin /checkout /on /off /ppe?score=N
-==================================================
-```
-
 ---
 
-## 📡 API Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/stream` | GET | MJPEG live camera stream |
-| `/health` | GET | Server health check |
-| `/checkin` | GET | Green LED ON for 3 s (worker check-in) |
-| `/checkout` | GET | Red LED ON for 3 s (worker check-out) |
-| `/on` | GET | Buzzer ON |
-| `/off` | GET | Buzzer OFF |
-| `/ppe?score=N` | GET | Scroll PPE score on LED matrix |
-
-Example URLs (replace `<PI_IP>` with your Pi's local IP address):
-
-```text
-http://<PI_IP>:8080/stream
-http://<PI_IP>:8080/health
-http://<PI_IP>:8080/ppe?score=100
-```
-
-**Tip:** Find your Pi's IP address by running `hostname -I` on the Pi.
-
----
-
-## ⚙️ Configuration
-
-The following constants at the top of the script can be adjusted to match your wiring:
-
-```python
-GREEN_PIN  = 17   # BCM pin for green LED
-RED_PIN    = 27   # BCM pin for red LED
-BUZZER_PIN = 18   # BCM pin for buzzer
-PORT       = 8080 # HTTP server port
-```
-
-The LED matrix is expected on **SPI0, CE0**. Change `spi(port=0, device=0, ...)` if you wired it differently.
-
----
-
-# 🤖 Run AI Detection and Smart Attendance
-
-On the main computer:
+# Run the AI Gate Monitoring Engine
 
 ```bash
-python interface/webcam_detection.py
+python interface/webcam_detection.py --user-id <MANAGER_ID> [--camera-id "Gate 1"] [--imgsz 416] [--headless] [--pi-ip <PI_IP>]
 ```
 
-The system will:
+| Argument | Description |
+|---|---|
+| --user-id | Manager user ID (required) |
+| --camera-id | Camera label shown in events (default: Pi Camera 01) |
+| --imgsz | YOLO inference image size: 320 or 416 (default: 416) |
+| --headless | Disable OpenCV display window (for dashboard-only streaming) |
+| --pi-ip | Override Pi IP address (otherwise read from database) |
 
-1. Connect to the Raspberry Pi camera stream.
-2. Load the YOLOv8 model.
-3. Use the NVIDIA GPU if CUDA is available.
-4. Load registered worker face embeddings.
-5. Detect objects and PPE.
-6. Identify registered workers.
-7. Perform automatic check-in/check-out.
-8. Calculate and record PPE information.
-9. Update the backend.
-10. Send relevant information to the IoT system.
+The CV engine can also be started and stopped directly from the dashboard via the Start Detection button.
 
 ---
 
-# 🔒 Security Notes
+# Security Notes
 
-Never expose:
+Never expose or commit:
 
-```text
-.env
-```
-
-Do not commit the following:
-
-* Turso Auth Token
-* Cloudinary API Secret
-* Database Credentials
-* Raspberry Pi IP configuration if private
-* API Keys
-
-Ensure `.env` is included in `.gitignore`.
+- Turso Auth Token
+- Cloudinary API Secret
+- Google Client Secret
+- Flask Secret Key
+- Raspberry Pi IP (if private)
+- .env file
 
 ---
 
-# 🚧 Current Development Status
+# Feature Status
 
-SiteSentinel is currently under active development.
-
-The major integrated components include:
-
-* ✅ Raspberry Pi Camera Streaming
-* ✅ YOLOv8 PPE Detection
-* ✅ NVIDIA GPU Acceleration
-* ✅ Face Recognition
-* ✅ Automatic Check-In
-* ✅ Automatic Check-Out
-* ✅ Worker Identification
-* ✅ Turso Database Integration
-* ✅ Cloudinary Worker Image Storage
-* ✅ Raspberry Pi HTTP API
-* ✅ Buzzer Integration
-* ✅ LED Matrix PPE Score Display
-
-The PPE detection and scoring logic is currently being refined to ensure accurate association between valid person detection, detected safety equipment, and worker attendance events.
+| Feature | Status |
+|---|---|
+| YOLOv8 PPE Detection | Complete |
+| Spatial PPE Anatomical Attribution | Complete |
+| 4-Frame Temporal PPE Consensus | Complete |
+| Face Recognition (dlib 128-d) | Complete |
+| Vectorized In-Memory Face Matching | Complete |
+| FaceDataManager Hot-Reload | Complete |
+| Helmet QR Code Scanning | Complete |
+| Helmet Barcode Scanning | Complete |
+| Helmet OCR (Multi-Pass EasyOCR) | Complete |
+| Helmet ID Cross-Check | Complete |
+| Helmet Color Classification (HSV) | Complete |
+| Helmet Color x Occupation Cross-Check | Complete |
+| WorkerSessionManager FSM (7 states) | Complete |
+| Centroid-Based Person Tracker | Complete |
+| Physical Button Gate Trigger | Complete |
+| Worker Cooldown (Anti Re-Trigger) | Complete |
+| Automatic Check-In / Check-Out | Complete |
+| NVIDIA GPU Acceleration | Complete |
+| Raspberry Pi Camera Streaming | Complete |
+| Green / Red LED Actuation | Complete |
+| Buzzer Safety Alerts | Complete |
+| 8x8 LED Matrix PPE Score Display | Complete |
+| Dashboard MJPEG Live Stream | Complete |
+| Flask Backend + REST API | Complete |
+| Google OAuth 2.0 | Complete |
+| Worker Management (CRUD) | Complete |
+| Helmet Registry | Complete |
+| Attendance Log | Complete |
+| Safety Events Log | Complete |
+| CSV Compliance Reports | Complete |
+| PDF Compliance Reports (ReportLab) | Complete |
+| Turso Cloud Database | Complete |
+| Cloudinary Image Storage | Complete |
+| Pi IP Configuration from Dashboard | Complete |
+| Start / Stop CV Engine from Dashboard | Complete |
 
 ---
 
-# 👥 Team
+# Team
 
-### Team Members
-
-* **Souvagya Karmakar**
-* **Sushmita Roy**
-* **Anirban Pal**
-* **Ronit Mishra**
+- Souvagya Karmakar
+- Sushmita Roy
+- Anirban Pal
+- Ronit Mishra
 
 ---
 
-# 📜 License
+# License
 
-**Proprietary Software – All Rights Reserved**
+**Proprietary Software - All Rights Reserved**
 
-SiteSentinel is the intellectual property of its authors.
-
-Unauthorized copying, modification, distribution, or commercial use is prohibited without permission from the project authors.
+SiteSentinel is the intellectual property of its authors. Unauthorized copying, modification, distribution, or commercial use is prohibited without explicit permission from the project authors.
