@@ -1184,10 +1184,11 @@
       </div>
       <div class="modal-body">
         <div class="field">
-          <label class="field-label">Pi LAN IP Address / Camera Source</label>
-          <input class="field-input mono" id="pi-ip-input" placeholder="e.g. 192.168.1.100 or 0 for local webcam" type="text"/>
-          <span style="font-size:11px;color:var(--text-3);margin-top:6px;display:block;">
-            💡 <strong>Tip:</strong> Enter your Raspberry Pi's IP address (e.g. <code>192.168.1.50</code>), or type <code>0</code> / <code>local</code> to run with your PC's webcam.
+          <label class="field-label">Pi Cloud Device ID / LAN IP / Camera Source</label>
+          <input class="field-input mono" id="pi-ip-input" placeholder="e.g. pisite_01 or 192.168.1.100 or 0" type="text"/>
+          <span style="font-size:11px;color:var(--text-3);margin-top:6px;display:block;line-height:1.5;">
+            ☁️ <strong>Cloud Mode (Hosted):</strong> Enter <code>pisite_01</code> to connect via Firebase Realtime Cloud.<br/>
+            💡 <strong>Local Mode:</strong> Enter your Pi's LAN IP (e.g. <code>192.168.1.50</code>) or <code>0</code> for local webcam.
           </span>
         </div>
         <div id="pi-test-result" style="margin-top:10px;font-size:12px;display:none;padding:8px 12px;border-radius:6px;"></div>
