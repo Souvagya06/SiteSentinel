@@ -23,3 +23,9 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: FIREBASE_DATABASE_URL
+        sync: false
+      - key: FIREBASE_DEVICE_ID
+        value: pisite_01
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false

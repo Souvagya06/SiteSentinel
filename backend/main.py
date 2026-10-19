@@ -1498,6 +1498,36 @@ def api_test_pi():
     ip = data.get("pi_ip", "").strip()
     if not ip or ip in ["0", "1", "local", "webcam", "usb"]:
         return jsonify({"ok": True, "type": "local", "message": "Local camera mode (no remote Pi required)."})
+
+    # Check via Firebase Realtime Database
+    try:
+        from firebase_service import is_firebase_available, get_device_status, get_default_device_id
+        if is_firebase_available():
+            # If user entered a device ID (not an IP with dots/colons) or left blank
+            dev_id = ip if (ip and not ("." in ip or ":" in ip)) else get_default_device_id()
+            status = get_device_status(dev_id)
+            if status.get("online"):
+                sec = status.get("seconds_ago", 0)
+                cam_status = status.get("data", {}).get("camera_server", "online")
+                return jsonify({
+                    "ok": True,
+                    "type": "firebase",
+                    "device_id": dev_id,
+                    "message": f"Connected to Raspberry Pi ({dev_id}) via Firebase Cloud! Heartbeat received {sec}s ago. Camera server: {cam_status}."
+                })
+            elif not ("." in ip or ":" in ip):
+                sec = status.get("seconds_ago")
+                last_msg = f"Last seen {sec}s ago." if sec is not None else "Device has not sent a heartbeat yet."
+                return jsonify({
+                    "ok": False,
+                    "type": "firebase",
+                    "device_id": dev_id,
+                    "message": f"Device '{dev_id}' is OFFLINE in Firebase Cloud. {last_msg} Make sure 'python3 pi_firebase_bridge.py' is running on the Pi."
+                })
+    except Exception as e:
+        print(f"[API] Firebase test check exception: {e}")
+
+    # Fallback to direct HTTP check (for local development on same Wi-Fi)
     try:
         start_t = time.time()
         r = requests.get(f"http://{ip}:8080/health", timeout=2.5)
@@ -1507,7 +1537,7 @@ def api_test_pi():
         else:
             return jsonify({"ok": False, "type": "pi", "message": f"Pi replied with HTTP {r.status_code}"})
     except Exception as e:
-        return jsonify({"ok": False, "type": "pi", "message": f"Cannot connect to {ip}:8080. Make sure the Pi is running raspberry_Pi_Code.py on this Wi-Fi network."})
+        return jsonify({"ok": False, "type": "pi", "message": f"Cannot connect to {ip}:8080. On hosted deployments, run 'python3 pi_firebase_bridge.py' on the Pi for cloud connectivity."})
 
 @app.route("/api/pi/start", methods=["POST"])
 def api_start_pi():
@@ -1527,6 +1557,24 @@ def api_start_pi():
 
     return jsonify({"message": "Camera stream and AI safety detection started.", "running": True})
 
+@app.route("/api/pi/cloud_status", methods=["GET"])
+def api_pi_cloud_status():
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    user = query_one(
+        "SELECT pi_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}]
+    )
+    pi_ip = (user.get("pi_ip") if user else None) or ""
+    try:
+        from firebase_service import is_firebase_available, get_device_status, get_default_device_id
+        dev_id = pi_ip if (pi_ip and not ("." in pi_ip or ":" in pi_ip)) else get_default_device_id()
+        if is_firebase_available():
+            return jsonify(get_device_status(dev_id))
+        return jsonify({"configured": False, "online": False, "message": "Firebase not initialized"})
+    except Exception as e:
+        return jsonify({"configured": False, "online": False, "error": str(e)})
+
 @app.route("/api/pi/actuate/<action>", methods=["POST"])
 def api_pi_actuate(action):
     if "user_id" not in session:
@@ -1535,13 +1583,45 @@ def api_pi_actuate(action):
         "SELECT pi_ip FROM users WHERE id = ?",
         [{"type": "text", "value": str(session["user_id"])}]
     )
-    pi_ip = (user.get("pi_ip") if user else None) or "0"
-    
-    # Import PiController
+    pi_ip = (user.get("pi_ip") if user else None) or ""
+
+    # Parse params
+    params = {}
+    if action == "ppe":
+        score_val = 100
+        if request.is_json and request.json and "score" in request.json:
+            try: score_val = int(request.json["score"])
+            except: score_val = 100
+        elif request.args.get("score"):
+            try: score_val = int(request.args.get("score"))
+            except: score_val = 100
+        params["score"] = score_val
+
+    # 1. Try Firebase Cloud Route First
+    try:
+        from firebase_service import is_firebase_available, send_device_command, get_default_device_id
+        is_render = os.getenv("RENDER") is not None
+        is_cloud_device = bool(pi_ip and not ("." in pi_ip or ":" in pi_ip))
+
+        if is_firebase_available() and (is_render or is_cloud_device or not pi_ip or pi_ip == get_default_device_id()):
+            dev_id = pi_ip if is_cloud_device else get_default_device_id()
+            res = send_device_command(action=action, params=params, device_id=dev_id, wait_completion=True, timeout_s=3.0)
+            if res.get("ok"):
+                return jsonify({
+                    "message": res.get("message", f"Command '{action}' sent via Firebase Cloud to {dev_id}"),
+                    "channel": "firebase",
+                    "status": res.get("status")
+                })
+            else:
+                return jsonify({"error": res.get("error", "Failed to dispatch command to Firebase")}), 502
+    except Exception as e:
+        print(f"[API] Firebase actuation fallback error: {e}")
+
+    # 2. Local Fallback via direct HTTP to PiController
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "interface"))
     from pi_controller import PiController
-    controller = PiController(pi_ip)
-    
+    controller = PiController(pi_ip or "0")
+
     if action == "checkin":
         controller.checkin()
         return jsonify({"message": "Green LED (Check-in) command sent to Pi"})
@@ -1556,17 +1636,7 @@ def api_pi_actuate(action):
         Thread(target=_buzz, daemon=True).start()
         return jsonify({"message": "Buzzer test command sent"})
     elif action == "ppe":
-        score_val = 100
-        if request.is_json and request.json and "score" in request.json:
-            try:
-                score_val = int(request.json["score"])
-            except:
-                score_val = 100
-        elif request.args.get("score"):
-            try:
-                score_val = int(request.args.get("score"))
-            except:
-                score_val = 100
+        score_val = params.get("score", 100)
         controller.show_score(score_val)
         return jsonify({"message": f"Matrix test command sent for score {score_val}%"})
     return jsonify({"error": "Invalid action"}), 400

@@ -28,3 +28,6 @@ reportlab>=4.0.0
 
 # Presentation generation (build_presentation.py)
 python-pptx==1.0.2
+
+# Firebase Cloud Realtime Bridge
+firebase-admin>=6.5.0

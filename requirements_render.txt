@@ -19,3 +19,6 @@ numpy==2.1.2
 
 # Reporting
 reportlab>=4.0.0
+
+# Firebase Cloud Realtime Bridge
+firebase-admin>=6.5.0
