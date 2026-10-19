@@ -42,6 +42,7 @@ import tempfile
 _latest_frame_jpeg: bytes = b""
 _frame_lock = Lock()
 _frame_updated_at: float = 0.0
+_stream_active: bool = True
 _SHARED_FRAME_PATH = Path(tempfile.gettempdir()) / "sitesentinel_live_frame.jpg"
 
 FRONTEND_DIR = os.path.abspath(
@@ -1477,6 +1478,8 @@ def _generate_placeholder_jpeg(line1="SiteSentinel Gate Camera", line2="Connecti
 def push_frame():
     """Called by Pi_Camera.py or webcam_detection.py to push the latest annotated JPEG frame."""
     global _latest_frame_jpeg, _frame_updated_at
+    if not _stream_active:
+        return '', 204
     data = request.get_data()
     if data and len(data) > 100:
         with _frame_lock:
@@ -1494,6 +1497,16 @@ def _mjpeg_generator():
     BOUNDARY = b"--frame"
     placeholder_bytes = _generate_placeholder_jpeg()
     while True:
+        if not _stream_active:
+            if placeholder_bytes:
+                yield (
+                    BOUNDARY + b"\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" +
+                    placeholder_bytes + b"\r\n"
+                )
+            time.sleep(0.5)
+            continue
+
         with _frame_lock:
             frame = _latest_frame_jpeg
             updated = _frame_updated_at
@@ -1593,8 +1606,11 @@ def api_test_pi():
 
 @app.route("/api/pi/start", methods=["POST"])
 def api_start_pi():
+    global _stream_active
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
+
+    _stream_active = True
 
     user = query_one(
         "SELECT pi_ip FROM users WHERE id = ?",
@@ -1720,6 +1736,14 @@ def api_pi_status():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
 
+    if not _stream_active:
+        return jsonify({
+            "running": False,
+            "streaming": False,
+            "last_frame_sec": None,
+            "exit_code": None
+        })
+
     frames_active = bool(_frame_updated_at and (time.time() - _frame_updated_at < 6.0))
     if not frames_active and _SHARED_FRAME_PATH.is_file():
         try:
@@ -1752,17 +1776,44 @@ def api_pi_log():
 
 @app.route("/api/pi/stop", methods=["POST"])
 def api_pi_stop():
-    global webcam_process, _latest_frame_jpeg
+    global webcam_process, _latest_frame_jpeg, _frame_updated_at, _stream_active
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
+
+    _stream_active = False
+    with _frame_lock:
+        _latest_frame_jpeg = b""
+        _frame_updated_at = 0.0
+
+    try:
+        if _SHARED_FRAME_PATH.is_file():
+            _SHARED_FRAME_PATH.unlink()
+    except Exception:
+        pass
+
+    user = query_one(
+        "SELECT pi_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}]
+    )
+    pi_ip = (user.get("pi_ip") if user else None) or ""
+    is_render = os.getenv("RENDER") is not None
+    is_cloud_device = bool(pi_ip and not ("." in pi_ip or ":" in pi_ip))
+
+    # Send stream_stop to Raspberry Pi via Firebase Cloud
+    if is_render or is_cloud_device:
+        try:
+            from firebase_service import is_firebase_available, send_device_command, get_default_device_id
+            if is_firebase_available():
+                dev_id = (pi_ip if is_cloud_device else get_default_device_id()).strip().lower()
+                send_device_command(action="stream_stop", device_id=dev_id, wait_completion=False)
+        except Exception as e:
+            print(f"[API] Cloud stream stop error: {e}")
 
     if webcam_process and webcam_process.poll() is None:
         webcam_process.kill()
         webcam_process = None
-        with _frame_lock:
-            _latest_frame_jpeg = b""
-        return jsonify({"message": "Pi stream stopped.", "running": False})
-    return jsonify({"message": "Pi stream is not currently running.", "running": False})
+
+    return jsonify({"message": "Camera stream stopped.", "running": False})
 
 def open_browser():
     webbrowser.open("http://127.0.0.1:5000")

@@ -132,6 +132,14 @@ def execute_action(action: str, params: dict) -> tuple[bool, str]:
     elif action == "state":
         st = params.get("set", "IDLE")
         url = f"{PI_LOCAL_SERVER}/state?set={st}"
+    elif action in ["stream_start", "camera_on"]:
+        global cloud_stream_active
+        cloud_stream_active = True
+        return True, "Cloud stream started"
+    elif action in ["stream_stop", "camera_off"]:
+        global cloud_stream_active
+        cloud_stream_active = False
+        return True, "Cloud stream stopped"
     else:
         return False, f"Unknown action: '{action}'"
 
@@ -273,15 +281,20 @@ def heartbeat_loop():
 # ── Cloud Stream Forwarder ─────────────────────────────────────────────
 CLOUD_STREAM_URL = os.getenv("CLOUD_STREAM_URL", "https://sitesentinel.site/api/pi/frame/push").strip()
 ENABLE_STREAM_FORWARD = os.getenv("ENABLE_CLOUD_STREAM", "true").lower() in ["true", "1", "yes"]
+cloud_stream_active = True
 
 def stream_forwarder():
     """Reads MJPEG stream from local Pi_Camera.py (port 8080) and POSTs frames to hosted site."""
+    global cloud_stream_active
     if not ENABLE_STREAM_FORWARD or not CLOUD_STREAM_URL:
         return
     local_url = f"{PI_LOCAL_SERVER}/stream"
     print(f"[Stream Forwarder] Forwarding {local_url} -> {CLOUD_STREAM_URL}")
     post_session = requests.Session()
     while True:
+        if not cloud_stream_active:
+            time.sleep(0.5)
+            continue
         try:
             r = requests.get(local_url, stream=True, timeout=5)
             bytes_buf = b""
