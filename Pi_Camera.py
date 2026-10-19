@@ -54,6 +54,7 @@ except Exception as e:
     print(f"ERROR: picamera2 not available ({e})")
 
 # ── LED Matrix Initialization ─────────────────────────
+MATRIX_INIT_ERROR = None
 try:
     from luma.led_matrix.device import max7219
     from luma.core.interface.serial import spi, noop
@@ -64,6 +65,7 @@ try:
     print("LED Matrix library loaded")
 except Exception as e:
     MATRIX_AVAILABLE = False
+    MATRIX_INIT_ERROR = f"luma.led_matrix library unavailable: {e}"
     print(f"WARNING: luma.led_matrix not available ({e}) — matrix disabled")
 
 # ── GPIO Pin Configuration ────────────────────────────
@@ -105,10 +107,11 @@ if MATRIX_AVAILABLE:
         matrix_device = max7219(serial, cascaded=1,
                                  block_orientation=90,
                                  rotate=0)
-        matrix_device.contrast(32)  # Low current draw, bright and sharp
+        matrix_device.contrast(128)  # High contrast: bright and crisp
         matrix_device.clear()
-        print("LED Matrix initialized on SPI0 (Safe low-power contrast)")
+        print("LED Matrix initialized on SPI0 (Contrast 128)")
     except Exception as e:
+        MATRIX_INIT_ERROR = f"SPI/MAX7219 init failed: {e}. Check if SPI is enabled in raspi-config"
         print(f"Matrix init failed: {e}")
         matrix_device = None
 
@@ -150,46 +153,54 @@ def trigger_buzzer(duration=1.0):
 def trigger_matrix_score(score=100, duration=None, show_once=True):
     global matrix_token
     if not matrix_device or not MATRIX_AVAILABLE:
-        print(f"[Actuate] Matrix not available — score={score}")
-        return
+        err = MATRIX_INIT_ERROR or "Matrix hardware not initialized"
+        print(f"[Actuate] Matrix not available ({err}) — score={score}")
+        return False, err
 
-    score_durations = {100: 6.0, 50: 4.5, 0: 3.5}
-    dur = duration or score_durations.get(score, 5.0)
+    try:
+        s_int = int(score)
+    except Exception:
+        s_int = 100
+
+    score_durations = {100: 6.0, 50: 5.0, 0: 4.0}
+    dur = duration or score_durations.get(s_int, 5.0)
 
     try:
         matrix_token += 1
         cur_token = matrix_token
 
-        def scroll_score(s, token, dur, single_pass=True):
+        def scroll_score(s, token, dur):
             with matrix_lock:
                 try:
-                    matrix_device.contrast(32)
-                    msg = f"PPE:{s} "
+                    matrix_device.contrast(128)  # Crisp & bright
+                    # For an 8x8 matrix, scrolling " 100% " is vastly cleaner and immediately readable
+                    msg = f" {s}% " if s > 0 else " 0% FAIL "
                     show_until = time.time() + dur
                     max_pos = len(msg) * 8
                     pos = 8
                     while time.time() < show_until and matrix_token == token:
                         with canvas(matrix_device) as draw:
                             text(draw, (pos, 0), msg,
-                                 fill="White",
+                                 fill="white",
                                  font=proportional(CP437_FONT))
                         pos -= 1
                         if pos < -max_pos:
-                            if single_pass:
-                                break
                             pos = 8
-                        time.sleep(0.08)
+                        time.sleep(0.07)
                     matrix_device.clear()
                 except Exception as err:
                     print(f"[Matrix Worker] {err}")
 
         threading.Thread(
             target=scroll_score,
-            args=(score, cur_token, dur, show_once),
+            args=(s_int, cur_token, dur),
             daemon=True
         ).start()
-        print(f"[Actuate] 📊 Matrix scrolling PPE score: {score}")
+        print(f"[Actuate] 📊 Matrix scrolling PPE score: {s_int}%")
+        return True, f"Displaying {s_int}% on matrix"
     except Exception as e:
+        print(f"[Actuate] Matrix draw error: {e}")
+        return False, str(e)
         print(f"[Actuate] Matrix draw error: {e}")
 
 def trigger_reset():
@@ -372,6 +383,7 @@ class Handler(BaseHTTPRequestHandler):
         pass  # suppress normal request logs
 
     def do_GET(self):
+        global cloud_stream_active
         parsed = urlparse(self.path)
         path   = parsed.path
         params = parse_qs(parsed.query)
@@ -439,21 +451,26 @@ class Handler(BaseHTTPRequestHandler):
                 score = int(params.get("score", ["0"])[0])
             except Exception:
                 score = 0
-            trigger_matrix_score(score)
-            self._ok(f"Score {score}")
+            ok, msg = trigger_matrix_score(score)
+            self._json({
+                "ok": ok,
+                "score": score,
+                "message": msg,
+                "matrix_available": MATRIX_AVAILABLE,
+                "matrix_initialized": matrix_device is not None,
+                "matrix_error": MATRIX_INIT_ERROR
+            })
 
         elif path == "/reset":
             trigger_reset()
             self._ok("RESET OK")
 
         elif path in ["/stream/stop", "/camera/off"]:
-            global cloud_stream_active
             cloud_stream_active = False
             print("[HTTP] Cloud streaming turned OFF")
             self._ok("Stream stopped")
 
         elif path in ["/stream/start", "/camera/on"]:
-            global cloud_stream_active
             cloud_stream_active = True
             print("[HTTP] Cloud streaming turned ON")
             self._ok("Stream started")
@@ -464,7 +481,10 @@ class Handler(BaseHTTPRequestHandler):
                 "service": "SiteSentinel Pi Server",
                 "button_pressed": button_pressed,
                 "state": verification_state,
-                "cloud_stream": cloud_stream_active
+                "cloud_stream": cloud_stream_active,
+                "matrix_available": MATRIX_AVAILABLE,
+                "matrix_initialized": matrix_device is not None,
+                "matrix_error": MATRIX_INIT_ERROR
             })
 
         else:

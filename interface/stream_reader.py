@@ -12,9 +12,27 @@ import requests
 import numpy as np
 
 
+def resolve_stream_ip(raw_ip: str) -> str:
+    ip = str(raw_ip or "").strip()
+    if not ip or ip in ["0", "1", "local", "webcam", "usb"] or ip.isdigit() or "." in ip:
+        return ip
+    import socket
+    for candidate in ["192.168.1.25"]:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            if s.connect_ex((candidate, 8080)) == 0:
+                s.close()
+                return candidate
+            s.close()
+        except Exception:
+            pass
+    return ip
+
 class PiStream:
     def __init__(self, ip: str, port: int = 8080, fallback_to_local: bool = True):
-        self.raw_ip = str(ip or "").strip()
+        resolved = resolve_stream_ip(ip)
+        self.raw_ip = str(resolved or "").strip()
         self.port = port
         self.fallback_to_local = fallback_to_local
         

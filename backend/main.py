@@ -1623,7 +1623,7 @@ def api_start_pi():
     is_render = os.getenv("RENDER") is not None
     is_cloud_device = bool(pi_ip and not ("." in pi_ip or ":" in pi_ip))
 
-    if is_render or is_cloud_device:
+    if is_render:
         # On Render / Cloud deployment, dispatch stream command to Pi via Firebase
         try:
             from firebase_service import is_firebase_available, send_device_command, get_default_device_id

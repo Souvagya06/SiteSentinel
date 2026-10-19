@@ -26,9 +26,27 @@ DEFAULT_SCORE_DURATIONS = {
 }
 
 
+def resolve_controller_ip(raw_ip: str) -> str:
+    ip = str(raw_ip or "").strip()
+    if not ip or ip in ["0", "1", "local", "webcam", "usb"] or ip.isdigit() or "." in ip:
+        return ip
+    import socket
+    for candidate in ["192.168.1.25"]:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            if s.connect_ex((candidate, 8080)) == 0:
+                s.close()
+                return candidate
+            s.close()
+        except Exception:
+            pass
+    return ip
+
 class PiController:
     def __init__(self, ip: str, port: int = 8080):
-        self.raw_ip = str(ip or "").strip()
+        resolved = resolve_controller_ip(ip)
+        self.raw_ip = str(resolved or "").strip()
         self.port = port
         self.is_simulated = self.raw_ip in ["", "0", "1", "local", "webcam", "usb"] or self.raw_ip.isdigit()
         self.base = f"http://{self.raw_ip}:{self.port}" if not self.is_simulated else "simulated"

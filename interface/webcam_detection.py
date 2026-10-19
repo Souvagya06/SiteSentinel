@@ -93,6 +93,21 @@ else:
     )
     PI_IP = (user_row.get("pi_ip") if user_row else None) or "0"
 
+if PI_IP and not ("." in PI_IP or PI_IP.isdigit() or PI_IP in ["0", "1", "local", "webcam"]):
+    for candidate in ["192.168.1.25"]:
+        try:
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            if s.connect_ex((candidate, 8080)) == 0:
+                s.close()
+                print(f"[Init] Auto-resolved device '{PI_IP}' -> Local Pi IP {candidate}")
+                PI_IP = candidate
+                break
+            s.close()
+        except Exception:
+            pass
+
 print(f"[Init] Connecting to camera / Pi endpoint: {PI_IP}")
 
 # Initialize Subsystems
