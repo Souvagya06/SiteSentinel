@@ -650,8 +650,8 @@ try:
                         ocr_future = ocr_executor.submit(async_helmet_ocr_task, helmet_crop_bgr, known_hids)
                         last_ocr_dispatch_time = time.time()
 
-            # 6. State: COMPLETED (Trigger backend & GPIO asynchronously once)
-            if session_mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED] and session_mgr.finalized_action is None:
+            # 6. State: COMPLETED / COOLDOWN (Trigger backend & GPIO asynchronously once)
+            if session_mgr.state in [SessionState.CONFIRMING, SessionState.COMPLETED, SessionState.COOLDOWN] and session_mgr.finalized_action is None:
                 if session_mgr.active_worker is not None:
                     final_score = session_mgr.finalized_ppe_score if session_mgr.finalized_ppe_score is not None else 0
                     session_mgr.finalized_action = "DONE"
@@ -730,7 +730,7 @@ try:
             SessionState.VERIFYING: (255, 170, 0),
             SessionState.CONFIRMING: (0, 220, 100),
             SessionState.COMPLETED: (0, 220, 100),
-            SessionState.COOLDOWN: (200, 140, 255)
+            SessionState.COOLDOWN: (0, 212, 170)
         }
         st_color = state_colors.get(session_mgr.state, (200, 200, 200))
         st_label = f"[{session_mgr.state}]"
@@ -776,9 +776,12 @@ try:
         # Also show OpenCV window for local monitoring (press q to quit)
         if not HEADLESS:
             try:
-                cv2.imshow("SiteSentinel - Live Gate Inspection", annotated)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
                     break
+                elif key in [ord('v'), ord('b')]:
+                    last_button_active_time = time.time()
+                    print("[Keyboard Trigger] -> Key 'v'/'b' pressed: Activating verification state")
             except Exception:
                 pass
 

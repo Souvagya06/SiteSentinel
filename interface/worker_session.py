@@ -335,25 +335,24 @@ class WorkerSessionManager:
 
         # ── State: CONFIRMING ──
         elif self.state == SessionState.CONFIRMING:
-            # Immediate transition to COMPLETED (gives 1 tick for validation hooks)
-            self.state = SessionState.COMPLETED
+            # Transition to COOLDOWN (data commit runs right here)
+            self.state = SessionState.COOLDOWN
             if self.active_worker and self.active_worker.get("worker_id"):
                 self.worker_cooldowns[self.active_worker["worker_id"]] = now
             worker_name = self.active_worker.get('name', 'Worker') if self.active_worker is not None else 'Worker'
-            self.hud_message = f"Check Complete: {worker_name} | PPE: {self.finalized_ppe_score}%"
+            self.hud_message = f"Verified: {worker_name} | PPE: {self.finalized_ppe_score}% | Updating DB & Gate..."
 
-        # ── State: COMPLETED ──
-        elif self.state == SessionState.COMPLETED:
+        # ── State: COMPLETED / COOLDOWN ──
+        elif self.state in [SessionState.COMPLETED, SessionState.COOLDOWN]:
             disp_dur = self.get_score_display_sec()
-            if (now - self.finalized_at) > disp_dur:
-                self.state = SessionState.COOLDOWN
-                self.hud_message = "Evaluation complete. Please clear the gate."
-
-        # ── State: COOLDOWN ──
-        elif self.state == SessionState.COOLDOWN:
-            disp_dur = self.get_score_display_sec()
-            # Keep in cooldown until gate is cleared OR timeout passed
-            if (now - self.finalized_at > disp_dur) and (num_in_gate == 0 or (now - self.finalized_at > disp_dur + 3.0)):
+            elapsed = now - self.finalized_at
+            remaining = max(0.0, disp_dur - elapsed)
+            worker_name = self.active_worker.get('name', 'Worker') if self.active_worker is not None else 'Worker'
+            
+            if elapsed < disp_dur:
+                self.hud_message = f"Verified: {worker_name} | PPE: {self.finalized_ppe_score}% | Cooldown ({remaining:.1f}s)"
+            else:
+                # Cooldown period completed -> automatically reset to IDLE state
                 self.reset_to_idle()
 
     def _check_ppe_convergence(self) -> bool:

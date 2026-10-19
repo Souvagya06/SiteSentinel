@@ -265,9 +265,12 @@ def button_monitor_loop():
                     button_pressed = False
                     press_start_time = 0.0
                     last_state_change = now
-                    if verification_state == "ACTIVE":
-                        verification_state = "IDLE"
-                        print("[Button] -> RELEASED: Verification cancelled, return to IDLE")
+                    if verification_state in ["ACTIVE", "COMPLETED"]:
+                        if not green_off_at and not red_off_at:
+                            verification_state = "IDLE"
+                            print("[Button] -> RELEASED: Verification state reset to IDLE")
+                        else:
+                            print("[Button] -> RELEASED: In cooldown, awaiting LED timer to reset to IDLE")
                     else:
                         print("[Button] -> RELEASED")
 
