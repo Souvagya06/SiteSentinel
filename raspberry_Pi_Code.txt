@@ -687,11 +687,16 @@ if __name__ == "__main__":
 
     PORT     = 8080
     server   = ThreadedServer(("0.0.0.0", PORT), Handler)
-    hostname = socket.gethostname()
     try:
-        local_ip = socket.gethostbyname(hostname)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
     except Exception:
-        local_ip = "hostname -I"
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            local_ip = "192.168.1.25"
 
     print(f"\n{'='*55}")
     print(f"  SiteSentinel Pi Server + Firebase Cloud Active")
