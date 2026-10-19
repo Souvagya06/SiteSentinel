@@ -563,6 +563,7 @@ def start_firebase_bridge():
 
     # 1. Telemetry loop
     def _telemetry_loop():
+        global server_start_time
         while True:
             now = time.time()
             with gpio_lock:
