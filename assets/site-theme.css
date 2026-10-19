@@ -187,6 +187,42 @@ body.dashboard-page .panel-title-sub { color: #7a8993; }
 body.dashboard-page th { color: #687b87; background: #d8e0e3; border-color: rgba(35,59,76,.1); }
 body.dashboard-page td { color: #29465a; border-color: rgba(35,59,76,.09); }
 body.dashboard-page tr:hover td { background: rgba(255,255,255,.58); }
+body.dashboard-page .table-wrap {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #6a7f8d #cfd7db;
+  -webkit-overflow-scrolling: touch;
+}
+body.dashboard-page .panel > .table-wrap,
+body.dashboard-page .roster-scroll-wrap {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+body.dashboard-page .table-wrap::-webkit-scrollbar {
+  height: 9px !important;
+  width: 8px !important;
+}
+body.dashboard-page .table-wrap::-webkit-scrollbar-track {
+  background: #cfd7db !important;
+  border-radius: 6px !important;
+}
+body.dashboard-page .table-wrap::-webkit-scrollbar-thumb {
+  background: #6a7f8d !important;
+  border-radius: 6px !important;
+  border: 1.5px solid #cfd7db !important;
+}
+body.dashboard-page .table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #c85d3d !important;
+}
+body.dashboard-page .roster-table {
+  min-width: 980px !important;
+}
+body.dashboard-page .roster-table th,
+body.dashboard-page .roster-table td {
+  white-space: nowrap !important;
+}
 body.dashboard-page .worker-avatar { color: #35576c; border: 0; border-radius: 10px; background: #d8e0e3; box-shadow: inset 2px 2px 4px rgba(45,65,80,.08), inset -2px -2px 4px white; }
 body.dashboard-page .status-badge.active, body.dashboard-page .helmet-badge.scanned { color: #08796f; border: 0; background: #deeee9; }
 body.dashboard-page .status-badge.offsite, body.dashboard-page .helmet-badge.assigned { color: #657a88; border: 0; background: #e6ebee; }
