@@ -13,11 +13,14 @@ _firebase_app = None
 _firebase_initialized = False
 _init_error = None
 
+def get_init_error() -> Optional[str]:
+    return _init_error
+
 def _init_firebase():
     """Initializes Firebase Admin SDK lazily using service account credentials."""
     global _firebase_app, _firebase_initialized, _init_error
-    if _firebase_initialized:
-        return _firebase_app is not None
+    if _firebase_initialized and _firebase_app is not None:
+        return True
 
     _firebase_initialized = True
     database_url = os.getenv(
@@ -39,15 +42,32 @@ def _init_firebase():
 
         cred = None
 
-        # 1. Check raw JSON string in environment (ideal for Render cloud hosting)
+        # 1. Check raw or base64 JSON string in environment (ideal for Render cloud hosting)
         cred_json_str = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
         if cred_json_str:
+            cert_dict = None
             try:
                 cert_dict = json.loads(cred_json_str)
-                cred = credentials.Certificate(cert_dict)
-                print("[Firebase] Loaded credentials from FIREBASE_CREDENTIALS_JSON env var.")
-            except Exception as e:
-                print(f"[Firebase] Error parsing FIREBASE_CREDENTIALS_JSON: {e}")
+            except Exception:
+                try:
+                    import base64
+                    decoded = base64.b64decode(cred_json_str).decode("utf-8")
+                    cert_dict = json.loads(decoded)
+                except Exception as e:
+                    _init_error = f"Invalid FIREBASE_CREDENTIALS_JSON format: {e}"
+                    print(f"[Firebase] Error parsing FIREBASE_CREDENTIALS_JSON: {e}")
+
+            if cert_dict and isinstance(cert_dict, dict):
+                # Ensure escaped newlines in private key are converted if needed
+                if "private_key" in cert_dict and isinstance(cert_dict["private_key"], str):
+                    if "\\n" in cert_dict["private_key"]:
+                        cert_dict["private_key"] = cert_dict["private_key"].replace("\\n", "\n")
+                try:
+                    cred = credentials.Certificate(cert_dict)
+                    print("[Firebase] Loaded credentials from FIREBASE_CREDENTIALS_JSON env var.")
+                except Exception as e:
+                    _init_error = f"Invalid service account credentials: {e}"
+                    print(f"[Firebase] Error creating certificate from FIREBASE_CREDENTIALS_JSON: {e}")
 
         # 2. Check JSON file path (ideal for local development)
         if not cred:
@@ -70,8 +90,10 @@ def _init_firebase():
                         print(f"[Firebase] Error loading certificate from {c}: {e}")
 
         if not cred:
-            _init_error = "No valid Firebase credentials found (checked FIREBASE_CREDENTIALS_JSON and firebase-credentials.json)."
+            if not _init_error:
+                _init_error = "No Firebase credentials found (FIREBASE_CREDENTIALS_JSON environment variable not set on Render)."
             print(f"[Firebase] WARNING: {_init_error}")
+            _firebase_initialized = False
             return False
 
         _firebase_app = firebase_admin.initialize_app(cred, {
@@ -83,14 +105,16 @@ def _init_firebase():
     except ImportError:
         _init_error = "firebase-admin library is not installed."
         print(f"[Firebase] WARNING: {_init_error}")
+        _firebase_initialized = False
         return False
     except Exception as e:
         _init_error = str(e)
         print(f"[Firebase] Initialization failed: {e}")
+        _firebase_initialized = False
         return False
 
 def get_default_device_id() -> str:
-    return os.getenv("FIREBASE_DEVICE_ID", "pisite_01").strip()
+    return os.getenv("FIREBASE_DEVICE_ID", "pisite_01").strip().lower()
 
 def is_firebase_available() -> bool:
     return _init_firebase()
@@ -107,7 +131,7 @@ def get_device_status(device_id: Optional[str] = None) -> Dict[str, Any]:
             "error": _init_error or "Firebase not initialized"
         }
 
-    dev_id = device_id or get_default_device_id()
+    dev_id = (device_id or get_default_device_id()).strip().lower()
     try:
         from firebase_admin import db
         ref = db.reference(f"devices/{dev_id}")
@@ -157,7 +181,7 @@ def send_device_command(
             "error": f"Firebase not configured on server: {_init_error}"
         }
 
-    dev_id = device_id or get_default_device_id()
+    dev_id = (device_id or get_default_device_id()).strip().lower()
     cmd_id = f"cmd_{int(time.time()*1000)}_{secrets.token_hex(3)}"
     now = time.time()
 

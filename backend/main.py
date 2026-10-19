@@ -1408,6 +1408,8 @@ def save_pi_ip():
 
     data = request.get_json()
     pi_ip = data.get("pi_ip", "").strip()
+    if pi_ip and not ("." in pi_ip or ":" in pi_ip):
+        pi_ip = pi_ip.lower()
 
     execute(
         "UPDATE users SET pi_ip = ? WHERE id = ?",
@@ -1499,12 +1501,22 @@ def api_test_pi():
     if not ip or ip in ["0", "1", "local", "webcam", "usb"]:
         return jsonify({"ok": True, "type": "local", "message": "Local camera mode (no remote Pi required)."})
 
+    is_cloud_device = bool(ip and not ("." in ip or ":" in ip))
+
     # Check via Firebase Realtime Database
     try:
-        from firebase_service import is_firebase_available, get_device_status, get_default_device_id
-        if is_firebase_available():
-            # If user entered a device ID (not an IP with dots/colons) or left blank
-            dev_id = ip if (ip and not ("." in ip or ":" in ip)) else get_default_device_id()
+        from firebase_service import is_firebase_available, get_device_status, get_default_device_id, get_init_error
+        if is_cloud_device:
+            if not is_firebase_available():
+                err = get_init_error() or "FIREBASE_CREDENTIALS_JSON not configured"
+                return jsonify({
+                    "ok": False,
+                    "type": "firebase",
+                    "device_id": ip,
+                    "message": f"Firebase Cloud is not configured on the hosted server ({err}). Please add the 'FIREBASE_CREDENTIALS_JSON' environment variable in your Render dashboard."
+                })
+
+            dev_id = ip.strip().lower()
             status = get_device_status(dev_id)
             if status.get("online"):
                 sec = status.get("seconds_ago", 0)
@@ -1515,7 +1527,7 @@ def api_test_pi():
                     "device_id": dev_id,
                     "message": f"Connected to Raspberry Pi ({dev_id}) via Firebase Cloud! Heartbeat received {sec}s ago. Camera server: {cam_status}."
                 })
-            elif not ("." in ip or ":" in ip):
+            else:
                 sec = status.get("seconds_ago")
                 last_msg = f"Last seen {sec}s ago." if sec is not None else "Device has not sent a heartbeat yet."
                 return jsonify({
@@ -1537,7 +1549,7 @@ def api_test_pi():
         else:
             return jsonify({"ok": False, "type": "pi", "message": f"Pi replied with HTTP {r.status_code}"})
     except Exception as e:
-        return jsonify({"ok": False, "type": "pi", "message": f"Cannot connect to {ip}:8080. On hosted deployments, run 'python3 pi_firebase_bridge.py' on the Pi for cloud connectivity."})
+        return jsonify({"ok": False, "type": "pi", "message": f"Cannot connect to {ip}:8080. If using cloud mode, enter device ID 'pisite_01'."})
 
 @app.route("/api/pi/start", methods=["POST"])
 def api_start_pi():
@@ -1567,11 +1579,11 @@ def api_pi_cloud_status():
     )
     pi_ip = (user.get("pi_ip") if user else None) or ""
     try:
-        from firebase_service import is_firebase_available, get_device_status, get_default_device_id
-        dev_id = pi_ip if (pi_ip and not ("." in pi_ip or ":" in pi_ip)) else get_default_device_id()
+        from firebase_service import is_firebase_available, get_device_status, get_default_device_id, get_init_error
+        dev_id = (pi_ip if (pi_ip and not ("." in pi_ip or ":" in pi_ip)) else get_default_device_id()).strip().lower()
         if is_firebase_available():
             return jsonify(get_device_status(dev_id))
-        return jsonify({"configured": False, "online": False, "message": "Firebase not initialized"})
+        return jsonify({"configured": False, "online": False, "message": f"Firebase not initialized ({get_init_error() or 'No credentials'})"})
     except Exception as e:
         return jsonify({"configured": False, "online": False, "error": str(e)})
 
@@ -1603,8 +1615,8 @@ def api_pi_actuate(action):
         is_render = os.getenv("RENDER") is not None
         is_cloud_device = bool(pi_ip and not ("." in pi_ip or ":" in pi_ip))
 
-        if is_firebase_available() and (is_render or is_cloud_device or not pi_ip or pi_ip == get_default_device_id()):
-            dev_id = pi_ip if is_cloud_device else get_default_device_id()
+        if is_firebase_available() and (is_render or is_cloud_device or not pi_ip or pi_ip.strip().lower() == get_default_device_id()):
+            dev_id = (pi_ip if is_cloud_device else get_default_device_id()).strip().lower()
             res = send_device_command(action=action, params=params, device_id=dev_id, wait_completion=True, timeout_s=3.0)
             if res.get("ok"):
                 return jsonify({
