@@ -1496,46 +1496,41 @@ def _mjpeg_generator():
     """Yields MJPEG frames from the shared buffer for the dashboard stream."""
     BOUNDARY = b"--frame"
     placeholder_bytes = _generate_placeholder_jpeg()
-    while True:
-        if not _stream_active:
-            if placeholder_bytes:
+    try:
+        while _stream_active:
+            with _frame_lock:
+                frame = _latest_frame_jpeg
+                updated = _frame_updated_at
+
+            # If memory is empty (e.g. separate gunicorn worker), check shared disk buffer
+            if (not frame or (time.time() - updated > 5.0)) and _SHARED_FRAME_PATH.is_file():
+                try:
+                    mtime = _SHARED_FRAME_PATH.stat().st_mtime
+                    if time.time() - mtime < 5.0:
+                        frame = _SHARED_FRAME_PATH.read_bytes()
+                        updated = mtime
+                except Exception:
+                    pass
+
+            if frame and (time.time() - updated < 6.0):
                 yield (
                     BOUNDARY + b"\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" +
-                    placeholder_bytes + b"\r\n"
+                    frame + b"\r\n"
                 )
-            time.sleep(0.5)
-            continue
-
-        with _frame_lock:
-            frame = _latest_frame_jpeg
-            updated = _frame_updated_at
-
-        # If memory is empty (e.g. separate gunicorn worker), check shared disk buffer
-        if (not frame or (time.time() - updated > 5.0)) and _SHARED_FRAME_PATH.is_file():
-            try:
-                mtime = _SHARED_FRAME_PATH.stat().st_mtime
-                if time.time() - mtime < 5.0:
-                    frame = _SHARED_FRAME_PATH.read_bytes()
-                    updated = mtime
-            except Exception:
-                pass
-
-        if frame and (time.time() - updated < 6.0):
-            yield (
-                BOUNDARY + b"\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n" +
-                frame + b"\r\n"
-            )
-            time.sleep(0.04)  # ~25 fps cap
-        else:
-            if placeholder_bytes:
-                yield (
-                    BOUNDARY + b"\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" +
-                    placeholder_bytes + b"\r\n"
-                )
-            time.sleep(0.5)
+                time.sleep(0.04)  # ~25 fps cap
+            else:
+                if placeholder_bytes:
+                    yield (
+                        BOUNDARY + b"\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n" +
+                        placeholder_bytes + b"\r\n"
+                    )
+                time.sleep(0.4)
+    except (GeneratorExit, BrokenPipeError, ConnectionResetError):
+        pass
+    finally:
+        pass
 
 @app.route("/api/pi/stream")
 def pi_stream():
