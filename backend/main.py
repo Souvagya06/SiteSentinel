@@ -1665,16 +1665,6 @@ def api_pi_cloud_status():
     except Exception as e:
         return jsonify({"configured": False, "online": False, "error": str(e)})
 
-@app.route("/api/pi/status", methods=["GET"])
-def api_pi_status():
-    global webcam_process, _stream_active
-    is_running = bool((webcam_process and webcam_process.poll() is None) or _stream_active)
-    return jsonify({
-        "running": is_running,
-        "stream_active": _stream_active,
-        "webcam_running": bool(webcam_process and webcam_process.poll() is None)
-    })
-
 @app.route("/api/pi/actuate/<action>", methods=["POST"])
 def api_pi_actuate(action):
     if "user_id" not in session:
