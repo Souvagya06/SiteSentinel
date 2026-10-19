@@ -344,8 +344,26 @@
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; }
   .panel-title-sub { font-size: 11px; color: var(--text-3); margin-top: 1px; }
 
-  .table-wrap { overflow-x: auto; max-height: 520px; }
+  .table-wrap {
+    overflow-x: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.28) rgba(255,255,255,0.06);
+    -webkit-overflow-scrolling: touch;
+  }
+  .panel > .table-wrap,
+  .roster-scroll-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+  .table-wrap::-webkit-scrollbar { height: 9px; width: 8px; }
+  .table-wrap::-webkit-scrollbar-track { background: rgba(0,0,0,0.15); border-radius: 6px; }
+  .table-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 6px; }
+  .table-wrap::-webkit-scrollbar-thumb:hover { background: var(--primary); }
   table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+  .roster-table { min-width: 980px; }
+  .roster-table th, .roster-table td { white-space: nowrap; }
   th {
     padding: 12px 16px; font-size: 10px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3);
@@ -847,14 +865,19 @@
           <div class="panel-header">
             <div>
               <div class="panel-title">Worker Roster &amp; Gate Status</div>
-              <div class="panel-title-sub">Click any worker row for deep attendance &amp; PPE history</div>
+              <div class="panel-title-sub" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span>Click any worker row for deep attendance &amp; PPE history</span>
+                <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:6px;background:rgba(200,93,61,0.12);color:var(--primary);font-weight:600;">
+                  <span class="material-symbols-outlined" style="font-size:12px;">swap_horiz</span> Scroll Table
+                </span>
+              </div>
             </div>
             <button class="qa-btn primary" style="width:auto;padding:7px 12px;" onclick="openAddWorkerModal()">
               <span class="material-symbols-outlined" style="font-size:16px;">person_add</span> Add Worker
             </button>
           </div>
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap roster-scroll-wrap" style="flex:1; min-height:0; max-height:none;">
+            <table class="roster-table" id="workers-table">
               <thead>
                 <tr>
                   <th>ID</th>

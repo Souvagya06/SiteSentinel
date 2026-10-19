@@ -162,14 +162,15 @@ def trigger_matrix_score(score=100, duration=None, show_once=True):
     except Exception:
         s_int = 100
 
-    score_durations = {100: 6.0, 50: 5.0, 0: 4.0}
-    dur = duration or score_durations.get(s_int, 5.0)
+    # One-pass durations: give just enough time for a single clean scroll
+    score_durations = {100: 4.5, 50: 3.5, 0: 3.0}
+    dur = duration or score_durations.get(s_int, 4.0)
 
     try:
         matrix_token += 1
         cur_token = matrix_token
 
-        def scroll_score(s, token, dur):
+        def scroll_score(s, token, dur, once=show_once):
             with matrix_lock:
                 try:
                     matrix_device.contrast(128)  # Crisp & bright
@@ -185,6 +186,8 @@ def trigger_matrix_score(score=100, duration=None, show_once=True):
                                  font=proportional(CP437_FONT))
                         pos -= 1
                         if pos < -max_pos:
+                            if once:
+                                break  # stop after one complete scroll pass
                             pos = 8
                         time.sleep(0.07)
                     matrix_device.clear()
