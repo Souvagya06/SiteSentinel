@@ -1756,7 +1756,7 @@
 
       if (previewContainer && !document.getElementById('pi-live-img')) {
         previewContainer.innerHTML = `
-          <img id="pi-live-img" src="/api/pi/stream?t=${Date.now()}" style="width:100%;height:100%;object-fit:contain;background:#05050a;border-radius:10px;display:block;" alt="Live Gate Stream" onerror="this.style.display='none'; document.getElementById('pi-stream-placeholder').style.display='flex';" onload="this.style.display='block'; const ph=document.getElementById('pi-stream-placeholder'); if(ph) ph.style.display='none';"/>
+          <img id="pi-live-img" src="/api/pi/stream?t=${Date.now()}" style="width:100%;height:100%;object-fit:contain;background:#05050a;border-radius:10px;display:block;" alt="Live Gate Stream" onerror="const self=this; document.getElementById('pi-stream-placeholder').style.display='flex'; setTimeout(()=>{ self.src='/api/pi/stream?t='+Date.now(); }, 2000);" onload="this.style.display='block'; const ph=document.getElementById('pi-stream-placeholder'); if(ph) ph.style.display='none';"/>
           <div id="pi-stream-placeholder" class="cam-watermark" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;">
             <span class="material-symbols-outlined">hourglass_top</span>
             <p>Receiving Stream Frames...</p>

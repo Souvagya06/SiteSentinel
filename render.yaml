@@ -3,7 +3,7 @@ services:
     name: sitesentinel
     runtime: python
     buildCommand: pip install --upgrade pip && pip install --prefer-binary -r requirements_render.txt
-    startCommand: gunicorn --chdir backend main:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    startCommand: gunicorn --chdir backend main:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9

@@ -270,14 +270,51 @@ def heartbeat_loop():
 
         time.sleep(3.0)
 
+# ── Cloud Stream Forwarder ─────────────────────────────────────────────
+CLOUD_STREAM_URL = os.getenv("CLOUD_STREAM_URL", "https://sitesentinel.site/api/pi/frame/push").strip()
+ENABLE_STREAM_FORWARD = os.getenv("ENABLE_CLOUD_STREAM", "true").lower() in ["true", "1", "yes"]
+
+def stream_forwarder():
+    """Reads MJPEG stream from local Pi_Camera.py (port 8080) and POSTs frames to hosted site."""
+    if not ENABLE_STREAM_FORWARD or not CLOUD_STREAM_URL:
+        return
+    local_url = f"{PI_LOCAL_SERVER}/stream"
+    print(f"[Stream Forwarder] Forwarding {local_url} -> {CLOUD_STREAM_URL}")
+    post_session = requests.Session()
+    while True:
+        try:
+            r = requests.get(local_url, stream=True, timeout=5)
+            bytes_buf = b""
+            for chunk in r.iter_content(chunk_size=4096):
+                bytes_buf += chunk
+                a = bytes_buf.find(b"\xff\xd8")
+                b = bytes_buf.find(b"\xff\xd9")
+                if a != -1 and b != -1:
+                    jpg = bytes_buf[a:b+2]
+                    bytes_buf = bytes_buf[b+2:]
+                    try:
+                        post_session.post(
+                            CLOUD_STREAM_URL,
+                            data=jpg,
+                            headers={"Content-Type": "application/octet-stream"},
+                            timeout=0.6
+                        )
+                    except Exception:
+                        pass
+                    time.sleep(0.08)  # ~12 fps
+        except Exception:
+            time.sleep(2.0)
+
 if __name__ == "__main__":
     t_cmd_stream = threading.Thread(target=command_stream_listener, daemon=True)
     t_cmd_poll = threading.Thread(target=command_polling_fallback, daemon=True)
     t_heartbeat = threading.Thread(target=heartbeat_loop, daemon=True)
+    t_stream = threading.Thread(target=stream_forwarder, daemon=True)
 
     t_cmd_stream.start()
     t_cmd_poll.start()
     t_heartbeat.start()
+    t_stream.start()
 
     print("\n[READY] Raspberry Pi is online and connected to SiteSentinel Cloud!")
     print("Press Ctrl+C to terminate.")

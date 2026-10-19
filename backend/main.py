@@ -38,9 +38,11 @@ cloudinary.config(
 )
 
 # ── Shared In-Process Frame Buffer (for dashboard MJPEG stream) ──
+import tempfile
 _latest_frame_jpeg: bytes = b""
 _frame_lock = Lock()
 _frame_updated_at: float = 0.0
+_SHARED_FRAME_PATH = Path(tempfile.gettempdir()) / "sitesentinel_live_frame.jpg"
 
 FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../frontend/pages")
@@ -1457,32 +1459,70 @@ def start_webcam_detection(user_id):
     print(f"webcam_detection.py started (PID {webcam_process.pid}) — log: {_webcam_log_path}")
     return True
 
+def _generate_placeholder_jpeg(line1="SiteSentinel Gate Camera", line2="Connecting to camera feed..."):
+    try:
+        from PIL import Image, ImageDraw
+        img = Image.new("RGB", (640, 360), color=(15, 17, 23))
+        draw = ImageDraw.Draw(img)
+        draw.text((180, 150), line1, fill=(200, 210, 230))
+        draw.text((170, 180), line2, fill=(120, 130, 150))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=75)
+        return buf.getvalue()
+    except Exception:
+        return b""
+
 # ── Dashboard MJPEG Stream Routes ──────────────────────
 @app.route("/api/pi/frame/push", methods=["POST"])
 def push_frame():
-    """Called by webcam_detection.py to push the latest annotated JPEG frame."""
+    """Called by Pi_Camera.py or webcam_detection.py to push the latest annotated JPEG frame."""
     global _latest_frame_jpeg, _frame_updated_at
     data = request.get_data()
-    if data:
+    if data and len(data) > 100:
         with _frame_lock:
             _latest_frame_jpeg = data
             _frame_updated_at = time.time()
+        try:
+            with open(_SHARED_FRAME_PATH, "wb") as f:
+                f.write(data)
+        except Exception:
+            pass
     return '', 204
 
 def _mjpeg_generator():
     """Yields MJPEG frames from the shared buffer for the dashboard stream."""
     BOUNDARY = b"--frame"
+    placeholder_bytes = _generate_placeholder_jpeg()
     while True:
         with _frame_lock:
             frame = _latest_frame_jpeg
             updated = _frame_updated_at
-        if frame:
+
+        # If memory is empty (e.g. separate gunicorn worker), check shared disk buffer
+        if (not frame or (time.time() - updated > 5.0)) and _SHARED_FRAME_PATH.is_file():
+            try:
+                mtime = _SHARED_FRAME_PATH.stat().st_mtime
+                if time.time() - mtime < 5.0:
+                    frame = _SHARED_FRAME_PATH.read_bytes()
+                    updated = mtime
+            except Exception:
+                pass
+
+        if frame and (time.time() - updated < 6.0):
             yield (
                 BOUNDARY + b"\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n" +
                 frame + b"\r\n"
             )
-        time.sleep(0.04)  # ~25 fps cap
+            time.sleep(0.04)  # ~25 fps cap
+        else:
+            if placeholder_bytes:
+                yield (
+                    BOUNDARY + b"\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" +
+                    placeholder_bytes + b"\r\n"
+                )
+            time.sleep(0.5)
 
 @app.route("/api/pi/stream")
 def pi_stream():
@@ -1562,6 +1602,28 @@ def api_start_pi():
     )
     if not user:
         return jsonify({"error": "User not found."}), 404
+
+    pi_ip = (user.get("pi_ip") or "").strip()
+    is_render = os.getenv("RENDER") is not None
+    is_cloud_device = bool(pi_ip and not ("." in pi_ip or ":" in pi_ip))
+
+    if is_render or is_cloud_device:
+        # On Render / Cloud deployment, dispatch stream command to Pi via Firebase
+        try:
+            from firebase_service import is_firebase_available, send_device_command, get_default_device_id
+            if is_firebase_available():
+                dev_id = (pi_ip if is_cloud_device else get_default_device_id()).strip().lower()
+                send_device_command(action="stream_start", device_id=dev_id, wait_completion=False)
+                return jsonify({
+                    "message": f"Stream activated. Raspberry Pi ({dev_id}) is streaming frames to the cloud.",
+                    "running": True
+                })
+        except Exception as e:
+            print(f"[API] Cloud stream activation note: {e}")
+        return jsonify({
+            "message": "Cloud stream active. Waiting for frames from Raspberry Pi or CV engine.",
+            "running": True
+        })
 
     success = start_webcam_detection(session["user_id"])
     if not success:
@@ -1658,9 +1720,22 @@ def api_pi_status():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
 
-    is_running = webcam_process is not None and webcam_process.poll() is None
+    frames_active = bool(_frame_updated_at and (time.time() - _frame_updated_at < 6.0))
+    if not frames_active and _SHARED_FRAME_PATH.is_file():
+        try:
+            if time.time() - _SHARED_FRAME_PATH.stat().st_mtime < 6.0:
+                frames_active = True
+        except Exception:
+            pass
+
+    is_running = (webcam_process is not None and webcam_process.poll() is None) or frames_active
     exit_code = webcam_process.poll() if webcam_process is not None else None
-    return jsonify({"running": is_running, "exit_code": exit_code})
+    return jsonify({
+        "running": is_running,
+        "streaming": frames_active,
+        "last_frame_sec": round(time.time() - _frame_updated_at, 1) if _frame_updated_at else None,
+        "exit_code": exit_code
+    })
 
 @app.route("/api/pi/log", methods=["GET"])
 def api_pi_log():

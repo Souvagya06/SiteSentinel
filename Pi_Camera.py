@@ -324,6 +324,37 @@ if PICAMERA_AVAILABLE:
         print(f"Error starting Pi Camera: {e}")
         picam2 = None
 
+# ── Cloud Stream Frame Pusher ────────────────────────
+CLOUD_STREAM_URL = os.getenv("CLOUD_STREAM_URL", "https://sitesentinel.site/api/pi/frame/push").strip()
+ENABLE_CLOUD_STREAM = os.getenv("ENABLE_CLOUD_STREAM", "true").lower() in ["true", "1", "yes"]
+
+def _cloud_stream_worker():
+    """Continuously pushes the Pi Camera JPEG frames outbound to the hosted dashboard."""
+    if not ENABLE_CLOUD_STREAM or not CLOUD_STREAM_URL:
+        return
+    import requests
+    session = requests.Session()
+    print(f"[Cloud Stream] Pushing frames to: {CLOUD_STREAM_URL}")
+    while True:
+        try:
+            with output.condition:
+                output.condition.wait(timeout=0.2)
+                frame = output.frame
+            if frame is not None:
+                session.post(
+                    CLOUD_STREAM_URL,
+                    data=frame,
+                    headers={"Content-Type": "application/octet-stream"},
+                    timeout=0.6
+                )
+            time.sleep(0.08)  # ~12 fps
+        except Exception:
+            time.sleep(0.5)
+
+if PICAMERA_AVAILABLE:
+    t_cloud_stream = threading.Thread(target=_cloud_stream_worker, daemon=True)
+    t_cloud_stream.start()
+
 # ── HTTP Handler (Port 8080) ──────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -544,6 +575,8 @@ def start_firebase_bridge():
             elif action == "ppe":
                 score_val = int(params.get("score", 100))
                 trigger_matrix_score(score_val)
+            elif action in ["stream_start", "camera_on"]:
+                print("[Firebase Command] Stream start acknowledged.")
             elif action == "reset":
                 trigger_reset()
             elif action == "state":

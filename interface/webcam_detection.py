@@ -69,14 +69,18 @@ parser.add_argument("--camera-id", default="Pi Camera 01", help="Camera identifi
 parser.add_argument("--imgsz", type=int, default=416, help="YOLO inference size (320 or 416)")
 parser.add_argument("--headless", action="store_true", help="Run without OpenCV display window (for dashboard streaming)")
 parser.add_argument("--pi-ip", default=None, help="Explicit Raspberry Pi IP address override")
+parser.add_argument("--backend-url", default=None, help="Explicit backend URL override (e.g. https://sitesentinel.site)")
 args = parser.parse_args()
 MANAGER_USER_ID = str(args.user_id)
 CAMERA_ID = str(args.camera_id)
 YOLO_IMGSZ = args.imgsz
 HEADLESS = args.headless
 
+if args.backend_url:
+    BACKEND_URL = args.backend_url.rstrip("/")
+
 print("=" * 65)
-print(f"  SiteSentinel Parallel CV Engine | Manager: {MANAGER_USER_ID} | Camera: {CAMERA_ID} | imgsz: {YOLO_IMGSZ}")
+print(f"  SiteSentinel Parallel CV Engine | Manager: {MANAGER_USER_ID} | Camera: {CAMERA_ID} | Backend: {BACKEND_URL}")
 print("=" * 65)
 
 # ── Verify Raspberry Pi Configuration ───────────────────
