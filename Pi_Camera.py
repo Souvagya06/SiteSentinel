@@ -328,15 +328,16 @@ if PICAMERA_AVAILABLE:
 CLOUD_STREAM_URL = os.getenv("CLOUD_STREAM_URL", "https://sitesentinel.site/api/pi/frame/push").strip()
 ENABLE_CLOUD_STREAM = os.getenv("ENABLE_CLOUD_STREAM", "true").lower() in ["true", "1", "yes"]
 cloud_stream_active = True
+_pushing = False
 
 def _cloud_stream_worker():
     """Continuously pushes the Pi Camera JPEG frames outbound to the hosted dashboard."""
-    global cloud_stream_active
+    global cloud_stream_active, _pushing
     if not ENABLE_CLOUD_STREAM or not CLOUD_STREAM_URL:
         return
     import requests
     session = requests.Session()
-    print(f"[Cloud Stream] Pushing frames to: {CLOUD_STREAM_URL}")
+    print(f"[Cloud Stream] Fast adaptive pusher active: {CLOUD_STREAM_URL}")
     while True:
         if not cloud_stream_active:
             time.sleep(0.5)
@@ -345,15 +346,20 @@ def _cloud_stream_worker():
             with output.condition:
                 output.condition.wait(timeout=0.2)
                 frame = output.frame
-            if frame is not None:
-                session.post(
-                    CLOUD_STREAM_URL,
-                    data=frame,
-                    headers={"Content-Type": "application/octet-stream"},
-                    timeout=0.6
-                )
-            time.sleep(0.08)  # ~12 fps
+            if frame is not None and not _pushing:
+                _pushing = True
+                try:
+                    session.post(
+                        CLOUD_STREAM_URL,
+                        data=frame,
+                        headers={"Content-Type": "application/octet-stream"},
+                        timeout=0.35
+                    )
+                finally:
+                    _pushing = False
+            time.sleep(0.12)  # ~8 fps: smooth video with zero bufferbloat
         except Exception:
+            _pushing = False
             time.sleep(0.5)
 
 if PICAMERA_AVAILABLE:
@@ -440,12 +446,25 @@ class Handler(BaseHTTPRequestHandler):
             trigger_reset()
             self._ok("RESET OK")
 
+        elif path in ["/stream/stop", "/camera/off"]:
+            global cloud_stream_active
+            cloud_stream_active = False
+            print("[HTTP] Cloud streaming turned OFF")
+            self._ok("Stream stopped")
+
+        elif path in ["/stream/start", "/camera/on"]:
+            global cloud_stream_active
+            cloud_stream_active = True
+            print("[HTTP] Cloud streaming turned ON")
+            self._ok("Stream started")
+
         elif path == "/health":
             self._json({
                 "status": "online",
                 "service": "SiteSentinel Pi Server",
                 "button_pressed": button_pressed,
-                "state": verification_state
+                "state": verification_state,
+                "cloud_stream": cloud_stream_active
             })
 
         else:
@@ -548,6 +567,7 @@ def start_firebase_bridge():
 
     def _execute_cloud_command(cmd_data):
         nonlocal last_cmd_id
+        global cloud_stream_active
         if not isinstance(cmd_data, dict):
             return
         cmd_id = cmd_data.get("command_id")
@@ -605,7 +625,29 @@ def start_firebase_bridge():
                 "error": str(err)
             })
 
-    def _listener_loop():
+    def _command_stream_listener():
+        def _on_change(event):
+            try:
+                if event.event_type in ["put", "patch"] and event.data:
+                    data = event.data
+                    if isinstance(data, dict) and data.get("status") == "pending":
+                        _execute_cloud_command(data)
+                    elif isinstance(data, str) and data == "pending":
+                        full_cmd = command_ref.get()
+                        if isinstance(full_cmd, dict) and full_cmd.get("status") == "pending":
+                            _execute_cloud_command(full_cmd)
+            except Exception:
+                pass
+
+        while True:
+            try:
+                command_ref.listen(_on_change)
+                while True:
+                    time.sleep(15)
+            except Exception:
+                time.sleep(3)
+
+    def _polling_fallback_loop():
         while True:
             try:
                 data = command_ref.get()
@@ -613,10 +655,11 @@ def start_firebase_bridge():
                     _execute_cloud_command(data)
             except Exception:
                 pass
-            time.sleep(0.8)
+            time.sleep(1.5)
 
     threading.Thread(target=_telemetry_loop, daemon=True).start()
-    threading.Thread(target=_listener_loop, daemon=True).start()
+    threading.Thread(target=_command_stream_listener, daemon=True).start()
+    threading.Thread(target=_polling_fallback_loop, daemon=True).start()
 
 # ── Main Server Start ─────────────────────────────────
 if __name__ == "__main__":

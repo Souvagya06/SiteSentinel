@@ -1665,6 +1665,16 @@ def api_pi_cloud_status():
     except Exception as e:
         return jsonify({"configured": False, "online": False, "error": str(e)})
 
+@app.route("/api/pi/status", methods=["GET"])
+def api_pi_status():
+    global webcam_process, _stream_active
+    is_running = bool((webcam_process and webcam_process.poll() is None) or _stream_active)
+    return jsonify({
+        "running": is_running,
+        "stream_active": _stream_active,
+        "webcam_running": bool(webcam_process and webcam_process.poll() is None)
+    })
+
 @app.route("/api/pi/actuate/<action>", methods=["POST"])
 def api_pi_actuate(action):
     if "user_id" not in session:
@@ -1695,12 +1705,12 @@ def api_pi_actuate(action):
 
         if is_firebase_available() and (is_render or is_cloud_device or not pi_ip or pi_ip.strip().lower() == get_default_device_id()):
             dev_id = (pi_ip if is_cloud_device else get_default_device_id()).strip().lower()
-            res = send_device_command(action=action, params=params, device_id=dev_id, wait_completion=True, timeout_s=3.0)
+            res = send_device_command(action=action, params=params, device_id=dev_id, wait_completion=False)
             if res.get("ok"):
                 return jsonify({
-                    "message": res.get("message", f"Command '{action}' sent via Firebase Cloud to {dev_id}"),
+                    "message": f"Command '{action}' dispatched to Raspberry Pi ({dev_id})",
                     "channel": "firebase",
-                    "status": res.get("status")
+                    "status": "dispatched"
                 })
             else:
                 return jsonify({"error": res.get("error", "Failed to dispatch command to Firebase")}), 502

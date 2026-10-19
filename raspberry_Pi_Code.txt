@@ -1,26 +1,39 @@
 #!/usr/bin/env python3
 """
-SiteSentinel — Raspberry Pi Camera + GPIO Server
+SiteSentinel — All-in-One Raspberry Pi Camera, GPIO & Firebase Cloud Server
 Handles:
-- MJPEG video streaming from Pi Camera
-- Push-and-Hold physical verification button (GPIO 22 with internal pull-up)
-- Verification state tracking (IDLE, ACTIVE, COMPLETED)
+- MJPEG video streaming from Pi Camera (/stream)
+- Push-and-Hold physical verification button (GPIO 22)
+- State tracking (IDLE, ACTIVE, COMPLETED)
 - Independent LED indicators (Green: Check-in, Red: Check-out)
 - Independent Safety Buzzer (GPIO 18)
 - MAX7219 8x8 LED Matrix PPE score display (SPI0)
-- JSON Status and Control REST API
+- Local HTTP REST API (port 8080)
+- OUTBOUND Firebase Realtime Database Bridge (Live heartbeat & cloud commands)
 
-Run this ONLY on the Raspberry Pi.
+Run on Raspberry Pi:
+    python3 Pi_Camera.py
 """
 
 import io
+import os
+import sys
 import time
 import json
 import socket
 import threading
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
+
+# ── Cloud Bridge Configuration ────────────────────────
+FIREBASE_DATABASE_URL = os.getenv(
+    "FIREBASE_DATABASE_URL",
+    "https://sitesentinel-50bfc-default-rtdb.asia-southeast1.firebasedatabase.app/"
+).strip()
+DEVICE_ID = os.getenv("FIREBASE_DEVICE_ID", "pisite_01").strip()
+CREDENTIALS_FILE = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase-credentials.json")
 
 # ── GPIO Initialization ───────────────────────────────
 try:
@@ -79,7 +92,6 @@ if GPIO_AVAILABLE:
     GPIO.setup(RED_PIN,    GPIO.OUT, initial=GPIO.LOW)
     GPIO.setup(BUZZER_PIN, GPIO.OUT, initial=GPIO.LOW)
     # Button wired between GPIO 22 and GND -> Internal Pull-Up Resistor
-    # Pressed = LOW (0), Released = HIGH (1)
     GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     print(f"GPIO initialized — Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}, Button={BUTTON_PIN}")
 
@@ -100,15 +112,109 @@ if MATRIX_AVAILABLE:
         print(f"Matrix init failed: {e}")
         matrix_device = None
 
+# ── Direct Actuation Helpers (Thread-Safe) ─────────────
+def trigger_checkin():
+    global green_off_at, verification_state
+    with gpio_lock:
+        if GPIO_AVAILABLE:
+            GPIO.output(GREEN_PIN, GPIO.HIGH)
+            GPIO.output(RED_PIN,   GPIO.LOW)
+        green_off_at = time.time() + 3.0
+        verification_state = "COMPLETED"
+    print("[Actuate] 🟢 Check-in granted -> Green LED ON for 3s")
+
+def trigger_checkout():
+    global red_off_at, verification_state
+    with gpio_lock:
+        if GPIO_AVAILABLE:
+            GPIO.output(RED_PIN,   GPIO.HIGH)
+            GPIO.output(GREEN_PIN, GPIO.LOW)
+        red_off_at = time.time() + 3.0
+        verification_state = "COMPLETED"
+    print("[Actuate] 🔴 Check-out confirmed -> Red LED ON for 3s")
+
+def trigger_buzzer(duration=1.0):
+    global buzzer_state
+    with gpio_lock:
+        buzzer_state = True
+        if GPIO_AVAILABLE:
+            GPIO.output(BUZZER_PIN, GPIO.HIGH)
+    print(f"[Actuate] 🔊 Buzzer ON for {duration}s")
+    time.sleep(duration)
+    with gpio_lock:
+        buzzer_state = False
+        if GPIO_AVAILABLE:
+            GPIO.output(BUZZER_PIN, GPIO.LOW)
+    print("[Actuate] 🔇 Buzzer OFF")
+
+def trigger_matrix_score(score=100, duration=None, show_once=True):
+    global matrix_token
+    if not matrix_device or not MATRIX_AVAILABLE:
+        print(f"[Actuate] Matrix not available — score={score}")
+        return
+
+    score_durations = {100: 6.0, 50: 4.5, 0: 3.5}
+    dur = duration or score_durations.get(score, 5.0)
+
+    try:
+        matrix_token += 1
+        cur_token = matrix_token
+
+        def scroll_score(s, token, dur, single_pass=True):
+            with matrix_lock:
+                try:
+                    matrix_device.contrast(32)
+                    msg = f"PPE:{s} "
+                    show_until = time.time() + dur
+                    max_pos = len(msg) * 8
+                    pos = 8
+                    while time.time() < show_until and matrix_token == token:
+                        with canvas(matrix_device) as draw:
+                            text(draw, (pos, 0), msg,
+                                 fill="White",
+                                 font=proportional(CP437_FONT))
+                        pos -= 1
+                        if pos < -max_pos:
+                            if single_pass:
+                                break
+                            pos = 8
+                        time.sleep(0.08)
+                    matrix_device.clear()
+                except Exception as err:
+                    print(f"[Matrix Worker] {err}")
+
+        threading.Thread(
+            target=scroll_score,
+            args=(score, cur_token, dur, show_once),
+            daemon=True
+        ).start()
+        print(f"[Actuate] 📊 Matrix scrolling PPE score: {score}")
+    except Exception as e:
+        print(f"[Actuate] Matrix draw error: {e}")
+
+def trigger_reset():
+    global green_off_at, red_off_at, buzzer_state, verification_state
+    with gpio_lock:
+        verification_state = "IDLE"
+        green_off_at = 0.0
+        red_off_at = 0.0
+        buzzer_state = False
+        if GPIO_AVAILABLE:
+            GPIO.output(GREEN_PIN,  GPIO.LOW)
+            GPIO.output(RED_PIN,    GPIO.LOW)
+            GPIO.output(BUZZER_PIN, GPIO.LOW)
+        if matrix_device:
+            try:
+                matrix_device.clear()
+            except Exception:
+                pass
+    print("[Actuate] Hardware & Verification State RESET to IDLE")
+
 # ── Button Debounce & State Monitor Loop ──────────────
 def button_monitor_loop():
-    """
-    Dedicated background thread to monitor physical button.
-    Uses multi-sample consensus debounce and a release-holdoff tolerance to eliminate electrical chatter.
-    """
     global button_pressed, verification_state, press_start_time, last_state_change
 
-    stable_state = 1  # 1 = HIGH (Released), 0 = LOW (Pressed)
+    stable_state = 1
     sample_history = [1] * 8
     last_pressed_time = 0.0
 
@@ -119,18 +225,17 @@ def button_monitor_loop():
             except Exception:
                 raw = 1
         else:
-            raw = 1  # Simulated unpressed
+            raw = 1
 
         sample_history.pop(0)
         sample_history.append(raw)
 
-        # Require samples to agree
         if all(s == 0 for s in sample_history):
-            new_state = 0  # Solid LOW (Pressed)
+            new_state = 0
         elif all(s == 1 for s in sample_history):
-            new_state = 1  # Solid HIGH (Released)
+            new_state = 1
         else:
-            new_state = stable_state  # Transitioning / noisy jitter
+            new_state = stable_state
 
         now = time.time()
         if new_state == 0:
@@ -144,7 +249,6 @@ def button_monitor_loop():
                         verification_state = "ACTIVE"
                         print("[Button] -> PRESSED: Verification state changed to ACTIVE")
         else:
-            # Only mark as released if continuously unpressed for at least 0.8 seconds (eliminates chatter!)
             if button_pressed and (now - last_pressed_time > 0.8):
                 with gpio_lock:
                     button_pressed = False
@@ -163,33 +267,24 @@ threading.Thread(target=button_monitor_loop, daemon=True).start()
 
 # ── Non-blocking GPIO Timers & Auto-Reset ─────────────
 def gpio_timer_loop():
-    """
-    Handles automatic timeout turn-off for Green LED, Red LED, matrix,
-    and returns verification state to IDLE after transaction feedback ends.
-    """
     global green_off_at, red_off_at, matrix_off_at, verification_state
     while True:
         now = time.time()
         with gpio_lock:
-            # Green LED Timeout
             if green_off_at and now > green_off_at:
                 if GPIO_AVAILABLE:
                     GPIO.output(GREEN_PIN, GPIO.LOW)
                 green_off_at = 0.0
                 if verification_state == "COMPLETED" and not button_pressed:
                     verification_state = "IDLE"
-                    print("[Timer] Check-in feedback complete -> Verification state reset to IDLE")
 
-            # Red LED Timeout
             if red_off_at and now > red_off_at:
                 if GPIO_AVAILABLE:
                     GPIO.output(RED_PIN, GPIO.LOW)
                 red_off_at = 0.0
                 if verification_state == "COMPLETED" and not button_pressed:
                     verification_state = "IDLE"
-                    print("[Timer] Check-out feedback complete -> Verification state reset to IDLE")
 
-            # Matrix Display Timeout
             if matrix_off_at and now > matrix_off_at:
                 if matrix_device:
                     try:
@@ -228,22 +323,21 @@ if PICAMERA_AVAILABLE:
     except Exception as e:
         print(f"Error starting Pi Camera: {e}")
         picam2 = None
-else:
-    print("WARNING: Pi Camera not started because picamera2 library is unavailable.")
 
 # ── Cloud Stream Frame Pusher ────────────────────────
 CLOUD_STREAM_URL = os.getenv("CLOUD_STREAM_URL", "https://sitesentinel.site/api/pi/frame/push").strip()
 ENABLE_CLOUD_STREAM = os.getenv("ENABLE_CLOUD_STREAM", "true").lower() in ["true", "1", "yes"]
 cloud_stream_active = True
+_pushing = False
 
 def _cloud_stream_worker():
     """Continuously pushes the Pi Camera JPEG frames outbound to the hosted dashboard."""
-    global cloud_stream_active
+    global cloud_stream_active, _pushing
     if not ENABLE_CLOUD_STREAM or not CLOUD_STREAM_URL:
         return
     import requests
     session = requests.Session()
-    print(f"[Cloud Stream] Pushing frames to: {CLOUD_STREAM_URL}")
+    print(f"[Cloud Stream] Fast adaptive pusher active: {CLOUD_STREAM_URL}")
     while True:
         if not cloud_stream_active:
             time.sleep(0.5)
@@ -252,35 +346,36 @@ def _cloud_stream_worker():
             with output.condition:
                 output.condition.wait(timeout=0.2)
                 frame = output.frame
-            if frame is not None:
-                session.post(
-                    CLOUD_STREAM_URL,
-                    data=frame,
-                    headers={"Content-Type": "application/octet-stream"},
-                    timeout=0.6
-                )
-            time.sleep(0.08)  # ~12 fps
+            if frame is not None and not _pushing:
+                _pushing = True
+                try:
+                    session.post(
+                        CLOUD_STREAM_URL,
+                        data=frame,
+                        headers={"Content-Type": "application/octet-stream"},
+                        timeout=0.35
+                    )
+                finally:
+                    _pushing = False
+            time.sleep(0.12)  # ~8 fps: smooth video with zero bufferbloat
         except Exception:
+            _pushing = False
             time.sleep(0.5)
 
 if PICAMERA_AVAILABLE:
     t_cloud_stream = threading.Thread(target=_cloud_stream_worker, daemon=True)
     t_cloud_stream.start()
 
-# ── HTTP Handler ──────────────────────────────────────
+# ── HTTP Handler (Port 8080) ──────────────────────────
 class Handler(BaseHTTPRequestHandler):
-
     def log_message(self, format, *args):
-        pass  # suppress normal request logs to keep terminal clean
+        pass  # suppress normal request logs
 
     def do_GET(self):
-        global green_off_at, red_off_at, matrix_off_at, buzzer_state, verification_state
-
         parsed = urlparse(self.path)
         path   = parsed.path
         params = parse_qs(parsed.query)
 
-        # ── MJPEG Video Stream ─────────────────────────
         if path == "/stream":
             self.send_response(200)
             self.send_header("Age", "0")
@@ -295,7 +390,7 @@ class Handler(BaseHTTPRequestHandler):
                         frame = output.frame
                     if frame is not None:
                         self.wfile.write(b"--FRAME\r\n")
-                        self.send_header("Content-Type",   "image/jpeg")
+                        self.send_header("Content-Type", "image/jpeg")
                         self.send_header("Content-Length", len(frame))
                         self.end_headers()
                         self.wfile.write(frame)
@@ -303,7 +398,6 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-        # ── Status & Button Endpoint ──────────────────
         elif path in ["/status", "/button"]:
             now = time.time()
             with gpio_lock:
@@ -318,146 +412,59 @@ class Handler(BaseHTTPRequestHandler):
                 }
             self._json(status_payload)
 
-        # ── State Override / Acknowledgment ───────────
-        elif path == "/state":
-            set_state = params.get("set", [""])[0].upper()
-            with gpio_lock:
-                if set_state in ["IDLE", "ACTIVE", "COMPLETED"]:
-                    verification_state = set_state
-                    print(f"[API] Verification state explicitly set to: {verification_state}")
-                    self._json({"status": "ok", "state": verification_state})
-                else:
-                    self._json({"status": "error", "message": "Invalid state. Use IDLE, ACTIVE, or COMPLETED"}, status=400)
-
-        # ── Reset Endpoint ────────────────────────────
-        elif path == "/reset":
-            with gpio_lock:
-                verification_state = "IDLE"
-                green_off_at = 0.0
-                red_off_at = 0.0
-                buzzer_state = False
-                if GPIO_AVAILABLE:
-                    GPIO.output(GREEN_PIN,  GPIO.LOW)
-                    GPIO.output(RED_PIN,    GPIO.LOW)
-                    GPIO.output(BUZZER_PIN, GPIO.LOW)
-                if matrix_device:
-                    try:
-                        matrix_device.clear()
-                    except Exception:
-                        pass
-            print("[API] Hardware and Verification State RESET")
-            self._ok("RESET OK")
-
-        # ── Green LED — Check-in ──────────────────────
         elif path == "/checkin":
-            with gpio_lock:
-                if GPIO_AVAILABLE:
-                    GPIO.output(GREEN_PIN, GPIO.HIGH)
-                    GPIO.output(RED_PIN,   GPIO.LOW)
-                green_off_at = time.time() + 3.0
-                verification_state = "COMPLETED"
-            print("[API] 🟢 Check-in granted -> GREEN LED ON for 3s")
+            trigger_checkin()
             self._ok("Green ON")
 
-        # ── Red LED — Check-out ───────────────────────
         elif path == "/checkout":
-            with gpio_lock:
-                if GPIO_AVAILABLE:
-                    GPIO.output(RED_PIN,   GPIO.HIGH)
-                    GPIO.output(GREEN_PIN, GPIO.LOW)
-                red_off_at = time.time() + 3.0
-                verification_state = "COMPLETED"
-            print("[API] 🔴 Check-out confirmed -> RED LED ON for 3s")
+            trigger_checkout()
             self._ok("Red ON")
 
-        # ── Buzzer ON (Independent) ───────────────────
         elif path == "/on":
             with gpio_lock:
-                buzzer_state = True
+                buzzer_state_val = True
                 if GPIO_AVAILABLE:
                     GPIO.output(BUZZER_PIN, GPIO.HIGH)
-            print("[API] 🔊 BUZZER ON")
             self._ok("Buzzer ON")
 
-        # ── Buzzer OFF (Independent) ──────────────────
         elif path == "/off":
             with gpio_lock:
-                buzzer_state = False
+                buzzer_state_val = False
                 if GPIO_AVAILABLE:
                     GPIO.output(BUZZER_PIN, GPIO.LOW)
-            print("[API] 🔇 BUZZER OFF")
             self._ok("Buzzer OFF")
 
-        # ── LED Matrix — PPE score ────────────────────
         elif path == "/ppe":
-            global matrix_token
             try:
                 score = int(params.get("score", ["0"])[0])
             except Exception:
                 score = 0
-
-            # Score-specific default durations (seconds)
-            # 100% has 8 chars ("PPE:100 "), takes ~5.8s for 1 full pass
-            # 50%  has 7 chars ("PPE:50 "),  takes ~4.5s for 1 full pass
-            # 0%   has 6 chars ("PPE:0 "),   takes ~3.5s for 1 full pass
-            score_durations = {100: 6.0, 50: 4.5, 0: 3.5}
-            default_dur = score_durations.get(score, 5.0)
-
-            try:
-                duration = float(params.get("duration", [str(default_dur)])[0])
-            except Exception:
-                duration = default_dur
-
-            once_param = params.get("once", ["true"])[0].lower()
-            show_once = once_param in ["true", "1", "yes"]
-
-            if matrix_device and MATRIX_AVAILABLE:
-                try:
-                    matrix_token += 1
-                    cur_token = matrix_token
-                    
-                    def scroll_score(s, token, dur, single_pass=True):
-                        with matrix_lock:
-                            try:
-                                matrix_device.contrast(32)
-                                msg = f"PPE:{s} "
-                                show_until = time.time() + dur
-                                max_pos = len(msg) * 8
-                                pos = 8
-                                while time.time() < show_until and matrix_token == token:
-                                    with canvas(matrix_device) as draw:
-                                        text(draw, (pos, 0), msg,
-                                             fill="White",
-                                             font=proportional(CP437_FONT))
-                                    pos -= 1
-                                    if pos < -max_pos:
-                                        if single_pass:
-                                            break  # Display exactly once and exit
-                                        pos = 8
-                                    time.sleep(0.08)
-                                matrix_device.clear()
-                            except Exception as err:
-                                print(f"[Matrix Worker] {err}")
-
-                    threading.Thread(
-                        target=scroll_score,
-                        args=(score, cur_token, duration, show_once),
-                        daemon=True
-                    ).start()
-                    print(f"[API] 📊 Matrix scrolling PPE score: {score} (duration={duration}s, once={show_once})")
-                except Exception as e:
-                    print(f"[API] Matrix draw error: {e}")
-            else:
-                print(f"[API] Matrix not available — score={score}")
+            trigger_matrix_score(score)
             self._ok(f"Score {score}")
 
-        # ── Health check ──────────────────────────────
+        elif path == "/reset":
+            trigger_reset()
+            self._ok("RESET OK")
+
+        elif path in ["/stream/stop", "/camera/off"]:
+            global cloud_stream_active
+            cloud_stream_active = False
+            print("[HTTP] Cloud streaming turned OFF")
+            self._ok("Stream stopped")
+
+        elif path in ["/stream/start", "/camera/on"]:
+            global cloud_stream_active
+            cloud_stream_active = True
+            print("[HTTP] Cloud streaming turned ON")
+            self._ok("Stream started")
+
         elif path == "/health":
             self._json({
                 "status": "online",
                 "service": "SiteSentinel Pi Server",
                 "button_pressed": button_pressed,
-                "state": verification_state
+                "state": verification_state,
+                "cloud_stream": cloud_stream_active
             })
 
         else:
@@ -484,54 +491,218 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-# ── Multi-threaded server ─────────────────────────────
 class ThreadedServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
-
     def handle_error(self, request, client_address):
-        # Gracefully handle normal client disconnects (ConnectionResetError / BrokenPipe)
         pass
 
-# ── Main Entrypoint ───────────────────────────────────
-PORT     = 8080
-server   = ThreadedServer(("0.0.0.0", PORT), Handler)
-hostname = socket.gethostname()
-try:
-    local_ip = socket.gethostbyname(hostname)
-except Exception:
-    local_ip = "check with: hostname -I"
+# ── Firebase Realtime Cloud Bridge (Integrated) ───────
+def find_credentials_file():
+    candidates = [
+        Path(CREDENTIALS_FILE),
+        Path(__file__).resolve().parent / CREDENTIALS_FILE,
+        Path(__file__).resolve().parent / "firebase-credentials.json",
+        Path(__file__).resolve().parent / "serviceAccountKey.json",
+        Path.home() / "Site" / "firebase-credentials.json",
+        Path.home() / "Site" / "serviceAccountKey.json",
+    ]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return None
 
-print(f"\n{'='*55}")
-print(f"  SiteSentinel Pi Server — Push & Hold Ready")
-print(f"  Stream   -> http://{local_ip}:{PORT}/stream")
-print(f"  Health   -> http://{local_ip}:{PORT}/health")
-print(f"  Status   -> http://{local_ip}:{PORT}/status (or /button)")
-print(f"  State    -> http://{local_ip}:{PORT}/state?set=IDLE|ACTIVE|COMPLETED")
-print(f"  GPIO     -> /checkin /checkout /on /off /ppe?score=N /reset")
-print(f"  Pins     -> Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}, Button={BUTTON_PIN}")
-print(f"{'='*55}\n")
+def start_firebase_bridge():
+    """Starts outbound Firebase Realtime Database bridge in background."""
+    try:
+        import firebase_admin
+        from firebase_admin import credentials, db
+    except ImportError:
+        print("[Firebase] WARNING: firebase-admin not installed. Skipping cloud bridge.")
+        return
 
-try:
-    server.serve_forever()
-except KeyboardInterrupt:
-    print("\nStopping Pi server...")
-finally:
-    if picam2:
+    cred_path = find_credentials_file()
+    if not cred_path:
+        print(f"[Firebase] NOTICE: Credentials file not found ({CREDENTIALS_FILE}). Cloud bridge inactive.")
+        return
+
+    try:
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred, {
+            "databaseURL": FIREBASE_DATABASE_URL
+        })
+        print(f"[Firebase] Connected to Realtime Cloud! Device: {DEVICE_ID}")
+    except Exception as e:
+        print(f"[Firebase] Init error: {e}")
+        return
+
+    device_ref = db.reference(f"devices/{DEVICE_ID}")
+    command_ref = db.reference(f"commands/{DEVICE_ID}")
+
+    # 1. Telemetry loop
+    def _telemetry_loop():
+        while True:
+            now = time.time()
+            with gpio_lock:
+                payload = {
+                    "status": "online",
+                    "last_seen": now,
+                    "device_id": DEVICE_ID,
+                    "camera_server": "online",
+                    "button_pressed": button_pressed,
+                    "verification_state": verification_state,
+                    "green": bool(green_off_at > now),
+                    "red": bool(red_off_at > now),
+                    "buzzer": buzzer_state,
+                    "uptime": round(now - server_start_time, 1)
+                }
+            try:
+                device_ref.update(payload)
+            except Exception:
+                pass
+            time.sleep(3.0)
+
+    # 2. Command execution
+    last_cmd_id = None
+    cmd_lock = threading.Lock()
+
+    def _execute_cloud_command(cmd_data):
+        nonlocal last_cmd_id
+        global cloud_stream_active
+        if not isinstance(cmd_data, dict):
+            return
+        cmd_id = cmd_data.get("command_id")
+        status = cmd_data.get("status")
+        action = (cmd_data.get("action") or "").lower().strip()
+        params = cmd_data.get("params") or {}
+
+        if not cmd_id or status != "pending":
+            return
+
+        with cmd_lock:
+            if cmd_id == last_cmd_id:
+                return
+            last_cmd_id = cmd_id
+
+        print(f"\n[Firebase Command] Received: '{action}' (ID={cmd_id})")
         try:
-            picam2.stop_recording()
+            command_ref.update({"status": "acknowledged", "ack_at": time.time()})
         except Exception:
             pass
-    if GPIO_AVAILABLE:
+
+        # Execute hardware actions directly
         try:
-            GPIO.output(GREEN_PIN,  GPIO.LOW)
-            GPIO.output(RED_PIN,    GPIO.LOW)
-            GPIO.output(BUZZER_PIN, GPIO.LOW)
-            GPIO.cleanup()
-        except Exception:
-            pass
-    if matrix_device:
-        try:
-            matrix_device.clear()
-        except Exception:
-            pass
-    print("SiteSentinel Pi Server Stopped safely.")
+            if action in ["checkin", "green"]:
+                trigger_checkin()
+            elif action in ["checkout", "red"]:
+                trigger_checkout()
+            elif action == "buzzer":
+                threading.Thread(target=trigger_buzzer, args=(1.0,), daemon=True).start()
+            elif action == "ppe":
+                score_val = int(params.get("score", 100))
+                trigger_matrix_score(score_val)
+            elif action in ["stream_start", "camera_on"]:
+                cloud_stream_active = True
+                print("[Firebase Command] Stream started.")
+            elif action in ["stream_stop", "camera_off"]:
+                cloud_stream_active = False
+                print("[Firebase Command] Stream stopped.")
+            elif action == "reset":
+                trigger_reset()
+            elif action == "state":
+                with gpio_lock:
+                    verification_state = params.get("set", "IDLE")
+
+            command_ref.update({
+                "status": "completed",
+                "completed_at": time.time(),
+                "result": f"Executed {action} successfully"
+            })
+            print(f"[Firebase Command] Completed: '{action}'")
+        except Exception as err:
+            command_ref.update({
+                "status": "failed",
+                "failed_at": time.time(),
+                "error": str(err)
+            })
+
+    def _command_stream_listener():
+        def _on_change(event):
+            try:
+                if event.event_type in ["put", "patch"] and event.data:
+                    data = event.data
+                    if isinstance(data, dict) and data.get("status") == "pending":
+                        _execute_cloud_command(data)
+                    elif isinstance(data, str) and data == "pending":
+                        full_cmd = command_ref.get()
+                        if isinstance(full_cmd, dict) and full_cmd.get("status") == "pending":
+                            _execute_cloud_command(full_cmd)
+            except Exception:
+                pass
+
+        while True:
+            try:
+                command_ref.listen(_on_change)
+                while True:
+                    time.sleep(15)
+            except Exception:
+                time.sleep(3)
+
+    def _polling_fallback_loop():
+        while True:
+            try:
+                data = command_ref.get()
+                if isinstance(data, dict) and data.get("status") == "pending":
+                    _execute_cloud_command(data)
+            except Exception:
+                pass
+            time.sleep(1.5)
+
+    threading.Thread(target=_telemetry_loop, daemon=True).start()
+    threading.Thread(target=_command_stream_listener, daemon=True).start()
+    threading.Thread(target=_polling_fallback_loop, daemon=True).start()
+
+# ── Main Server Start ─────────────────────────────────
+if __name__ == "__main__":
+    start_firebase_bridge()
+
+    PORT     = 8080
+    server   = ThreadedServer(("0.0.0.0", PORT), Handler)
+    hostname = socket.gethostname()
+    try:
+        local_ip = socket.gethostbyname(hostname)
+    except Exception:
+        local_ip = "hostname -I"
+
+    print(f"\n{'='*55}")
+    print(f"  SiteSentinel Pi Server + Firebase Cloud Active")
+    print(f"  Stream   -> http://{local_ip}:{PORT}/stream")
+    print(f"  Health   -> http://{local_ip}:{PORT}/health")
+    print(f"  Status   -> http://{local_ip}:{PORT}/status")
+    print(f"  Firebase -> {FIREBASE_DATABASE_URL} (pisite_01)")
+    print(f"  Pins     -> Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}, Button={BUTTON_PIN}")
+    print(f"{'='*55}\n")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping Pi server...")
+    finally:
+        if picam2:
+            try:
+                picam2.stop_recording()
+            except Exception:
+                pass
+        if GPIO_AVAILABLE:
+            try:
+                GPIO.output(GREEN_PIN,  GPIO.LOW)
+                GPIO.output(RED_PIN,    GPIO.LOW)
+                GPIO.output(BUZZER_PIN, GPIO.LOW)
+                GPIO.cleanup()
+            except Exception:
+                pass
+        if matrix_device:
+            try:
+                matrix_device.clear()
+            except Exception:
+                pass
+        print("SiteSentinel Pi Server Stopped safely.")

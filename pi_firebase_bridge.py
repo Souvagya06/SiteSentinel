@@ -310,11 +310,11 @@ def stream_forwarder():
                             CLOUD_STREAM_URL,
                             data=jpg,
                             headers={"Content-Type": "application/octet-stream"},
-                            timeout=0.6
+                            timeout=0.35
                         )
                     except Exception:
                         pass
-                    time.sleep(0.08)  # ~12 fps
+                    time.sleep(0.12)  # ~8 fps: smooth with zero bufferbloat
         except Exception:
             time.sleep(2.0)
 
