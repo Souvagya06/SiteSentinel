@@ -1771,7 +1771,41 @@ def api_pi_actuate(action):
         score_val = params.get("score", 100)
         controller.show_score(score_val)
         return jsonify({"message": f"Matrix test command sent for score {score_val}%"})
+    elif action in ["verify", "button"]:
+        controller.set_state("ACTIVE")
+        return jsonify({"message": "Verification trigger sent to Raspberry Pi"})
     return jsonify({"error": "Invalid action"}), 400
+
+@app.route("/api/pi/trigger-verify", methods=["POST"])
+def api_pi_trigger_verify():
+    """Triggers gate evaluation (virtual button press) via Firebase or local Pi."""
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    user = query_one(
+        "SELECT pi_ip FROM users WHERE id = ?",
+        [{"type": "text", "value": str(session["user_id"])}]
+    )
+    pi_ip = (user.get("pi_ip") if user else None) or ""
+
+    try:
+        from firebase_service import is_firebase_available, send_device_command, get_default_device_id
+        if is_firebase_available():
+            dev_id = (pi_ip if (pi_ip and not ("." in pi_ip or ":" in pi_ip)) else get_default_device_id()).strip().lower()
+            send_device_command(action="state", params={"set": "ACTIVE"}, device_id=dev_id, wait_completion=False)
+            send_device_command(action="button", device_id=dev_id, wait_completion=False)
+            return jsonify({"ok": True, "message": "Gate evaluation triggered via Firebase Cloud."})
+    except Exception as e:
+        print(f"[API] Firebase trigger-verify note: {e}")
+
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "interface"))
+        from pi_controller import PiController
+        controller = PiController(pi_ip or "0")
+        controller.set_state("ACTIVE")
+        return jsonify({"ok": True, "message": "Gate evaluation triggered via local controller."})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/api/pi/status", methods=["GET"])
 def api_pi_status():
