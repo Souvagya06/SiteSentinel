@@ -1761,6 +1761,20 @@
   // ── Pi Stream Start / Stop Lifecycle ──
   let isPiRunning = false;
 
+  window._lastStreamRefresh = Date.now();
+
+  function handleStreamError(img) {
+    const ph = document.getElementById('pi-stream-placeholder');
+    if (ph) ph.style.display = 'flex';
+    if (isPiRunning) {
+      setTimeout(() => {
+        if (img && isPiRunning) {
+          img.src = '/api/pi/stream?t=' + Date.now();
+        }
+      }, 1500);
+    }
+  }
+
   async function checkPiStatus() {
     if (document.hidden) return;
     try {
@@ -1769,6 +1783,25 @@
         const data = await res.json();
         if (data.running !== isPiRunning) {
           updatePiBtnState(data.running);
+        }
+        // Update FPS / Stream status indicator
+        const fpsElem = document.getElementById('hud-fps');
+        if (fpsElem) {
+          if (data.streaming) {
+            fpsElem.textContent = (data.last_frame_sec !== null && data.last_frame_sec < 1.0) ? 'Live' : (data.last_frame_sec !== null ? `${Math.max(1, Math.round(1 / Math.max(data.last_frame_sec, 0.1)))} FPS` : 'Active');
+            fpsElem.style.color = '#00d4aa';
+          } else {
+            fpsElem.textContent = isPiRunning ? 'Connecting...' : '--';
+            fpsElem.style.color = 'var(--text-3)';
+          }
+        }
+        // Auto-reconnect watchdog for cloud proxies (Vercel/Render) to prevent frozen frames
+        if (isPiRunning && data.streaming) {
+          const img = document.getElementById('pi-live-img');
+          if (img && Date.now() - window._lastStreamRefresh > 30000) {
+            window._lastStreamRefresh = Date.now();
+            img.src = '/api/pi/stream?t=' + Date.now();
+          }
         }
       }
     } catch(e) {}
@@ -1791,8 +1824,9 @@
       if (statusText) statusText.textContent = 'Gate Evaluation: Active';
 
       if (previewContainer && !document.getElementById('pi-live-img')) {
+        window._lastStreamRefresh = Date.now();
         previewContainer.innerHTML = `
-          <img id="pi-live-img" src="/api/pi/stream?t=${Date.now()}" style="width:100%;height:100%;object-fit:contain;background:#05050a;border-radius:10px;display:block;" alt="Live Gate Stream" onerror="const self=this; const ph=document.getElementById('pi-stream-placeholder'); if(ph) ph.style.display='flex'; if(isPiRunning){ setTimeout(()=>{ if(self && isPiRunning) self.src='/api/pi/stream?t='+Date.now(); }, 2500); }" onload="this.style.display='block'; const ph=document.getElementById('pi-stream-placeholder'); if(ph) ph.style.display='none';"/>
+          <img id="pi-live-img" src="/api/pi/stream?t=${Date.now()}" style="width:100%;height:100%;object-fit:contain;background:#05050a;border-radius:10px;display:block;" alt="Live Gate Stream" onerror="handleStreamError(this)" onload="this.style.display='block'; const ph=document.getElementById('pi-stream-placeholder'); if(ph) ph.style.display='none';"/>
           <div id="pi-stream-placeholder" class="cam-watermark" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;">
             <span class="material-symbols-outlined">hourglass_top</span>
             <p>Receiving Stream Frames...</p>

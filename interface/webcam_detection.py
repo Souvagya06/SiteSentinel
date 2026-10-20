@@ -15,6 +15,7 @@ import os
 import argparse
 import re
 import time
+import threading
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 import cv2
@@ -60,7 +61,9 @@ except ImportError:
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(env_path)
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000").rstrip("/")
+CLOUD_STREAM_URL = os.getenv("CLOUD_STREAM_URL", "https://sitesentinel.site/api/pi/frame/push").strip()
+ENABLE_CLOUD_PUSH = os.getenv("ENABLE_CLOUD_PUSH", "true").lower() in ["true", "1", "yes"]
 
 # ── Parse Command Line Arguments ───────────────────────
 parser = argparse.ArgumentParser()
@@ -168,11 +171,58 @@ last_button_active_time = 0.0
 
 _push_session = requests.Session()
 _last_push_time = 0.0
-_PUSH_INTERVAL = 0.05  # ~20 fps max push rate
+_PUSH_INTERVAL = 0.045  # ~22 fps local push rate
+
+# ── Cloud Stream Background Mirror (Non-Blocking) ─────
+_cloud_push_lock = threading.Lock()
+_latest_cloud_buf = None
+_cloud_push_session = requests.Session()
+
+def _cloud_pusher_worker():
+    """Asynchronously forwards annotated HUD frames to the hosted dashboard without stalling local CV."""
+    global _latest_cloud_buf
+    target_url = CLOUD_STREAM_URL
+    direct_url = "https://sitesentinel-or0h.onrender.com/api/pi/frame/push" if "sitesentinel.site" in target_url else target_url
+    print(f"[Cloud Stream] Mirroring annotated AI HUD frames -> {direct_url}")
+    while True:
+        buf_to_send = None
+        with _cloud_push_lock:
+            if _latest_cloud_buf is not None:
+                buf_to_send = _latest_cloud_buf
+                _latest_cloud_buf = None
+        if buf_to_send is not None and direct_url:
+            try:
+                _cloud_push_session.post(
+                    direct_url,
+                    data=buf_to_send,
+                    headers={
+                        'Content-Type': 'application/octet-stream',
+                        'X-Frame-Source': 'cv'
+                    },
+                    timeout=3.5
+                )
+            except Exception:
+                if direct_url != target_url:
+                    try:
+                        _cloud_push_session.post(
+                            target_url,
+                            data=buf_to_send,
+                            headers={
+                                'Content-Type': 'application/octet-stream',
+                                'X-Frame-Source': 'cv'
+                            },
+                            timeout=3.5
+                        )
+                    except Exception:
+                        pass
+        time.sleep(0.05)  # optimal upload pacing with zero local CV stall
+
+if ENABLE_CLOUD_PUSH and CLOUD_STREAM_URL:
+    threading.Thread(target=_cloud_pusher_worker, daemon=True).start()
 
 def _push_frame_to_dashboard(frame_bgr):
-    """JPEG-encode the annotated frame and POST it to the Flask frame buffer."""
-    global _last_push_time
+    """JPEG-encode the annotated frame and POST it to local and cloud frame buffers."""
+    global _last_push_time, _latest_cloud_buf
     now = time.time()
     if now - _last_push_time < _PUSH_INTERVAL:
         return
@@ -180,12 +230,25 @@ def _push_frame_to_dashboard(frame_bgr):
     try:
         ok, buf = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
         if ok:
-            _push_session.post(
-                f"{BACKEND_URL}/api/pi/frame/push",
-                data=buf.tobytes(),
-                headers={'Content-Type': 'application/octet-stream'},
-                timeout=0.3
-            )
+            raw_data = buf.tobytes()
+            # 1. Local backend push (immediate, non-blocking)
+            if BACKEND_URL:
+                try:
+                    _push_session.post(
+                        f"{BACKEND_URL}/api/pi/frame/push",
+                        data=raw_data,
+                        headers={
+                            'Content-Type': 'application/octet-stream',
+                            'X-Frame-Source': 'cv'
+                        },
+                        timeout=0.25
+                    )
+                except Exception:
+                    pass
+            # 2. Queue latest frame for background cloud push
+            if ENABLE_CLOUD_PUSH and CLOUD_STREAM_URL and (not BACKEND_URL or BACKEND_URL not in CLOUD_STREAM_URL):
+                with _cloud_push_lock:
+                    _latest_cloud_buf = raw_data
     except Exception:
         pass
 
