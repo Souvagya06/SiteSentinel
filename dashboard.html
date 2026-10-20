@@ -1796,6 +1796,10 @@
               <span id="eval-status-text">Evaluation: Waiting for worker</span>
             </div>
             <div class="cam-controls">
+              <button class="cam-btn" style="background:var(--primary);color:#fff;border-color:var(--primary);display:inline-flex;align-items:center;gap:5px;" onclick="triggerGateVerification()" title="Trigger Single-Worker Gate Evaluation">
+                <span class="material-symbols-outlined" style="font-size:14px;">touch_app</span>
+                Verify Gate
+              </button>
               <button class="cam-btn accent" onclick="triggerFaceDataReload()"
                 title="Force hot-reload of face biometric database">
                 <span class="material-symbols-outlined" style="font-size:14px;">sync</span>
@@ -2821,6 +2825,21 @@
         .then(d => {
           alert('Face data reload signaled! Active CV loop will sync new biometric snapshot.');
         }).catch(() => alert('Could not contact backend for face sync.'));
+    }
+
+    // ── Manual Gate Verification Trigger ──
+    async function triggerGateVerification() {
+      try {
+        const res = await fetch('/api/pi/trigger-verify', { method: 'POST' });
+        const b = document.getElementById('eval-status-badge');
+        const t = document.getElementById('eval-status-text');
+        if (res.ok) {
+          if (b) b.className = 'eval-status-badge approved';
+          if (t) t.textContent = 'Gate Evaluation: Active';
+        }
+      } catch (err) {
+        console.warn('Trigger verify error:', err);
+      }
     }
 
     // ── Report Generator Modal ──

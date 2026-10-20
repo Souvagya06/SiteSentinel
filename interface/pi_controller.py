@@ -68,18 +68,39 @@ class PiController:
             self._poller_thread.start()
 
     def _status_poller(self):
-        """Continuously polls Raspberry Pi /status endpoint at ~5Hz to keep button state responsive without socket overload."""
+        """Continuously polls Raspberry Pi /status endpoint at ~5Hz with Firebase Realtime Cloud fallback."""
         while not self._stop:
+            now = time.time()
+            polled_ok = False
             try:
-                r = self._session.get(f"{self.base}/status", timeout=1.2)
+                r = self._session.get(f"{self.base}/status", timeout=0.8)
                 if r.status_code == 200:
                     data = r.json()
                     with self._lock:
                         self._button_pressed = bool(data.get("button_pressed", False))
                         self._verification_state = str(data.get("state", "IDLE"))
-                        self._last_poll_time = time.time()
+                        self._last_poll_time = now
+                    polled_ok = True
             except Exception:
                 pass
+
+            # Fallback to Firebase Realtime Cloud if local HTTP is unreachable or in cloud mode
+            if not polled_ok:
+                try:
+                    from firebase_service import get_device_status, is_firebase_available
+                    if is_firebase_available():
+                        f_stat = get_device_status()
+                        if f_stat.get("configured"):
+                            f_data = f_stat.get("data", {})
+                            btn = bool(f_stat.get("button_pressed", False) or f_data.get("button_pressed", False))
+                            st = str(f_stat.get("verification_state", "IDLE") or f_data.get("verification_state", "IDLE"))
+                            with self._lock:
+                                self._button_pressed = btn
+                                self._verification_state = st
+                                self._last_poll_time = now
+                except Exception:
+                    pass
+
             time.sleep(0.18)
 
     def is_button_pressed(self) -> bool:
@@ -87,8 +108,8 @@ class PiController:
         if self.is_simulated:
             return True  # Always active in simulation mode
         with self._lock:
-            # If we haven't received a poll update in 2.5s, assume released
-            if time.time() - self._last_poll_time > 2.5:
+            # If we haven't received a poll update in 4.0s, assume released
+            if time.time() - self._last_poll_time > 4.0:
                 return False
             return self._button_pressed or (self._verification_state == "ACTIVE")
 

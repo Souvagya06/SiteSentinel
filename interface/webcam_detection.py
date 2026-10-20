@@ -620,17 +620,22 @@ try:
         if button_active:
             last_button_active_time = time.time()
         
-        # Clicking the button activates verification state window for 6.0 seconds
-        is_button_triggered = (time.time() - last_button_active_time < 6.0)
+        # Clicking the button activates verification state window for 10.0 seconds
+        is_button_triggered = (time.time() - last_button_active_time < 10.0)
         in_eval_process = session_mgr.state in [
             SessionState.VERIFYING,
             SessionState.CONFIRMING,
             SessionState.COMPLETED,
-            SessionState.COOLDOWN
+            SessionState.COOLDOWN,
+            SessionState.CROWDED,
+            SessionState.LOCKED
         ]
 
-        if not is_button_triggered and not in_eval_process:
-            # Button not pressed yet -> Remain in IDLE mode, waiting for button press
+        # Evaluate if button was pressed, or if in progress, or auto-verify when exactly 1 worker is at the gate
+        auto_eval = os.getenv("ENABLE_AUTO_EVAL", "true").lower() in ["true", "1", "yes"]
+        can_evaluate = is_button_triggered or in_eval_process or (auto_eval and len(tracked_persons) == 1)
+
+        if not can_evaluate:
             session_mgr.state = SessionState.IDLE
             session_mgr.hud_message = "Gate Ready | Press Button to Verify"
         else:

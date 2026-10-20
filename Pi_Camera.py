@@ -669,9 +669,16 @@ def start_firebase_bridge():
                 print("[Firebase Command] Stream stopped.")
             elif action == "reset":
                 trigger_reset()
-            elif action == "state":
+            elif action in ["state", "verify"]:
                 with gpio_lock:
-                    verification_state = params.get("set", "IDLE")
+                    verification_state = params.get("set", "ACTIVE")
+                    last_pressed_time = time.time()
+            elif action in ["button", "press_button"]:
+                with gpio_lock:
+                    button_pressed = True
+                    verification_state = "ACTIVE"
+                    last_pressed_time = time.time()
+                    press_start_time = time.time()
 
             command_ref.update({
                 "status": "completed",
