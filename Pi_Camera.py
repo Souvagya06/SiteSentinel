@@ -345,16 +345,59 @@ if PICAMERA_AVAILABLE:
 CLOUD_STREAM_URL = os.getenv("CLOUD_STREAM_URL", "https://sitesentinel.site/api/pi/frame/push").strip()
 ENABLE_CLOUD_STREAM = os.getenv("ENABLE_CLOUD_STREAM", "true").lower() in ["true", "1", "yes"]
 cloud_stream_active = True
-_pushing = False
+_cloud_push_lock = threading.Lock()
+_latest_cloud_frame = None
 
-def _cloud_stream_worker():
-    """Continuously pushes the Pi Camera JPEG frames outbound to the hosted dashboard."""
-    global cloud_stream_active, _pushing
-    if not ENABLE_CLOUD_STREAM or not CLOUD_STREAM_URL:
-        return
+def _cloud_pusher_network_worker():
+    """Continuously uploads the latest camera frame to the cloud without blocking camera capture."""
+    global _latest_cloud_frame
     import requests
     session = requests.Session()
-    print(f"[Cloud Stream] Fast adaptive pusher active: {CLOUD_STREAM_URL}")
+    target_url = CLOUD_STREAM_URL
+    direct_url = "https://sitesentinel-or0h.onrender.com/api/pi/frame/push" if "sitesentinel.site" in target_url else target_url
+    print(f"[Cloud Stream] Fast adaptive pusher active -> {direct_url}")
+    while True:
+        if not cloud_stream_active:
+            time.sleep(0.5)
+            continue
+        buf = None
+        with _cloud_push_lock:
+            if _latest_cloud_frame is not None:
+                buf = _latest_cloud_frame
+                _latest_cloud_frame = None
+        if buf is not None:
+            try:
+                session.post(
+                    direct_url,
+                    data=buf,
+                    headers={
+                        "Content-Type": "application/octet-stream",
+                        "X-Frame-Source": "pi_raw"
+                    },
+                    timeout=3.5
+                )
+            except Exception:
+                if direct_url != target_url:
+                    try:
+                        session.post(
+                            target_url,
+                            data=buf,
+                            headers={
+                                "Content-Type": "application/octet-stream",
+                                "X-Frame-Source": "pi_raw"
+                            },
+                            timeout=3.5
+                        )
+                    except Exception:
+                        pass
+        time.sleep(0.04)
+
+def _cloud_stream_worker():
+    """Polls frames from the local camera output and queues them for the network pusher."""
+    global _latest_cloud_frame
+    if not ENABLE_CLOUD_STREAM or not CLOUD_STREAM_URL:
+        return
+    threading.Thread(target=_cloud_pusher_network_worker, daemon=True).start()
     while True:
         if not cloud_stream_active:
             time.sleep(0.5)
@@ -363,21 +406,12 @@ def _cloud_stream_worker():
             with output.condition:
                 output.condition.wait(timeout=0.2)
                 frame = output.frame
-            if frame is not None and not _pushing:
-                _pushing = True
-                try:
-                    session.post(
-                        CLOUD_STREAM_URL,
-                        data=frame,
-                        headers={"Content-Type": "application/octet-stream"},
-                        timeout=0.35
-                    )
-                finally:
-                    _pushing = False
-            time.sleep(0.12)  # ~8 fps: smooth video with zero bufferbloat
+            if frame is not None:
+                with _cloud_push_lock:
+                    _latest_cloud_frame = frame
+            time.sleep(0.08)  # ~12 fps queue rate
         except Exception:
-            _pushing = False
-            time.sleep(0.5)
+            time.sleep(0.2)
 
 if PICAMERA_AVAILABLE:
     t_cloud_stream = threading.Thread(target=_cloud_stream_worker, daemon=True)

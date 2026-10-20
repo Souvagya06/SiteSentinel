@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import execute, query_one, query_all
 from flask import Flask, send_from_directory, request, jsonify, session, redirect, Response
+import io
 from threading import Thread, Timer, Lock
 import webbrowser
 import subprocess
@@ -40,8 +41,10 @@ cloudinary.config(
 # ── Shared In-Process Frame Buffer (for dashboard MJPEG stream) ──
 import tempfile
 _latest_frame_jpeg: bytes = b""
+_latest_cv_frame: bytes = b""
 _frame_lock = Lock()
 _frame_updated_at: float = 0.0
+_cv_frame_updated_at: float = 0.0
 _stream_active: bool = True
 _SHARED_FRAME_PATH = Path(tempfile.gettempdir()) / "sitesentinel_live_frame.jpg"
 
@@ -1471,20 +1474,30 @@ def _generate_placeholder_jpeg(line1="SiteSentinel Gate Camera", line2="Connecti
         img.save(buf, format="JPEG", quality=75)
         return buf.getvalue()
     except Exception:
-        return b""
+        # Minimal 1x1 valid JPEG fallback to ensure stream boundaries never receive empty frames
+        return b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' \",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xbf\x00\xff\xd9'
 
 # ── Dashboard MJPEG Stream Routes ──────────────────────
 @app.route("/api/pi/frame/push", methods=["POST"])
 def push_frame():
     """Called by Pi_Camera.py or webcam_detection.py to push the latest annotated JPEG frame."""
-    global _latest_frame_jpeg, _frame_updated_at
-    if not _stream_active:
-        return '', 204
+    global _latest_frame_jpeg, _frame_updated_at, _latest_cv_frame, _cv_frame_updated_at, _stream_active
     data = request.get_data()
     if data and len(data) > 100:
+        _stream_active = True
+        now = time.time()
+        is_cv = (request.headers.get("X-Frame-Source") == "cv" or request.args.get("annotated") == "1")
         with _frame_lock:
-            _latest_frame_jpeg = data
-            _frame_updated_at = time.time()
+            if is_cv:
+                _latest_cv_frame = data
+                _cv_frame_updated_at = now
+                _latest_frame_jpeg = data
+                _frame_updated_at = now
+            else:
+                # Prioritize active CV HUD frames if received within last 3 seconds
+                if now - _cv_frame_updated_at > 3.0:
+                    _latest_frame_jpeg = data
+                    _frame_updated_at = now
         try:
             with open(_SHARED_FRAME_PATH, "wb") as f:
                 f.write(data)
@@ -1498,27 +1511,33 @@ def _mjpeg_generator():
     placeholder_bytes = _generate_placeholder_jpeg()
     try:
         while _stream_active:
+            now = time.time()
             with _frame_lock:
-                frame = _latest_frame_jpeg
-                updated = _frame_updated_at
+                # Prioritize active annotated CV frame with HUD modes (IDLE, VERIFYING, COOLDOWN)
+                if _latest_cv_frame and (now - _cv_frame_updated_at < 4.0):
+                    frame = _latest_cv_frame
+                    updated = _cv_frame_updated_at
+                else:
+                    frame = _latest_frame_jpeg
+                    updated = _frame_updated_at
 
             # If memory is empty (e.g. separate gunicorn worker), check shared disk buffer
-            if (not frame or (time.time() - updated > 5.0)) and _SHARED_FRAME_PATH.is_file():
+            if (not frame or (now - updated > 5.0)) and _SHARED_FRAME_PATH.is_file():
                 try:
                     mtime = _SHARED_FRAME_PATH.stat().st_mtime
-                    if time.time() - mtime < 5.0:
+                    if now - mtime < 5.0:
                         frame = _SHARED_FRAME_PATH.read_bytes()
                         updated = mtime
                 except Exception:
                     pass
 
-            if frame and (time.time() - updated < 6.0):
+            if frame and (now - updated < 8.0):
                 yield (
                     BOUNDARY + b"\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" +
                     frame + b"\r\n"
                 )
-                time.sleep(0.04)  # ~25 fps cap
+                time.sleep(0.06)  # ~16 fps cap: optimal bandwidth & zero lag across internet
             else:
                 if placeholder_bytes:
                     yield (
@@ -1526,7 +1545,7 @@ def _mjpeg_generator():
                         b"Content-Type: image/jpeg\r\n\r\n" +
                         placeholder_bytes + b"\r\n"
                     )
-                time.sleep(0.4)
+                time.sleep(0.5)
     except (GeneratorExit, BrokenPipeError, ConnectionResetError):
         pass
     finally:
@@ -1535,10 +1554,38 @@ def _mjpeg_generator():
 @app.route("/api/pi/stream")
 def pi_stream():
     """MJPEG stream endpoint consumed by the dashboard <img> tag."""
-    return Response(
+    resp = Response(
         _mjpeg_generator(),
         mimetype="multipart/x-mixed-replace; boundary=frame"
     )
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, pre-check=0, post-check=0, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    resp.headers["X-Accel-Buffering"] = "no"  # Disable buffering in Nginx, Cloudflare, Vercel, Render
+    return resp
+
+@app.route("/api/pi/frame/latest")
+def pi_frame_latest():
+    """Returns the single latest JPEG frame. Instant snapshot / polling fallback."""
+    now = time.time()
+    with _frame_lock:
+        if _latest_cv_frame and (now - _cv_frame_updated_at < 4.0):
+            frame = _latest_cv_frame
+        else:
+            frame = _latest_frame_jpeg
+    if not frame and _SHARED_FRAME_PATH.is_file():
+        try:
+            if now - _SHARED_FRAME_PATH.stat().st_mtime < 6.0:
+                frame = _SHARED_FRAME_PATH.read_bytes()
+        except Exception:
+            pass
+    if not frame:
+        frame = _generate_placeholder_jpeg()
+    resp = Response(frame, mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 @app.route("/api/pi/test", methods=["POST"])
 def api_test_pi():

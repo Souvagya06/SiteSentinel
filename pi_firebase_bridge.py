@@ -104,6 +104,7 @@ _cmd_lock = threading.Lock()
 
 def execute_action(action: str, params: dict) -> tuple[bool, str]:
     """Forwards command to local Pi_Camera.py server on port 8080."""
+    global cloud_stream_active
     action = (action or "").strip().lower()
     url = None
 
@@ -133,11 +134,9 @@ def execute_action(action: str, params: dict) -> tuple[bool, str]:
         st = params.get("set", "IDLE")
         url = f"{PI_LOCAL_SERVER}/state?set={st}"
     elif action in ["stream_start", "camera_on"]:
-        global cloud_stream_active
         cloud_stream_active = True
         return True, "Cloud stream started"
     elif action in ["stream_stop", "camera_off"]:
-        global cloud_stream_active
         cloud_stream_active = False
         return True, "Cloud stream stopped"
     else:
@@ -298,6 +297,7 @@ def stream_forwarder():
         try:
             r = requests.get(local_url, stream=True, timeout=5)
             bytes_buf = b""
+            direct_url = "https://sitesentinel-or0h.onrender.com/api/pi/frame/push" if "sitesentinel.site" in CLOUD_STREAM_URL else CLOUD_STREAM_URL
             for chunk in r.iter_content(chunk_size=4096):
                 bytes_buf += chunk
                 a = bytes_buf.find(b"\xff\xd8")
@@ -307,16 +307,19 @@ def stream_forwarder():
                     bytes_buf = bytes_buf[b+2:]
                     try:
                         post_session.post(
-                            CLOUD_STREAM_URL,
+                            direct_url,
                             data=jpg,
-                            headers={"Content-Type": "application/octet-stream"},
-                            timeout=0.35
+                            headers={
+                                "Content-Type": "application/octet-stream",
+                                "X-Frame-Source": "pi_raw"
+                            },
+                            timeout=3.5
                         )
                     except Exception:
                         pass
-                    time.sleep(0.12)  # ~8 fps: smooth with zero bufferbloat
+                    time.sleep(0.08)
         except Exception:
-            time.sleep(2.0)
+            time.sleep(1.0)
 
 if __name__ == "__main__":
     t_cmd_stream = threading.Thread(target=command_stream_listener, daemon=True)
