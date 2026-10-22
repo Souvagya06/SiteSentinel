@@ -169,6 +169,9 @@ last_ocr_dispatch_time = 0.0
 last_face_dispatch_time = 0.0
 last_button_active_time = 0.0
 
+# Simulated button state (for keyboard 'v'/'b' key toggle in non-headless mode)
+_sim_button_held = False
+
 _push_session = requests.Session()
 _last_push_time = 0.0
 _PUSH_INTERVAL = 0.045  # ~22 fps local push rate
@@ -616,12 +619,9 @@ try:
         tracked_persons = tracker.update(person_rects)
 
         # ── Physical Button State Trigger ──────────────────
-        button_active = pi.is_button_pressed()
-        if button_active:
-            last_button_active_time = time.time()
-        
-        # Clicking the button activates verification state window for 10.0 seconds
-        is_button_triggered = (time.time() - last_button_active_time < 10.0)
+        # Combine real Pi button with keyboard simulation (_sim_button_held)
+        button_active = pi.is_button_pressed() or _sim_button_held
+
         in_eval_process = session_mgr.state in [
             SessionState.VERIFYING,
             SessionState.CONFIRMING,
@@ -631,13 +631,25 @@ try:
             SessionState.LOCKED
         ]
 
-        # Evaluate if button was pressed, or if in progress, or auto-verify when exactly 1 worker is at the gate
-        auto_eval = os.getenv("ENABLE_AUTO_EVAL", "true").lower() in ["true", "1", "yes"]
-        can_evaluate = is_button_triggered or in_eval_process or (auto_eval and len(tracked_persons) == 1)
+        # ── Cancel-if-still-held after COOLDOWN ────────────
+        # If the button is STILL held when cooldown/completed finishes, cancel and go back to IDLE.
+        if session_mgr.state == SessionState.COOLDOWN and not button_active:
+            # Button released during cooldown → normal path, let state machine handle reset
+            pass
+        elif session_mgr.state == SessionState.COOLDOWN and button_active:
+            # Button STILL held after cooldown → cancel the session immediately
+            print("[Button] Button still held after cooldown — cancelling session, returning to IDLE")
+            session_mgr.reset_to_idle()
+            session_mgr.hud_message = "Session cancelled | Release button then press again"
+
+        # Only evaluate (VERIFYING etc.) when button is actively held, OR session already in progress
+        # Auto-eval is intentionally disabled: worker must press button to start verification.
+        can_evaluate = button_active or in_eval_process
 
         if not can_evaluate:
-            session_mgr.state = SessionState.IDLE
-            session_mgr.hud_message = "Gate Ready | Press Button to Verify"
+            if session_mgr.state != SessionState.IDLE:
+                session_mgr.reset_to_idle()
+            session_mgr.hud_message = "Gate Ready | Press & Hold Button to Verify"
         else:
             # 3. Update Single-Worker Evaluation State Machine
             session_mgr.update_frame(tracked_persons, frame_w, frame_h)
@@ -848,8 +860,10 @@ try:
                 if key == ord('q'):
                     break
                 elif key in [ord('v'), ord('b')]:
-                    last_button_active_time = time.time()
-                    print("[Keyboard Trigger] -> Key 'v'/'b' pressed: Activating verification state")
+                    # Toggle simulated button held state (first press = hold, second press = release)
+                    _sim_button_held = not _sim_button_held
+                    state_label = "HELD (verification starts)" if _sim_button_held else "RELEASED"
+                    print(f"[Keyboard Trigger] -> Key pressed: Simulated button {state_label}")
             except Exception:
                 pass
 

@@ -104,19 +104,21 @@ class PiController:
             time.sleep(0.18)
 
     def is_button_pressed(self) -> bool:
-        """Returns True if physical push button is held down or gate verification is ACTIVE."""
+        """Returns True only if the physical push button is currently held down.
+        In simulation mode the button defaults to False — use keyboard 'v'/'b' keys
+        in webcam_detection.py to simulate a button press."""
         if self.is_simulated:
-            return True  # Always active in simulation mode
+            return False  # No auto-press in simulation; must be triggered by keyboard or explicit call
         with self._lock:
             # If we haven't received a poll update in 4.0s, assume released
             if time.time() - self._last_poll_time > 4.0:
                 return False
-            return self._button_pressed or (self._verification_state == "ACTIVE")
+            return self._button_pressed  # Only true when physical button is physically held
 
     def get_verification_state(self) -> str:
         """Returns current verification state ('IDLE', 'ACTIVE', 'COMPLETED')."""
         if self.is_simulated:
-            return "ACTIVE"
+            return "IDLE"  # Default to IDLE in simulation; keyboard trigger drives state change
         with self._lock:
             return self._verification_state
 
