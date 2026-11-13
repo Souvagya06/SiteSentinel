@@ -59,12 +59,17 @@ except Exception as e:
 
 # ── LED Matrix Initialization ─────────────────────────
 MATRIX_INIT_ERROR = None
+proportional = None
+CP437_FONT = None
 try:
     from luma.led_matrix.device import max7219
     from luma.core.interface.serial import spi, noop
     from luma.core.render import canvas
     from luma.core.legacy import text
-    from luma.core.legacy.font import proportional, CP437_FONT
+    try:
+        from luma.core.legacy.font import proportional, CP437_FONT
+    except Exception:
+        pass
     MATRIX_AVAILABLE = True
     print("LED Matrix library loaded")
 except Exception as e:
@@ -92,14 +97,32 @@ matrix_off_at      = 0.0
 buzzer_state       = False
 
 if GPIO_AVAILABLE:
+    try:
+        GPIO.cleanup()
+    except Exception:
+        pass
     GPIO.setmode(GPIO.BCM)
     GPIO.setwarnings(False)
-    GPIO.setup(GREEN_PIN,  GPIO.OUT, initial=GPIO.LOW)
-    GPIO.setup(RED_PIN,    GPIO.OUT, initial=GPIO.LOW)
-    GPIO.setup(BUZZER_PIN, GPIO.OUT, initial=GPIO.LOW)
-    # Button wired between GPIO 22 and GND -> Internal Pull-Up Resistor
-    GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    print(f"GPIO initialized — Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}, Button={BUTTON_PIN}")
+    try:
+        GPIO.setup(GREEN_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(RED_PIN,    GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(BUZZER_PIN, GPIO.OUT, initial=GPIO.LOW)
+        # Button wired between GPIO 22 and GND -> Internal Pull-Up Resistor
+        GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        print(f"GPIO initialized — Green={GREEN_PIN}, Red={RED_PIN}, Buzzer={BUZZER_PIN}, Button={BUTTON_PIN}")
+    except Exception as e:
+        print(f"GPIO setup warning ({e}). Attempting cleanup & retry...")
+        try:
+            GPIO.cleanup()
+            time.sleep(0.5)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(GREEN_PIN,  GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(RED_PIN,    GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(BUZZER_PIN, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            print(f"GPIO successfully re-initialized after cleanup!")
+        except Exception as e2:
+            print(f"GPIO setup failed ({e2}) — running with virtual GPIO fallback")
 
 # ── MAX7219 Hardware Device Setup ─────────────────────
 matrix_device = None
@@ -185,9 +208,13 @@ def trigger_matrix_score(score=100, duration=None, show_once=True):
                     pos = 8
                     while time.time() < show_until and matrix_token == token:
                         with canvas(matrix_device) as draw:
-                            text(draw, (pos, 0), msg,
-                                 fill="white",
-                                 font=proportional(CP437_FONT))
+                            try:
+                                if proportional and CP437_FONT:
+                                    text(draw, (pos, 0), msg, fill="white", font=proportional(CP437_FONT))
+                                else:
+                                    text(draw, (pos, 0), msg, fill="white")
+                            except Exception:
+                                text(draw, (pos, 0), msg, fill="white")
                         pos -= 1
                         if pos < -max_pos:
                             if once:
