@@ -1598,7 +1598,34 @@ def api_test_pi():
 
     is_cloud_device = bool(ip and not ("." in ip or ":" in ip))
 
-    # Check via Firebase Realtime Database
+    # 1. Check via Cloudflare Permanent Named Tunnel (pi-api.sitesentinel.site)
+    try:
+        from pi_client import pi_request, PI_API_BASE_URL, is_tunnel_configured
+        if is_tunnel_configured() and (not ip or ip in ["tunnel", "cloud", "pi-api.sitesentinel.site"] or "sitesentinel.site" in ip):
+            start_t = time.time()
+            r = pi_request("/health", method="GET", timeout=(3, 8))
+            latency = round((time.time() - start_t) * 1000)
+            if r.ok:
+                data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+                auth_str = " (Authenticated)" if data.get("auth_configured") else ""
+                return jsonify({
+                    "ok": True,
+                    "type": "tunnel",
+                    "url": PI_API_BASE_URL,
+                    "latency_ms": latency,
+                    "message": f"Connected to Raspberry Pi via Permanent Tunnel ({PI_API_BASE_URL}{auth_str}, {latency}ms latency)"
+                })
+            else:
+                return jsonify({
+                    "ok": False,
+                    "type": "tunnel",
+                    "url": PI_API_BASE_URL,
+                    "message": f"Cloudflare Tunnel replied with HTTP {r.status_code}: {r.text[:120]}"
+                })
+    except Exception as e:
+        print(f"[API] Tunnel health test check note: {e}")
+
+    # 2. Check via Firebase Realtime Database
     try:
         from firebase_service import is_firebase_available, get_device_status, get_default_device_id, get_init_error
         if is_cloud_device:
@@ -1729,7 +1756,42 @@ def api_pi_actuate(action):
             except: score_val = 100
         params["score"] = score_val
 
-    # 1. Try Firebase Cloud Route First
+    # 1. Try Permanent Cloudflare Named Tunnel First (pi-api.sitesentinel.site)
+    try:
+        from pi_client import pi_request, is_tunnel_configured
+        if is_tunnel_configured() or os.getenv("PI_API_BASE_URL"):
+            if action == "checkin":
+                resp = pi_request("/checkin", method="POST", json=params, timeout=(3, 8))
+                if resp.ok:
+                    return jsonify({"message": "Green LED (Check-in) command sent to Pi via Permanent Tunnel", "channel": "tunnel", "status": "executed"})
+            elif action == "checkout":
+                resp = pi_request("/checkout", method="POST", json=params, timeout=(3, 8))
+                if resp.ok:
+                    return jsonify({"message": "Red LED (Check-out) command sent to Pi via Permanent Tunnel", "channel": "tunnel", "status": "executed"})
+            elif action == "buzzer":
+                resp = pi_request("/on", method="POST", timeout=(3, 8))
+                if resp.ok:
+                    def _turn_off_buzzer():
+                        time.sleep(1.0)
+                        try:
+                            pi_request("/off", method="POST", timeout=(3, 8))
+                        except Exception:
+                            pass
+                    Thread(target=_turn_off_buzzer, daemon=True).start()
+                    return jsonify({"message": "Buzzer test command sent via Permanent Tunnel", "channel": "tunnel", "status": "executed"})
+            elif action == "ppe":
+                score_val = params.get("score", 100)
+                resp = pi_request(f"/ppe?score={score_val}", method="POST", json={"score": score_val}, timeout=(3, 8))
+                if resp.ok:
+                    return jsonify({"message": f"Matrix test command sent for score {score_val}% via Permanent Tunnel", "channel": "tunnel", "status": "executed"})
+            elif action in ["verify", "button"]:
+                resp = pi_request("/button", method="POST", timeout=(3, 8))
+                if resp.ok:
+                    return jsonify({"message": "Verification trigger sent to Raspberry Pi via Permanent Tunnel", "channel": "tunnel", "status": "executed"})
+    except Exception as e:
+        print(f"[API] Tunnel actuation note: {e}")
+
+    # 2. Try Firebase Cloud Route
     try:
         from firebase_service import is_firebase_available, send_device_command, get_default_device_id
         is_render = os.getenv("RENDER") is not None
@@ -1749,7 +1811,7 @@ def api_pi_actuate(action):
     except Exception as e:
         print(f"[API] Firebase actuation fallback error: {e}")
 
-    # 2. Local Fallback via direct HTTP to PiController
+    # 3. Local Fallback via direct HTTP to PiController
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "interface"))
     from pi_controller import PiController
     controller = PiController(pi_ip or "0")
@@ -1778,9 +1840,19 @@ def api_pi_actuate(action):
 
 @app.route("/api/pi/trigger-verify", methods=["POST"])
 def api_pi_trigger_verify():
-    """Triggers gate evaluation (virtual button press) via Firebase or local Pi."""
+    """Triggers gate evaluation (virtual button press) via Permanent Tunnel, Firebase, or local Pi."""
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
+
+    # 1. Try Permanent Cloudflare Tunnel First
+    try:
+        from pi_client import pi_request, is_tunnel_configured
+        if is_tunnel_configured() or os.getenv("PI_API_BASE_URL"):
+            resp = pi_request("/button", method="POST", timeout=(3, 8))
+            if resp.ok:
+                return jsonify({"ok": True, "channel": "tunnel", "message": "Gate evaluation triggered via Cloudflare Permanent Tunnel."})
+    except Exception as e:
+        print(f"[API] Tunnel trigger-verify note: {e}")
 
     user = query_one(
         "SELECT pi_ip FROM users WHERE id = ?",

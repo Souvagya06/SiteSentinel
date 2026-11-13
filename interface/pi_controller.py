@@ -3,10 +3,16 @@ PiController — sends HTTP commands and queries button/verification state from 
 Controls Check-in Green LED, Check-out Red LED, Safety Buzzer, and 8x8 LED Matrix.
 All calls are non-blocking with real-time status polling.
 """
+import os
 import sys
 import requests
 import threading
 import time
+from dotenv import load_dotenv
+from pathlib import Path
+
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(env_path)
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -28,10 +34,10 @@ DEFAULT_SCORE_DURATIONS = {
 
 def resolve_controller_ip(raw_ip: str) -> str:
     ip = str(raw_ip or "").strip()
-    if not ip or ip in ["0", "1", "local", "webcam", "usb"] or ip.isdigit() or "." in ip:
+    if not ip or ip in ["0", "1", "local", "webcam", "usb"] or ip.isdigit() or "." in ip or ip.startswith("http://") or ip.startswith("https://") or "sitesentinel.site" in ip:
         return ip
     import socket
-    for candidate in ["192.168.1.25"]:
+    for candidate in ["10.95.11.249", "192.168.1.25"]:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(0.5)
@@ -44,12 +50,24 @@ def resolve_controller_ip(raw_ip: str) -> str:
     return ip
 
 class PiController:
-    def __init__(self, ip: str, port: int = 8080):
+    def __init__(self, ip: str = None, port: int = 8080):
+        tunnel_url = os.getenv("PI_API_BASE_URL", "https://pi-api.sitesentinel.site").rstrip("/")
+        # If no explicit IP or special placeholder given, check permanent tunnel URL
+        if not ip or ip in ["tunnel", "cloud", "pi-api.sitesentinel.site"]:
+            if tunnel_url and "sitesentinel.site" in tunnel_url:
+                ip = tunnel_url
+
         resolved = resolve_controller_ip(ip)
         self.raw_ip = str(resolved or "").strip()
         self.port = port
         self.is_simulated = self.raw_ip in ["", "0", "1", "local", "webcam", "usb"] or self.raw_ip.isdigit()
-        self.base = f"http://{self.raw_ip}:{self.port}" if not self.is_simulated else "simulated"
+
+        if self.is_simulated:
+            self.base = "simulated"
+        elif self.raw_ip.startswith("http://") or self.raw_ip.startswith("https://"):
+            self.base = self.raw_ip.rstrip("/")
+        else:
+            self.base = f"http://{self.raw_ip}:{self.port}"
         
         self._button_pressed = False
         self._verification_state = "IDLE"
@@ -64,6 +82,15 @@ class PiController:
 
         if not self.is_simulated:
             self._session = requests.Session()
+            cf_id = os.getenv("CF_ACCESS_CLIENT_ID", "").strip()
+            cf_secret = os.getenv("CF_ACCESS_CLIENT_SECRET", "").strip()
+            dev_key = os.getenv("SITESENTINEL_DEVICE_API_KEY", "").strip()
+            if cf_id and cf_secret:
+                self._session.headers["CF-Access-Client-Id"] = cf_id
+                self._session.headers["CF-Access-Client-Secret"] = cf_secret
+            if dev_key:
+                self._session.headers["X-SiteSentinel-Device-Key"] = dev_key
+
             self._poller_thread = threading.Thread(target=self._status_poller, daemon=True)
             self._poller_thread.start()
 
@@ -133,7 +160,8 @@ class PiController:
             return
 
         try:
-            r = requests.get(
+            session = self._session if hasattr(self, "_session") else requests
+            r = session.get(
                 f"{self.base}{endpoint}",
                 params=params,
                 timeout=2.5
