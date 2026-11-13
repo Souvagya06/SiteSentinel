@@ -3292,7 +3292,13 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pi_ip: ip })
         });
-        const data = await res.json();
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {
+          const rawText = await res.text();
+          throw new Error(rawText.slice(0, 80) || `HTTP ${res.status}`);
+        }
         if (data.ok) {
           resultBox.style.background = 'rgba(0, 220, 100, 0.15)';
           resultBox.style.color = '#00dc64';
@@ -3300,12 +3306,12 @@
         } else {
           resultBox.style.background = 'rgba(255, 60, 60, 0.15)';
           resultBox.style.color = '#ff5555';
-          resultBox.innerHTML = `✕ ${data.message}`;
+          resultBox.innerHTML = `✕ ${data.message || data.error || 'Connection failed'}`;
         }
       } catch (e) {
         resultBox.style.background = 'rgba(255, 60, 60, 0.15)';
         resultBox.style.color = '#ff5555';
-        resultBox.textContent = '✕ Error contacting backend server.';
+        resultBox.textContent = `✕ Error contacting backend: ${e.message || 'Server waking up. Please retry in 15s.'}`;
       }
     }
 

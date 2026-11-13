@@ -1601,7 +1601,7 @@ def api_test_pi():
     # 1. Check via Cloudflare Permanent Named Tunnel (pi-api.sitesentinel.site)
     try:
         from pi_client import pi_request, PI_API_BASE_URL, is_tunnel_configured
-        if is_tunnel_configured() and (not ip or ip in ["tunnel", "cloud", "pi-api.sitesentinel.site"] or "sitesentinel.site" in ip):
+        if is_tunnel_configured() and (not ip or ip in ["tunnel", "cloud", "pi-api.sitesentinel.site", "pisite_01"] or "sitesentinel.site" in ip):
             start_t = time.time()
             r = pi_request("/health", method="GET", timeout=(3, 8))
             latency = round((time.time() - start_t) * 1000)
