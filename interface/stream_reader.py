@@ -14,10 +14,10 @@ import numpy as np
 
 def resolve_stream_ip(raw_ip: str) -> str:
     ip = str(raw_ip or "").strip()
-    if not ip or ip in ["0", "1", "local", "webcam", "usb"] or ip.isdigit() or "." in ip:
+    if not ip or ip in ["0", "1", "local", "webcam", "usb"] or ip.isdigit() or "." in ip or ip.startswith("http://") or ip.startswith("https://") or "sitesentinel.site" in ip:
         return ip
     import socket
-    for candidate in ["192.168.1.25"]:
+    for candidate in ["10.95.11.249", "192.168.1.25"]:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(0.5)
@@ -38,7 +38,14 @@ class PiStream:
         
         self.is_local = self.raw_ip in ["", "0", "1", "local", "webcam", "usb"] or self.raw_ip.isdigit()
         self.cam_index = int(self.raw_ip) if self.raw_ip.isdigit() else 0
-        self.url = f"http://{self.raw_ip}:{self.port}/stream" if not self.is_local else f"webcam_{self.cam_index}"
+        if self.is_local:
+            self.url = f"webcam_{self.cam_index}"
+        elif self.raw_ip.startswith("http://") or self.raw_ip.startswith("https://"):
+            self.url = f"{self.raw_ip.rstrip('/')}/stream" if not self.raw_ip.endswith("/stream") else self.raw_ip
+        elif "sitesentinel.site" in self.raw_ip:
+            self.url = f"https://{self.raw_ip}/stream"
+        else:
+            self.url = f"http://{self.raw_ip}:{self.port}/stream"
         
         self._frame = None
         self._ok = False

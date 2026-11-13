@@ -26,6 +26,10 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
+import hmac
+
+# ── Application Authentication ────────────────────────
+DEVICE_API_KEY = os.getenv("SITESENTINEL_DEVICE_API_KEY", "").strip()
 
 # ── Cloud Bridge Configuration ────────────────────────
 FIREBASE_DATABASE_URL = os.getenv(
@@ -422,18 +426,67 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # suppress normal request logs
 
+    def _authenticate(self) -> bool:
+        """
+        Validates the application-level device API key from header:
+        X-SiteSentinel-Device-Key
+        If DEVICE_API_KEY is not configured in the environment, requests are allowed
+        for backward compatibility during migration.
+        """
+        if not DEVICE_API_KEY:
+            return True
+        supplied_key = self.headers.get("X-SiteSentinel-Device-Key", "").strip()
+        if not supplied_key or not hmac.compare_digest(supplied_key, DEVICE_API_KEY):
+            self._json({"error": "Unauthorized: Invalid or missing X-SiteSentinel-Device-Key header"}, status=401)
+            return False
+        return True
+
+    def do_OPTIONS(self):
+        """CORS preflight support for Cloudflare Tunnel and external callers."""
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-SiteSentinel-Device-Key, CF-Access-Client-Id, CF-Access-Client-Secret")
+        self.end_headers()
+
     def do_GET(self):
-        global cloud_stream_active
+        self._dispatch(method="GET")
+
+    def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = {}
+        if content_length > 0:
+            try:
+                raw_body = self.rfile.read(content_length).decode("utf-8")
+                body = json.loads(raw_body) if raw_body else {}
+            except Exception:
+                body = {}
+        self._dispatch(method="POST", body=body)
+
+    def _dispatch(self, method="GET", body=None):
+        global cloud_stream_active, verification_state, buzzer_state
+        body = body or {}
         parsed = urlparse(self.path)
         path   = parsed.path
         params = parse_qs(parsed.query)
 
+        # MJPEG Video Stream
         if path == "/stream":
+            if DEVICE_API_KEY:
+                key_param = params.get("key", [""])[0] or params.get("token", [""])[0]
+                supplied = self.headers.get("X-SiteSentinel-Device-Key", "").strip() or key_param
+                client_ip = self.client_address[0] if hasattr(self, "client_address") else ""
+                is_local = client_ip in ["127.0.0.1", "localhost", "::1"] or client_ip.startswith("10.") or client_ip.startswith("192.168.")
+                if not is_local and supplied and not hmac.compare_digest(supplied, DEVICE_API_KEY):
+                    self._json({"error": "Unauthorized"}, status=401)
+                    return
+
             self.send_response(200)
             self.send_header("Age", "0")
             self.send_header("Cache-Control", "no-cache, private")
             self.send_header("Pragma", "no-cache")
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=FRAME")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             try:
                 while True:
@@ -449,8 +502,13 @@ class Handler(BaseHTTPRequestHandler):
                         self.wfile.write(b"\r\n")
             except Exception:
                 pass
+            return
 
-        elif path in ["/status", "/button"]:
+        # All control & state endpoints require authentication if DEVICE_API_KEY is configured
+        if not self._authenticate():
+            return
+
+        if path in ["/status", "/button_status"]:
             now = time.time()
             with gpio_lock:
                 status_payload = {
@@ -464,37 +522,55 @@ class Handler(BaseHTTPRequestHandler):
                 }
             self._json(status_payload)
 
+        elif path in ["/button", "/verify"]:
+            with gpio_lock:
+                verification_state = "ACTIVE"
+            self._json({"ok": True, "state": "ACTIVE", "message": "Verification triggered"})
+
+        elif path == "/state":
+            new_state = body.get("set") or params.get("set", ["ACTIVE"])[0]
+            with gpio_lock:
+                verification_state = str(new_state).upper()
+            self._json({"ok": True, "state": verification_state})
+
         elif path == "/checkin":
             trigger_checkin()
-            self._ok("Green ON")
+            self._json({"ok": True, "message": "Green ON (Check-in)"})
 
         elif path == "/checkout":
             trigger_checkout()
-            self._ok("Red ON")
+            self._json({"ok": True, "message": "Red ON (Check-out)"})
 
         elif path == "/on":
             with gpio_lock:
-                buzzer_state_val = True
+                buzzer_state = True
                 if GPIO_AVAILABLE:
                     GPIO.output(BUZZER_PIN, GPIO.HIGH)
-            self._ok("Buzzer ON")
+            self._json({"ok": True, "message": "Buzzer ON"})
 
         elif path == "/off":
             with gpio_lock:
-                buzzer_state_val = False
+                buzzer_state = False
                 if GPIO_AVAILABLE:
                     GPIO.output(BUZZER_PIN, GPIO.LOW)
-            self._ok("Buzzer OFF")
+            self._json({"ok": True, "message": "Buzzer OFF"})
 
         elif path == "/ppe":
-            try:
-                score = int(params.get("score", ["0"])[0])
-            except Exception:
-                score = 0
-            ok, msg = trigger_matrix_score(score)
+            score_val = body.get("score")
+            if score_val is None:
+                try:
+                    score_val = int(params.get("score", ["0"])[0])
+                except Exception:
+                    score_val = 0
+            else:
+                try:
+                    score_val = int(score_val)
+                except Exception:
+                    score_val = 0
+            ok, msg = trigger_matrix_score(score_val)
             self._json({
                 "ok": ok,
-                "score": score,
+                "score": score_val,
                 "message": msg,
                 "matrix_available": MATRIX_AVAILABLE,
                 "matrix_initialized": matrix_device is not None,
@@ -503,17 +579,17 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/reset":
             trigger_reset()
-            self._ok("RESET OK")
+            self._json({"ok": True, "message": "RESET OK"})
 
         elif path in ["/stream/stop", "/camera/off"]:
             cloud_stream_active = False
             print("[HTTP] Cloud streaming turned OFF")
-            self._ok("Stream stopped")
+            self._json({"ok": True, "message": "Stream stopped"})
 
         elif path in ["/stream/start", "/camera/on"]:
             cloud_stream_active = True
             print("[HTTP] Cloud streaming turned ON")
-            self._ok("Stream started")
+            self._json({"ok": True, "message": "Stream started"})
 
         elif path == "/health":
             self._json({
@@ -524,12 +600,12 @@ class Handler(BaseHTTPRequestHandler):
                 "cloud_stream": cloud_stream_active,
                 "matrix_available": MATRIX_AVAILABLE,
                 "matrix_initialized": matrix_device is not None,
-                "matrix_error": MATRIX_INIT_ERROR
+                "matrix_error": MATRIX_INIT_ERROR,
+                "auth_configured": bool(DEVICE_API_KEY)
             })
 
         else:
-            self.send_response(404)
-            self.end_headers()
+            self._json({"error": f"Endpoint not found: {path}"}, status=404)
 
     def _ok(self, msg="OK"):
         self.send_response(200)
@@ -744,7 +820,7 @@ if __name__ == "__main__":
         try:
             local_ip = socket.gethostbyname(socket.gethostname())
         except Exception:
-            local_ip = "192.168.1.25"
+            local_ip = "10.95.11.249"
 
     print(f"\n{'='*55}")
     print(f"  SiteSentinel Pi Server + Firebase Cloud Active")

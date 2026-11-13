@@ -96,8 +96,11 @@ else:
     )
     PI_IP = (user_row.get("pi_ip") if user_row else None) or "0"
 
-if PI_IP and not ("." in PI_IP or PI_IP.isdigit() or PI_IP in ["0", "1", "local", "webcam"]):
-    for candidate in ["192.168.1.25"]:
+if PI_IP in ["tunnel", "pi-api.sitesentinel.site"]:
+    PI_IP = os.getenv("PI_API_BASE_URL", "https://pi-api.sitesentinel.site")
+
+if PI_IP and not ("." in PI_IP or PI_IP.isdigit() or PI_IP in ["0", "1", "local", "webcam"] or PI_IP.startswith("http") or "sitesentinel.site" in PI_IP):
+    for candidate in ["10.95.11.249", "192.168.1.25"]:
         try:
             import socket
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

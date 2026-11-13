@@ -29,3 +29,11 @@ services:
         value: pisite_01
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false
+      - key: PI_API_BASE_URL
+        value: https://pi-api.sitesentinel.site
+      - key: CF_ACCESS_CLIENT_ID
+        sync: false
+      - key: CF_ACCESS_CLIENT_SECRET
+        sync: false
+      - key: SITESENTINEL_DEVICE_API_KEY
+        sync: false

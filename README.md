@@ -329,9 +329,9 @@ The Pi prints:
 ```text
 =====================================================
   SiteSentinel Pi Server + Firebase Cloud Active
-  Stream   -> http://192.168.1.25:8080/stream
-  Health   -> http://192.168.1.25:8080/health
-  Status   -> http://192.168.1.25:8080/status
+  Stream   -> http://10.95.11.249:8080/stream
+  Health   -> http://10.95.11.249:8080/health
+  Status   -> http://10.95.11.249:8080/status
   Firebase -> https://sitesentinel-50bfc-default-rtdb...
   Pins     -> Green=17, Red=27, Buzzer=18, Button=22
 =====================================================
