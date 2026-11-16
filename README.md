@@ -103,6 +103,8 @@ The gate hardware runs on Raspberry Pi (Rev 1.3 / Pi 4) with hybrid local + clou
 
 #### Cloud & Edge Communication
 - **Direct Local API (Port 8080):** High-speed local MJPEG stream (`/stream`), health checks (`/health`), and hardware actuation (`/checkin`, `/checkout`, `/on`, `/off`, `/ppe`, `/status`).
+- **Permanent Cloudflare Tunnel:** Exposes edge hardware securely via `pi-api.sitesentinel.site` with zero port-forwarding and authenticated API key protection.
+- **Automated systemd Service:** Managed 24/7 as a headless system daemon (`sitesentinel-camera.service`) that automatically boots on power-up with crash auto-recovery.
 - **Firebase Realtime Cloud Bridge:**
   - **Telemetry Relay:** Pi continuously reports uptime, button state, LED status, and verification state to Firebase.
   - **Remote Actuation:** Hosted cloud dashboards dispatch commands (`buzzer`, `ppe`, `green`, `red`, `verify`) to the Pi through Firebase Cloud with zero router port-forwarding.
@@ -312,17 +314,17 @@ The file [`Pi_Camera.py`](Pi_Camera.py) (or [`raspberry_Pi_Code.txt`](raspberry_
 | Pin 19, 23, 24 | SPI0 (MOSI, SCLK, CE0) | MAX7219 8x8 Matrix | PPE Score Display |
 | CSI Port | CSI Ribbon | Camera Module Rev 1.3 | Live Stream Capture |
 
-### Deploy and Run on Pi
+### Deploy and Run on Pi (Manual Run)
 ```bash
 # Copy script and credentials to the Pi
-scp Pi_Camera.py pi@<PI_IP>:/home/pi/
-scp firebase-credentials.json pi@<PI_IP>:/home/pi/
+scp Pi_Camera.py pisite@<PI_IP>:/home/pisite/Site/
+scp firebase-credentials.json pisite@<PI_IP>:/home/pisite/Site/
 
 # SSH into the Pi
-ssh pi@<PI_IP>
+ssh pisite@<PI_IP>
 
 # Run camera server & cloud pusher
-python3 Pi_Camera.py
+python3 /home/pisite/Site/Pi_Camera.py
 ```
 
 The Pi prints:
@@ -337,6 +339,53 @@ The Pi prints:
 =====================================================
 [Cloud Stream] Fast adaptive pusher active -> https://sitesentinel-or0h.onrender.com/api/pi/frame/push
 ```
+
+### Automatic Headless Startup (`systemd` Service)
+
+To ensure continuous, headless, 24/7 gate operation, the Raspberry Pi is configured with a dedicated **systemd service** (`sitesentinel-camera`). The camera server starts automatically whenever the Pi is powered on, eliminating the need for an external monitor, keyboard, mouse, or manual terminal login.
+
+#### Implementation Details:
+1. **Service Registration:** Created `/etc/systemd/system/sitesentinel-camera.service`.
+2. **Execution Target:** Runs `/home/pisite/Site/Pi_Camera.py` using Python 3 (`/usr/bin/python3`).
+3. **Working Directory:** Set to `/home/pisite/Site` for local assets, credentials, and `.env` loading.
+4. **Boot Auto-Start:** Enabled across system boot cycles (`WantedBy=multi-user.target`).
+5. **Crash Resilience:** Configured with `Restart=always` and `RestartSec=3` to auto-recover if a process exception occurs.
+6. **Verified Status:** Confirmed active post-reboot state via `sudo systemctl status sitesentinel-camera`.
+
+#### Service Unit File (`/etc/systemd/system/sitesentinel-camera.service`):
+```ini
+[Unit]
+Description=SiteSentinel Camera & Edge Hardware Server
+After=network.target
+
+[Service]
+Type=simple
+User=pisite
+WorkingDirectory=/home/pisite/Site
+ExecStart=/usr/bin/python3 /home/pisite/Site/Pi_Camera.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Service Management Commands:
+```bash
+# Check service health and live logs
+sudo systemctl status sitesentinel-camera
+
+# Start, stop, or restart the server
+sudo systemctl start sitesentinel-camera
+sudo systemctl stop sitesentinel-camera
+sudo systemctl restart sitesentinel-camera
+
+# View live streaming and actuation logs
+sudo journalctl -u sitesentinel-camera -f
+```
+
+**Final Outcome:** The Raspberry Pi operates as a fully autonomous, plug-and-play gate appliance. Powering on the device immediately activates video streaming, Cloudflare tunnel routing (`pi-api.sitesentinel.site`), Firebase cloud telemetry, and GPIO hardware actuation with zero manual intervention.
 
 ---
 
